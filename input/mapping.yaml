@@ -1,0 +1,92 @@
+
+# Headers Configuration - Proper YAML Format
+# Defines the sections and their corresponding columns for the QC report
+
+# Headers Configuration - Enhanced with Display Names
+# Defines the sections and their corresponding columns for the QC report
+# Each column can have both the actual column name and a user-friendly display name
+
+qc_rules_file: ./input/QC_rules.csv
+qc_judgement_file: ./input/qc_judgment.tsv
+
+Sections:
+  Basic:
+    ID:
+      data:
+        mapping: sample_id
+      report:
+        hidden: true
+        id: true # represents the unique identifier for the sample which can be passed to other systems
+    Name:
+      data:
+        mapping: sample_name
+  QC_metrics:
+    QC outcome: # generated from qc
+      data:
+        mapping: qc_outcome
+    Failed Rules: # generated from qc
+      data:
+        mapping: failed_rules
+    Passed Rules: # generated from qc
+      data:
+        mapping: passed_rules
+      report:
+        hidden: true
+    Expected species:
+      data:
+        mapping: provided_species
+      QC:
+        mapping: ["speciesName", "genusName", "Marker lineage"]
+    Species:
+      data:
+        mapping: species
+      QC:
+        mapping: ["speciesName", "genusName", "Marker lineage"]
+    Genome size (bp):
+      data:
+        mapping: bin_length_at_1x
+      QC:
+        software: "checkm"
+        assembly_type: "short"
+        mapping: ["Genome size (bp)", "Total length (>= 0 bp)"]
+    GC:
+      data:
+        mapping: GC
+      QC:
+        mapping: ["GC", "GC %"]
+    N50:
+      data:
+        mapping: N50
+      QC:
+        mapping: ["N50", "N50 (scaffolds)"]
+    Contigs:
+      data:
+        mapping: bin_contigs_at_1x
+      QC:
+        mapping: ["# contigs", "# contigs (>= 0 bp)"]
+    Completeness:
+      data:
+        mapping: percent_classified_species_1
+      QC:
+        mapping: ["Completeness"]
+      hidden: true
+    Contamination:
+      data:
+        mapping: percent_classified_species_2
+      QC:
+        mapping: ["Contamination"]
+      hidden: true
+    Depth:
+      data:
+        mapping: bin_coverage_at_1x
+      QC:
+        mapping: ["Depth"]
+  Experimental:
+    Depth 10x:
+      data:
+        mapping: bin_coverage_at_10x
+    Depth 25x:
+      data:
+        mapping: bin_coverage_at_25x
+  Other:
+    unmapped: true # this is unique

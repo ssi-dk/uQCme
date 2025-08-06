@@ -1,0 +1,364 @@
+ruleID	species	assembly_type	software	field	operator	value	special_field
+A1	all	all	Checkm	Completeness	>=	80
+A2	all	all	Checkm	Contamination	<=	10
+A3	all	all	Checkm	Marker lineage	regex	^.+	species_field
+A4	all	all	Checkm	GC	>=	10
+A5	all	all	Checkm	GC	<=	70
+A6	all	all	Checkm	Genome size (bp)	>=	500000
+A7	all	all	Checkm	Genome size (bp)	<=	1200000
+A8	all	short	Checkm	# contigs	<=	600
+A9	all	short	Checkm	N50 (scaffolds)	>	15000
+A10	all	short	Quast	N50	>	15000
+A11	all	short	Quast	# contigs (>= 0 bp)	<	600
+A12	all	all	Quast	Total length (>= 0 bp)	>	500000
+A13	all	all	Quast	Total length (>= 0 bp)	<	1200000
+A14	all	all	Quast	GC (%)	>	10
+A15	all	all	Quast	GC (%)	<	70
+A16	all	all	Quast	Ns per 100 kbp	<=	1000
+A17	all	all	Speciator	speciesName	regex	^.+	species_field
+A18	all	all	Speciator	confidence	regex	^good$
+A19	all	all	Speciator	genusName	regex	^.+
+A20	all	all	Sylph	number_of_genomes	=	1
+A21	all	short	Ariba	percent	=	100
+KP1	Klebsiella pneumoniae	all	Quast	Total length (>= 0 bp)	>	4700000
+KP2	Klebsiella pneumoniae	all	Quast	Total length (>= 0 bp)	<	6700000
+KP3	Klebsiella pneumoniae	all	Quast	GC (%)	>	56.1
+KP4	Klebsiella pneumoniae	all	Quast	GC (%)	<	58.0
+KP5	Klebsiella pneumoniae	all	Quast	Ns per 100 kbp	<=	100
+KP6	Klebsiella pneumoniae	all	Checkm	Completeness	>=	90
+KP7	Klebsiella pneumoniae	all	Checkm	Contamination	<=	5
+KP8	Klebsiella pneumoniae	all	Checkm	Marker lineage	regex	^Klebsiella pneumoniae.+	species_field
+KP9	Klebsiella pneumoniae	all	Checkm	GC	>=	56.1
+KP10	Klebsiella pneumoniae	all	Checkm	GC	<=	58.0
+KP11	Klebsiella pneumoniae	all	Checkm	Genome size (bp)	>=	4700000
+KP12	Klebsiella pneumoniae	all	Checkm	Genome size (bp)	<=	6700000
+KP13	Klebsiella pneumoniae	all	Speciator	speciesName	regex	^Klebsiella pneumoniae	species_field
+KP14	Klebsiella pneumoniae	all	Speciator	confidence	regex	^good$
+KP15	Klebsiella pneumoniae	all	Speciator	genusName	regex	^Klebsiella
+KP16	Klebsiella pneumoniae	short	Checkm	# contigs	<=	400
+KP17	Klebsiella pneumoniae	short	Checkm	N50 (scaffolds)	>	25000
+KP18	Klebsiella pneumoniae	short	Quast	N50	>	25000
+KP19	Klebsiella pneumoniae	short	Quast	# contigs (>= 0 bp)	<	400
+MG1	Mycoplasma genitalium	all	Checkm	Completeness	>=	90
+MG2	Mycoplasma genitalium	all	Checkm	Contamination	<=	5
+MG3	Mycoplasma genitalium	all	Checkm	Marker lineage	regex	^Mycoplasma genitalium.+	species_field
+MG4	Mycoplasma genitalium	all	Checkm	GC	>=	30
+MG5	Mycoplasma genitalium	all	Checkm	GC	<=	32
+MG6	Mycoplasma genitalium	all	Checkm	Genome size (bp)	>=	500000
+MG7	Mycoplasma genitalium	all	Checkm	Genome size (bp)	<=	700000
+MG8	Mycoplasma genitalium	all	Quast	Total length (>= 0 bp)	>	500000
+MG9	Mycoplasma genitalium	all	Quast	Total length (>= 0 bp)	<	700000
+MG10	Mycoplasma genitalium	all	Quast	GC (%)	>	30
+MG11	Mycoplasma genitalium	all	Quast	GC (%)	<	32
+MG12	Mycoplasma genitalium	all	Quast	Ns per 100 kbp	<=	100
+MG13	Mycoplasma genitalium	all	Speciator	speciesName	regex	^Mycoplasma genitalium	species_field
+MG14	Mycoplasma genitalium	all	Speciator	confidence	regex	^good$
+MG15	Mycoplasma genitalium	all	Speciator	genusName	regex	^Mycoplasma
+MG16	Mycoplasma genitalium	short	Checkm	# contigs	<=	7
+MG17	Mycoplasma genitalium	short	Checkm	N50 (scaffolds)	>	182446
+MG18	Mycoplasma genitalium	short	Quast	N50	>	182446
+MG19	Mycoplasma genitalium	short	Quast	# contigs (>= 0 bp)	<=	7
+AB1	Acinetobacter baumannii	all	Checkm	Completeness	>=	90
+AB2	Acinetobacter baumannii	all	Checkm	Contamination	<=	5
+AB3	Acinetobacter baumannii	all	Checkm	GC	>=	38.7
+AB4	Acinetobacter baumannii	all	Checkm	GC	<=	39.7
+AB5	Acinetobacter baumannii	all	Checkm	Marker lineage	regex	^Acinetobacter baumannii.+	species_field
+AB6	Acinetobacter baumannii	all	Checkm	Genome size (bp)	>=	3400000
+AB7	Acinetobacter baumannii	all	Checkm	Genome size (bp)	<=	4800000
+AB8	Acinetobacter baumannii	all	Quast	Total length (>= 0 bp)	>=	3400000
+AB9	Acinetobacter baumannii	all	Quast	Total length (>= 0 bp)	<=	4800000
+AB10	Acinetobacter baumannii	all	Quast	Ns per 100 kbp	<=	100
+AB11	Acinetobacter baumannii	all	Quast	GC (%)	>	38.7
+AB12	Acinetobacter baumannii	all	Quast	GC (%)	<	39.7
+AB13	Acinetobacter baumannii	all	Speciator	speciesName	regex	^Acinetobacter baumannii	species_field
+AB14	Acinetobacter baumannii	all	Speciator	confidence	regex	^good$
+AB15	Acinetobacter baumannii	all	Speciator	genusName	regex	^Acinetobacter
+AB16	Acinetobacter baumannii	short	Checkm	N50 (scaffolds)	>	25000
+AB17	Acinetobacter baumannii	short	Quast	N50	>	25000
+AB18	Acinetobacter baumannii	short	Checkm	# contigs	<=	300
+AB19	Acinetobacter baumannii	short	Quast	# contigs (>= 0 bp)	<	300
+PA1	Pseudomonas aeruginosa	all	Checkm	Completeness	>=	90
+PA2	Pseudomonas aeruginosa	all	Checkm	Contamination	<=	5
+PA3	Pseudomonas aeruginosa	all	Checkm	GC	>=	65.0
+PA4	Pseudomonas aeruginosa	all	Checkm	GC	<=	66.9
+PA5	Pseudomonas aeruginosa	all	Checkm	Marker lineage	regex	^Pseudomonas aeruginosa.+	species_field
+PA6	Pseudomonas aeruginosa	all	Checkm	Genome size (bp)	>=	5700000
+PA7	Pseudomonas aeruginosa	all	Checkm	Genome size (bp)	<=	8200000
+PA8	Pseudomonas aeruginosa	all	Quast	Total length (>= 0 bp)	>=	5700000
+PA9	Pseudomonas aeruginosa	all	Quast	Total length (>= 0 bp)	<=	8200000
+PA10	Pseudomonas aeruginosa	all	Quast	Ns per 100 kbp	<=	100
+PA11	Pseudomonas aeruginosa	all	Quast	GC (%)	>	65.0
+PA12	Pseudomonas aeruginosa	all	Quast	GC (%)	<	66.9
+PA13	Pseudomonas aeruginosa	all	Speciator	speciesName	regex	^Pseudomonas aeruginosa	species_field
+PA14	Pseudomonas aeruginosa	all	Speciator	confidence	regex	^good$
+PA15	Pseudomonas aeruginosa	all	Speciator	genusName	regex	^Pseudomonas
+PA16	Pseudomonas aeruginosa	short	Checkm	N50 (scaffolds)	>	25000
+PA17	Pseudomonas aeruginosa	short	Quast	N50	>	25000
+PA18	Pseudomonas aeruginosa	short	Checkm	# contigs	<=	500
+PA19	Pseudomonas aeruginosa	short	Quast	# contigs (>= 0 bp)	<	500
+KP20	Klebsiella pneumoniae	all	Checkm	Completeness	>=	90
+KP21	Klebsiella pneumoniae	all	Checkm	Contamination	<=	5
+KP22	Klebsiella pneumoniae	all	Checkm	GC	>=	56.1
+KP23	Klebsiella pneumoniae	all	Checkm	GC	<=	58.0
+KP24	Klebsiella pneumoniae	all	Checkm	Marker lineage	regex	^Klebsiella pneumoniae.+	species_field
+KP25	Klebsiella pneumoniae	all	Checkm	Genome size (bp)	>=	4700000
+KP26	Klebsiella pneumoniae	all	Checkm	Genome size (bp)	<=	6700000
+KP27	Klebsiella pneumoniae	all	Quast	Total length (>= 0 bp)	>=	4700000
+KP28	Klebsiella pneumoniae	all	Quast	Total length (>= 0 bp)	<=	6700000
+KP29	Klebsiella pneumoniae	all	Quast	Ns per 100 kbp	<=	100
+KP30	Klebsiella pneumoniae	all	Quast	GC (%)	>	56.1
+KP31	Klebsiella pneumoniae	all	Quast	GC (%)	<	58.0
+KP32	Klebsiella pneumoniae	all	Speciator	speciesName	regex	^Klebsiella pneumoniae	species_field
+KP33	Klebsiella pneumoniae	all	Speciator	confidence	regex	^good$
+KP34	Klebsiella pneumoniae	all	Speciator	genusName	regex	^Klebsiella
+KP35	Klebsiella pneumoniae	short	Checkm	N50 (scaffolds)	>	25000
+KP36	Klebsiella pneumoniae	short	Quast	N50	>	25000
+KP37	Klebsiella pneumoniae	short	Checkm	# contigs	<=	400
+KP38	Klebsiella pneumoniae	short	Quast	# contigs (>= 0 bp)	<	400
+EC1	Escherichia coli	all	Checkm	Completeness	>=	90
+EC2	Escherichia coli	all	Checkm	Contamination	<=	5
+EC3	Escherichia coli	all	Checkm	GC	>=	50.1
+EC4	Escherichia coli	all	Checkm	GC	<=	51.1
+EC5	Escherichia coli	all	Checkm	Marker lineage	regex	^Escherichia coli.+	species_field
+EC6	Escherichia coli	all	Checkm	Genome size (bp)	>=	3700000
+EC7	Escherichia coli	all	Checkm	Genome size (bp)	<=	6500000
+EC8	Escherichia coli	all	Quast	Total length (>= 0 bp)	>=	3700000
+EC9	Escherichia coli	all	Quast	Total length (>= 0 bp)	<=	6500000
+EC10	Escherichia coli	all	Quast	Ns per 100 kbp	<=	100
+EC11	Escherichia coli	all	Quast	GC (%)	>	50.1
+EC12	Escherichia coli	all	Quast	GC (%)	<	51.1
+EC13	Escherichia coli	all	Speciator	speciesName	regex	^Escherichia coli	species_field
+EC14	Escherichia coli	all	Speciator	confidence	regex	^good$
+EC15	Escherichia coli	all	Speciator	genusName	regex	^Escherichia
+EC16	Escherichia coli	short	Checkm	N50 (scaffolds)	>	25000
+EC17	Escherichia coli	short	Quast	N50	>	25000
+EC18	Escherichia coli	short	Checkm	# contigs	<=	500
+EC19	Escherichia coli	short	Quast	# contigs (>= 0 bp)	<	500
+EN1	Enterobacter spp.	all	Checkm	Completeness	>=	90
+EN2	Enterobacter spp.	all	Checkm	Contamination	<=	5
+EN3	Enterobacter spp.	all	Checkm	GC	>=	52.8
+EN4	Enterobacter spp.	all	Checkm	GC	<=	56.4
+EN5	Enterobacter spp.	all	Checkm	Marker lineage	regex	^Enterobacter.+	species_field
+EN6	Enterobacter spp.	all	Checkm	Genome size (bp)	>=	4200000
+EN7	Enterobacter spp.	all	Checkm	Genome size (bp)	<=	5900000
+EN8	Enterobacter spp.	all	Quast	Total length (>= 0 bp)	>=	4200000
+EN9	Enterobacter spp.	all	Quast	Total length (>= 0 bp)	<=	5900000
+EN10	Enterobacter spp.	all	Quast	Ns per 100 kbp	<=	100
+EN11	Enterobacter spp.	all	Quast	GC (%)	>	52.8
+EN12	Enterobacter spp.	all	Quast	GC (%)	<	56.4
+EN13	Enterobacter spp.	all	Speciator	speciesName	regex	^Enterobacter spp.	species_field
+EN14	Enterobacter spp.	all	Speciator	confidence	regex	^good$
+EN15	Enterobacter spp.	all	Speciator	genusName	regex	^Enterobacter
+EN16	Enterobacter spp.	short	Checkm	N50 (scaffolds)	>	25000
+EN17	Enterobacter spp.	short	Quast	N50	>	25000
+EN18	Enterobacter spp.	short	Checkm	# contigs	<=	400
+EN19	Enterobacter spp.	short	Quast	# contigs (>= 0 bp)	<	400
+EF1	Enterococcus faecium	all	Checkm	Completeness	>=	90
+EF2	Enterococcus faecium	all	Checkm	Contamination	<=	10
+EF3	Enterococcus faecium	all	Checkm	GC	>=	37.4
+EF4	Enterococcus faecium	all	Checkm	GC	<=	38.5
+EF5	Enterococcus faecium	all	Checkm	Marker lineage	regex	^Enterococcus faecium.+	species_field
+EF6	Enterococcus faecium	all	Checkm	Genome size (bp)	>=	2300000
+EF7	Enterococcus faecium	all	Checkm	Genome size (bp)	<=	3600000
+EF8	Enterococcus faecium	all	Quast	Total length (>= 0 bp)	>=	2300000
+EF9	Enterococcus faecium	all	Quast	Total length (>= 0 bp)	<=	3600000
+EF10	Enterococcus faecium	all	Quast	Ns per 100 kbp	<=	100
+EF11	Enterococcus faecium	all	Quast	GC (%)	>	37.4
+EF12	Enterococcus faecium	all	Quast	GC (%)	<	38.5
+EF13	Enterococcus faecium	all	Speciator	speciesName	regex	^Enterococcus faecium	species_field
+EF14	Enterococcus faecium	all	Speciator	confidence	regex	^good$
+EF15	Enterococcus faecium	all	Speciator	genusName	regex	^Enterococcus
+EF16	Enterococcus faecium	short	Checkm	N50 (scaffolds)	>	25000
+EF17	Enterococcus faecium	short	Quast	N50	>	25000
+EF18	Enterococcus faecium	short	Checkm	# contigs	<=	300
+EF19	Enterococcus faecium	short	Quast	# contigs (>= 0 bp)	<	300
+SA1	Staphylococcus aureus	all	Checkm	Completeness	>=	90
+SA2	Staphylococcus aureus	all	Checkm	Contamination	<=	5
+SA3	Staphylococcus aureus	all	Checkm	GC	>=	32.4
+SA4	Staphylococcus aureus	all	Checkm	GC	<=	33.1
+SA5	Staphylococcus aureus	all	Checkm	Marker lineage	regex	^Staphylococcus aureus.+	species_field
+SA6	Staphylococcus aureus	all	Checkm	Genome size (bp)	>=	2500000
+SA7	Staphylococcus aureus	all	Checkm	Genome size (bp)	<=	3300000
+SA8	Staphylococcus aureus	all	Quast	Total length (>= 0 bp)	>=	2500000
+SA9	Staphylococcus aureus	all	Quast	Total length (>= 0 bp)	<=	3300000
+SA10	Staphylococcus aureus	all	Quast	Ns per 100 kbp	<=	100
+SA11	Staphylococcus aureus	all	Quast	GC (%)	>	32.4
+SA12	Staphylococcus aureus	all	Quast	GC (%)	<	33.1
+SA13	Staphylococcus aureus	all	Speciator	speciesName	regex	^Staphylococcus aureus	species_field
+SA14	Staphylococcus aureus	all	Speciator	confidence	regex	^good$
+SA15	Staphylococcus aureus	all	Speciator	genusName	regex	^Staphylococcus
+SA16	Staphylococcus aureus	short	Checkm	N50 (scaffolds)	>	25000
+SA17	Staphylococcus aureus	short	Quast	N50	>	25000
+SA18	Staphylococcus aureus	short	Checkm	# contigs	<=	200
+SA19	Staphylococcus aureus	short	Quast	# contigs (>= 0 bp)	<	200
+HP1	Helicobacter pylori	all	Checkm	Completeness	>=	90
+HP2	Helicobacter pylori	all	Checkm	Contamination	<=	5
+HP3	Helicobacter pylori	all	Checkm	GC	>=	38.4
+HP4	Helicobacter pylori	all	Checkm	GC	<=	39.3
+HP5	Helicobacter pylori	all	Checkm	Marker lineage	regex	^Helicobacter pylori.+	species_field
+HP6	Helicobacter pylori	all	Checkm	Genome size (bp)	>=	1400000
+HP7	Helicobacter pylori	all	Checkm	Genome size (bp)	<=	1800000
+HP8	Helicobacter pylori	all	Quast	Total length (>= 0 bp)	>=	1400000
+HP9	Helicobacter pylori	all	Quast	Total length (>= 0 bp)	<=	1800000
+HP10	Helicobacter pylori	all	Quast	Ns per 100 kbp	<=	100
+HP11	Helicobacter pylori	all	Quast	GC (%)	>	38.4
+HP12	Helicobacter pylori	all	Quast	GC (%)	<	39.3
+HP13	Helicobacter pylori	all	Speciator	speciesName	regex	^Helicobacter pylori	species_field
+HP14	Helicobacter pylori	all	Speciator	confidence	regex	^good$
+HP15	Helicobacter pylori	all	Speciator	genusName	regex	^Helicobacter
+HP16	Helicobacter pylori	short	Checkm	N50 (scaffolds)	>	15000
+HP17	Helicobacter pylori	short	Quast	N50	>	15000
+HP18	Helicobacter pylori	short	Checkm	# contigs	<=	150
+HP19	Helicobacter pylori	short	Quast	# contigs (>= 0 bp)	<	150
+CJ1	Campylobacter jejuni	all	Checkm	Completeness	>=	90
+CJ2	Campylobacter jejuni	all	Checkm	Contamination	<=	5
+CJ3	Campylobacter jejuni	all	Checkm	GC	>=	30.1
+CJ4	Campylobacter jejuni	all	Checkm	GC	<=	30.9
+CJ5	Campylobacter jejuni	all	Checkm	Marker lineage	regex	^Campylobacter jejuni.+	species_field
+CJ6	Campylobacter jejuni	all	Checkm	Genome size (bp)	>=	1400000
+CJ7	Campylobacter jejuni	all	Checkm	Genome size (bp)	<=	2000000
+CJ8	Campylobacter jejuni	all	Quast	Total length (>= 0 bp)	>=	1400000
+CJ9	Campylobacter jejuni	all	Quast	Total length (>= 0 bp)	<=	2000000
+CJ10	Campylobacter jejuni	all	Quast	Ns per 100 kbp	<=	100
+CJ11	Campylobacter jejuni	all	Quast	GC (%)	>	30.1
+CJ12	Campylobacter jejuni	all	Quast	GC (%)	<	30.9
+CJ13	Campylobacter jejuni	all	Speciator	speciesName	regex	^Campylobacter jejuni	species_field
+CJ14	Campylobacter jejuni	all	Speciator	confidence	regex	^good$
+CJ15	Campylobacter jejuni	all	Speciator	genusName	regex	^Campylobacter
+CJ16	Campylobacter jejuni	short	Checkm	N50 (scaffolds)	>	25000
+CJ17	Campylobacter jejuni	short	Quast	N50	>	25000
+CJ18	Campylobacter jejuni	short	Checkm	# contigs	<=	150
+CJ19	Campylobacter jejuni	short	Quast	# contigs (>= 0 bp)	<	150
+CC1	Campylobacter coli	all	Checkm	Completeness	>=	90
+CC2	Campylobacter coli	all	Checkm	Contamination	<=	5
+CC3	Campylobacter coli	all	Checkm	GC	>=	30.6
+CC4	Campylobacter coli	all	Checkm	GC	<=	31.5
+CC5	Campylobacter coli	all	Checkm	Marker lineage	regex	^Campylobacter coli.+	species_field
+CC6	Campylobacter coli	all	Checkm	Genome size (bp)	>=	1500000
+CC7	Campylobacter coli	all	Checkm	Genome size (bp)	<=	2200000
+CC8	Campylobacter coli	all	Quast	Total length (>= 0 bp)	>=	1500000
+CC9	Campylobacter coli	all	Quast	Total length (>= 0 bp)	<=	2200000
+CC10	Campylobacter coli	all	Quast	Ns per 100 kbp	<=	100
+CC11	Campylobacter coli	all	Quast	GC (%)	>	30.6
+CC12	Campylobacter coli	all	Quast	GC (%)	<	31.5
+CC13	Campylobacter coli	all	Speciator	speciesName	regex	^Campylobacter coli	species_field
+CC14	Campylobacter coli	all	Speciator	confidence	regex	^good$
+CC15	Campylobacter coli	all	Speciator	genusName	regex	^Campylobacter
+CC16	Campylobacter coli	short	Checkm	N50 (scaffolds)	>	25000
+CC17	Campylobacter coli	short	Quast	N50	>	25000
+CC18	Campylobacter coli	short	Checkm	# contigs	<=	150
+CC19	Campylobacter coli	short	Quast	# contigs (>= 0 bp)	<	150
+SE1	Salmonella enterica	all	Checkm	Completeness	>=	90
+SE2	Salmonella enterica	all	Checkm	Contamination	<=	5
+SE3	Salmonella enterica	all	Checkm	GC	>=	51.8
+SE4	Salmonella enterica	all	Checkm	GC	<=	52.4
+SE5	Salmonella enterica	all	Checkm	Marker lineage	regex	^Salmonella enterica.+	species_field
+SE6	Salmonella enterica	all	Checkm	Genome size (bp)	>=	4500000
+SE7	Salmonella enterica	all	Checkm	Genome size (bp)	<=	5600000
+SE8	Salmonella enterica	all	Quast	Total length (>= 0 bp)	>=	4500000
+SE9	Salmonella enterica	all	Quast	Total length (>= 0 bp)	<=	5600000
+SE10	Salmonella enterica	all	Quast	Ns per 100 kbp	<=	100
+SE11	Salmonella enterica	all	Quast	GC (%)	>	51.8
+SE12	Salmonella enterica	all	Quast	GC (%)	<	52.4
+SE13	Salmonella enterica	all	Speciator	speciesName	regex	^Salmonella enterica	species_field
+SE14	Salmonella enterica	all	Speciator	confidence	regex	^good$
+SE15	Salmonella enterica	all	Speciator	genusName	regex	^Salmonella
+SE16	Salmonella enterica	short	Checkm	N50 (scaffolds)	>	25000
+SE17	Salmonella enterica	short	Quast	N50	>	25000
+SE18	Salmonella enterica	short	Checkm	# contigs	<=	300
+SE19	Salmonella enterica	short	Quast	# contigs (>= 0 bp)	<	300
+NG1	Neisseria gonorrhoeae	all	Checkm	Completeness	>=	95
+NG2	Neisseria gonorrhoeae	all	Checkm	Contamination	<=	5
+NG3	Neisseria gonorrhoeae	all	Checkm	GC	>=	52.1
+NG4	Neisseria gonorrhoeae	all	Checkm	GC	<=	52.9
+NG5	Neisseria gonorrhoeae	all	Checkm	Marker lineage	regex	^Neisseria gonorrhoeae.+	species_field
+NG6	Neisseria gonorrhoeae	all	Checkm	Genome size (bp)	>=	2000000
+NG7	Neisseria gonorrhoeae	all	Checkm	Genome size (bp)	<=	2400000
+NG8	Neisseria gonorrhoeae	all	Quast	Total length (>= 0 bp)	>=	2000000
+NG9	Neisseria gonorrhoeae	all	Quast	Total length (>= 0 bp)	<=	2400000
+NG10	Neisseria gonorrhoeae	all	Quast	Ns per 100 kbp	<=	100
+NG11	Neisseria gonorrhoeae	all	Quast	GC (%)	>	52.1
+NG12	Neisseria gonorrhoeae	all	Quast	GC (%)	<	52.9
+NG13	Neisseria gonorrhoeae	all	Speciator	speciesName	regex	^Neisseria gonorrhoeae	species_field
+NG14	Neisseria gonorrhoeae	all	Speciator	confidence	regex	^good$
+NG15	Neisseria gonorrhoeae	all	Speciator	genusName	regex	^Neisseria
+NG16	Neisseria gonorrhoeae	short	Checkm	N50 (scaffolds)	>	25000
+NG17	Neisseria gonorrhoeae	short	Quast	N50	>	25000
+NG18	Neisseria gonorrhoeae	short	Checkm	# contigs	<=	175
+NG19	Neisseria gonorrhoeae	short	Quast	# contigs (>= 0 bp)	<	175
+SP1	Streptococcus pneumoniae	all	Checkm	Completeness	>=	95
+SP2	Streptococcus pneumoniae	all	Checkm	Contamination	<=	5
+SP3	Streptococcus pneumoniae	all	Checkm	GC	>=	39.3
+SP4	Streptococcus pneumoniae	all	Checkm	GC	<=	39.9
+SP5	Streptococcus pneumoniae	all	Checkm	Marker lineage	regex	^Streptococcus pneumoniae.+	species_field
+SP6	Streptococcus pneumoniae	all	Checkm	Genome size (bp)	>=	1800000
+SP7	Streptococcus pneumoniae	all	Checkm	Genome size (bp)	<=	2400000
+SP8	Streptococcus pneumoniae	all	Quast	Total length (>= 0 bp)	>=	1800000
+SP9	Streptococcus pneumoniae	all	Quast	Total length (>= 0 bp)	<=	2400000
+SP10	Streptococcus pneumoniae	all	Quast	Ns per 100 kbp	<=	100
+SP11	Streptococcus pneumoniae	all	Quast	GC (%)	>	39.3
+SP12	Streptococcus pneumoniae	all	Quast	GC (%)	<	39.9
+SP13	Streptococcus pneumoniae	all	Speciator	speciesName	regex	^Streptococcus pneumoniae	species_field
+SP14	Streptococcus pneumoniae	all	Speciator	confidence	regex	^good$
+SP15	Streptococcus pneumoniae	all	Speciator	genusName	regex	^Streptococcus
+SP16	Streptococcus pneumoniae	short	Checkm	N50 (scaffolds)	>	25000
+SP17	Streptococcus pneumoniae	short	Quast	N50	>	25000
+SP18	Streptococcus pneumoniae	short	Checkm	# contigs	<=	175
+SP19	Streptococcus pneumoniae	short	Quast	# contigs (>= 0 bp)	<	175
+HI1	Haemophilus influenzae	all	Checkm	Completeness	>=	95
+HI2	Haemophilus influenzae	all	Checkm	Contamination	<=	5
+HI3	Haemophilus influenzae	all	Checkm	GC	>=	37.6
+HI4	Haemophilus influenzae	all	Checkm	GC	<=	38.4
+HI5	Haemophilus influenzae	all	Checkm	Marker lineage	regex	^Haemophilus influenzae.+	species_field
+HI6	Haemophilus influenzae	all	Checkm	Genome size (bp)	>=	1700000
+HI7	Haemophilus influenzae	all	Checkm	Genome size (bp)	<=	2200000
+HI8	Haemophilus influenzae	all	Quast	Total length (>= 0 bp)	>=	1700000
+HI9	Haemophilus influenzae	all	Quast	Total length (>= 0 bp)	<=	2200000
+HI10	Haemophilus influenzae	all	Quast	Ns per 100 kbp	<=	100
+HI11	Haemophilus influenzae	all	Quast	GC (%)	>	37.6
+HI12	Haemophilus influenzae	all	Quast	GC (%)	<	38.4
+HI13	Haemophilus influenzae	all	Speciator	speciesName	regex	^Haemophilus influenzae	species_field
+HI14	Haemophilus influenzae	all	Speciator	confidence	regex	^good$
+HI15	Haemophilus influenzae	all	Speciator	genusName	regex	^Haemophilus
+HI16	Haemophilus influenzae	short	Checkm	N50 (scaffolds)	>	25000
+HI17	Haemophilus influenzae	short	Quast	N50	>	25000
+HI18	Haemophilus influenzae	short	Checkm	# contigs	<=	100
+HI19	Haemophilus influenzae	short	Quast	# contigs (>= 0 bp)	<	100
+SS1	Shigella sonnei	all	Checkm	Completeness	>=	95
+SS2	Shigella sonnei	all	Checkm	Contamination	<=	5
+SS3	Shigella sonnei	all	Checkm	GC	>=	50.0
+SS4	Shigella sonnei	all	Checkm	GC	<=	51.4
+SS5	Shigella sonnei	all	Checkm	Marker lineage	regex	^Shigella sonnei.+	species_field
+SS6	Shigella sonnei	all	Checkm	Genome size (bp)	>=	4000000
+SS7	Shigella sonnei	all	Checkm	Genome size (bp)	<=	5600000
+SS8	Shigella sonnei	all	Quast	Total length (>= 0 bp)	>=	4000000
+SS9	Shigella sonnei	all	Quast	Total length (>= 0 bp)	<=	5600000
+SS10	Shigella sonnei	all	Quast	Ns per 100 kbp	<=	100
+SS11	Shigella sonnei	all	Quast	GC (%)	>	50.0
+SS12	Shigella sonnei	all	Quast	GC (%)	<	51.4
+SS13	Shigella sonnei	all	Speciator	speciesName	regex	^Shigella sonnei	species_field
+SS14	Shigella sonnei	all	Speciator	confidence	regex	^good$
+SS15	Shigella sonnei	all	Speciator	genusName	regex	^Shigella
+SS16	Shigella sonnei	short	Checkm	N50 (scaffolds)	>	15000
+SS17	Shigella sonnei	short	Quast	N50	>	15000
+SS18	Shigella sonnei	short	Checkm	# contigs	<=	500
+SS19	Shigella sonnei	short	Quast	# contigs (>= 0 bp)	<	500
+SF1	Shigella flexneri	all	Checkm	Completeness	>=	95
+SF2	Shigella flexneri	all	Checkm	Contamination	<=	5
+SF3	Shigella flexneri	all	Checkm	GC	>=	50.0
+SF4	Shigella flexneri	all	Checkm	GC	<=	51.4
+SF5	Shigella flexneri	all	Checkm	Marker lineage	regex	^Shigella sonnei.+	species_field
+SF6	Shigella flexneri	all	Checkm	Genome size (bp)	>=	4000000
+SF7	Shigella flexneri	all	Checkm	Genome size (bp)	<=	5600000
+SF8	Shigella flexneri	all	Quast	Total length (>= 0 bp)	>=	4000000
+SF9	Shigella flexneri	all	Quast	Total length (>= 0 bp)	<=	5600000
+SF10	Shigella flexneri	all	Quast	Ns per 100 kbp	<=	100
+SF11	Shigella flexneri	all	Quast	GC (%)	>	50.0
+SF12	Shigella flexneri	all	Quast	GC (%)	<	51.4
+SF13	Shigella flexneri	all	Speciator	speciesName	regex	^Shigella sonnei	species_field
+SF14	Shigella flexneri	all	Speciator	confidence	regex	^good$
+SF15	Shigella flexneri	all	Speciator	genusName	regex	^Shigella
+SF16	Shigella flexneri	short	Checkm	N50 (scaffolds)	>	15000
+SF17	Shigella flexneri	short	Quast	N50	>	15000
+SF18	Shigella flexneri	short	Checkm	# contigs	<=	500
+SF19	Shigella flexneri	short	Quast	# contigs (>= 0 bp)	<	500

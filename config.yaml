@@ -1,24 +1,24 @@
 title: "uQCme - Microbial QC Reporter"
-version: "3.0.0"
+version: "0.1.0"
 
 qc:
   input:
-    data: "input/run_data.tsv"
-    mapping: "input/mapping.yaml"
-    qc_rules: "input/QC_rules.tsv"
-    qc_tests: "input/QC_outcomes.tsv"
+    data: "./input/example/run_data.tsv"
+    mapping: "./input/example/mapping.yaml"
+    qc_rules: "./input/example/QC_rules.tsv"
+    qc_tests: "./input/example/QC_tests.tsv"
   output:
-    results: "output/uQCme_run_data.tsv"
+    results: "./output/example/uQCme_run_data.tsv"
 
 app:
   server:
     host: "127.0.0.1"
     port: 3838
   input:
-    data: "./output/uQCme_run_data.tsv"
-    mapping: "./input/mapping.yaml"
-    qc_rules: "./input/QC_rules.tsv"
-    qc_tests: "./input/QC_outcomes.tsv"
+    data: "./output/example/uQCme_run_data.tsv"
+    mapping: "./input/example/mapping.yaml"
+    qc_rules: "./input/example/QC_rules.tsv"
+    qc_tests: "./input/example/QC_outcomes.tsv"
   ui_styling:
   priority_colors:
     1: "#90EE90"

@@ -9,17 +9,17 @@
 qc_rules_file: ./input/QC_rules.csv
 qc_judgement_file: ./input/qc_judgment.tsv
 
+QC_overrides:
+  software: ["checkm", "quast"]
+  assembly_type: "short"  # Default assembly type for QC metrics
+
 Sections:
   Basic:
-    ID:
-      data:
-        mapping: sample_id
-      report:
-        hidden: true
-        id: true # represents the unique identifier for the sample which can be passed to other systems
     Name:
       data:
         mapping: sample_name
+      report:
+        id: true # represents the unique identifier for the sample which can be passed to other systems
   QC_metrics:
     QC outcome: # generated from qc
       data:
@@ -37,9 +37,10 @@ Sections:
         mapping: provided_species
       QC:
         mapping: ["speciesName", "genusName", "Marker lineage"]
-    Species:
+    Provided Species:
       data:
         mapping: species
+    Species:
       QC:
         mapping: ["speciesName", "genusName", "Marker lineage"]
     Genome size (bp):
@@ -53,7 +54,7 @@ Sections:
       data:
         mapping: GC
       QC:
-        mapping: ["GC", "GC %"]
+        mapping: ["GC", "GC (%)"]
     N50:
       data:
         mapping: N50
@@ -66,13 +67,13 @@ Sections:
         mapping: ["# contigs", "# contigs (>= 0 bp)"]
     Completeness:
       data:
-        mapping: percent_classified_species_1
+        mapping: percent_classified_species_1_whats_my_species
       QC:
         mapping: ["Completeness"]
       hidden: true
     Contamination:
       data:
-        mapping: percent_classified_species_2
+        mapping: percent_classified_species_2_whats_my_species
       QC:
         mapping: ["Contamination"]
       hidden: true

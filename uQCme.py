@@ -7,10 +7,12 @@ configurable quality control rules and tests.
 """
 
 import argparse
+import logging
 import pandas as pd
 import yaml
 import sys
 import re
+from pathlib import Path
 from typing import Dict, List, Any
 
 
@@ -20,6 +22,7 @@ class QCProcessor:
     def __init__(self, config_path: str):
         """Initialize the QC processor with configuration."""
         self.config = self._load_config(config_path)
+        self.logger = self._setup_logging()
         self.run_data: pd.DataFrame = pd.DataFrame()
         self.qc_rules: pd.DataFrame = pd.DataFrame()
         self.qc_tests: pd.DataFrame = pd.DataFrame()
@@ -29,11 +32,52 @@ class QCProcessor:
         self.warnings: set = set()  # Collect unique warnings
         self.skipped_rules: set = set()  # Collect unique skipped rules
 
+    def _setup_logging(self) -> logging.Logger:
+        """Set up logging based on configuration."""
+        logger = logging.getLogger('uQCme')
+        logger.setLevel(logging.INFO)
+        
+        # Clear any existing handlers
+        logger.handlers.clear()
+        
+        # Get log file path from config
+        log_file = self.config.get('log', {}).get('file', './log/log.tsv')
+        
+        # Create log directory if it doesn't exist
+        log_dir = Path(log_file).parent
+        log_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Create file handler
+        file_handler = logging.FileHandler(log_file, mode='a')
+        file_handler.setLevel(logging.INFO)
+        
+        # Create console handler
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        
+        # Create formatter (TSV format for file, readable format for console)
+        file_formatter = logging.Formatter(
+            '%(asctime)s\t%(name)s\t%(levelname)s\t%(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+        console_formatter = logging.Formatter(
+            '%(message)s'
+        )
+        
+        file_handler.setFormatter(file_formatter)
+        console_handler.setFormatter(console_formatter)
+        
+        logger.addHandler(file_handler)
+        logger.addHandler(console_handler)
+        
+        return logger
+
     def _load_config(self, config_path: str) -> Dict[str, Any]:
         """Load configuration from YAML file."""
         try:
-            with open(config_path, 'r') as f:
+            with open(config_path, 'r', encoding='utf-8') as f:
                 config = yaml.safe_load(f)
+            # Can't use self.logger yet since it's not created
             print(f"✓ Configuration loaded from {config_path}")
             return config
         except Exception as e:
@@ -46,32 +90,33 @@ class QCProcessor:
             # Load run data
             data_path = self.config['qc']['input']['data']
             self.run_data = pd.read_csv(data_path, sep='\t')
-            print(f"✓ Run data loaded: {len(self.run_data)} samples from "
-                  f"{data_path}")
+            self.logger.info("✓ Run data loaded: %d samples from %s",
+                           len(self.run_data), data_path)
 
             # Load QC rules
             rules_path = self.config['qc']['input']['qc_rules']
             self.qc_rules = pd.read_csv(rules_path, sep='\t')
-            print(f"✓ QC rules loaded: {len(self.qc_rules)} rules from "
-                  f"{rules_path}")
+            self.logger.info("✓ QC rules loaded: %d rules from %s",
+                           len(self.qc_rules), rules_path)
 
             # Load QC tests
             tests_path = self.config['qc']['input']['qc_tests']
             self.qc_tests = pd.read_csv(tests_path, sep='\t')
-            print(f"✓ QC tests loaded: {len(self.qc_tests)} tests from "
-                  f"{tests_path}")
+            self.logger.info("✓ QC tests loaded: %d tests from %s",
+                           len(self.qc_tests), tests_path)
 
             # Load mapping configuration
             mapping_path = self.config['qc']['input']['mapping']
-            with open(mapping_path, 'r') as f:
+            with open(mapping_path, 'r', encoding='utf-8') as f:
                 self.mapping = yaml.safe_load(f)
-            print(f"✓ Mapping configuration loaded from {mapping_path}")
+            self.logger.info("✓ Mapping configuration loaded from %s",
+                           mapping_path)
 
             # Extract and normalize QC overrides
             self._load_qc_overrides()
 
         except Exception as e:
-            print(f"✗ Error loading files: {e}")
+            self.logger.error(f"✗ Error loading files: {e}")
             sys.exit(1)
 
     def _build_field_mapping(self) -> Dict[str, str]:
@@ -118,7 +163,7 @@ class QCProcessor:
                     # Keep other types as is (like booleans, numbers)
                     self.qc_overrides[key] = value
 
-        print(f"✓ QC overrides loaded: {self.qc_overrides}")
+        self.logger.info(f"✓ QC overrides loaded: {self.qc_overrides}")
 
     def _apply_operator(self, value: Any, operator: str,
                        threshold: Any) -> bool:
@@ -138,10 +183,10 @@ class QCProcessor:
             elif operator == 'regex':
                 return bool(re.match(str(threshold), str(value)))
             else:
-                print(f"Warning: Unknown operator {operator}")
+                self.logger.warning(f"Unknown operator {operator}")
                 return False
         except (ValueError, TypeError) as e:
-            print(f"Warning: Error applying operator {operator}: {e}")
+            self.logger.warning(f"Error applying operator {operator}: {e}")
             return False
 
     def _evaluate_rule(self, sample_data: pd.Series, rule: pd.Series) -> str:
@@ -229,7 +274,7 @@ class QCProcessor:
 
     def process_samples(self):
         """Process all samples through QC rules."""
-        print("\n🔍 Processing samples through QC rules...")
+        self.logger.info("\n🔍 Processing samples through QC rules...")
 
         results_list = []
 
@@ -272,7 +317,7 @@ class QCProcessor:
             results_list.append(sample_results)
 
         self.results = pd.DataFrame(results_list)
-        print(f"✓ Processed {len(self.results)} samples")
+        self.logger.info(f"✓ Processed {len(self.results)} samples")
 
     def _determine_qc_outcomes(self, failed_rules: List[str]) -> List[str]:
         """Determine QC test outcomes based on failed rules."""
@@ -311,14 +356,14 @@ class QCProcessor:
         try:
             output_path = self.config['qc']['output']['results']
             self.results.to_csv(output_path, sep='\t', index=False)
-            print(f"✓ Results saved to {output_path}")
+            self.logger.info(f"✓ Results saved to {output_path}")
         except Exception as e:
-            print(f"✗ Error saving results: {e}")
+            self.logger.error(f"✗ Error saving results: {e}")
 
     def print_summary(self):
         """Print processing summary statistics."""
-        print(f"\n📊 Processing Summary:")
-        print(f"   Total samples processed: {len(self.results)}")
+        self.logger.info("\n📊 Processing Summary:")
+        self.logger.info(f"   Total samples processed: {len(self.results)}")
 
         # Count QC outcomes
         outcome_counts = {}
@@ -329,9 +374,9 @@ class QCProcessor:
                     outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
 
         if outcome_counts:
-            print("   QC Outcomes:")
+            self.logger.info("   QC Outcomes:")
             for outcome, count in sorted(outcome_counts.items()):
-                print(f"     {outcome}: {count}")
+                self.logger.info(f"     {outcome}: {count}")
 
         # Count most common failed rules
         failed_rule_counts = {}
@@ -343,23 +388,23 @@ class QCProcessor:
                     failed_rule_counts[rule] = count
 
         if failed_rule_counts:
-            print("   Most common failed rules:")
+            self.logger.info("   Most common failed rules:")
             items = failed_rule_counts.items()
             sorted_failures = sorted(items, key=lambda x: x[1], reverse=True)
             for rule, count in sorted_failures[:10]:  # Top 10
-                print(f"     {rule}: {count}")
+                self.logger.info(f"     {rule}: {count}")
 
         # Display unique warnings
         if self.warnings:
-            print("\n⚠️ Warnings encountered:")
+            self.logger.info("\n⚠️ Warnings encountered:")
             for warning in sorted(self.warnings):
-                print(f"   {warning}")
+                self.logger.info(f"   {warning}")
 
         # Display unique skipped rules
         if self.skipped_rules:
             skipped_list = ', '.join(sorted(self.skipped_rules))
-            print(f"\n⚠️ Skipped rules (due to missing fields):")
-            print(f"   {skipped_list}")
+            self.logger.info("\n⚠️ Skipped rules (due to missing fields):")
+            self.logger.info(f"   {skipped_list}")
 
 
 def main():

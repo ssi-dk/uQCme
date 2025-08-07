@@ -24,6 +24,8 @@ Sections:
     QC outcome: # generated from qc
       data:
         mapping: qc_outcome
+      report:
+        filter: true
     Failed Rules: # generated from qc
       data:
         mapping: failed_rules
@@ -37,6 +39,8 @@ Sections:
         mapping: provided_species
       QC:
         mapping: ["speciesName", "genusName", "Marker lineage"]
+      report:
+        filter: true
     Provided Species:
       data:
         mapping: species
@@ -50,6 +54,8 @@ Sections:
         software: "checkm"
         assembly_type: "short"
         mapping: ["Genome size (bp)", "Total length (>= 0 bp)"]
+      report: 
+        filter: true
     GC:
       data:
         mapping: GC

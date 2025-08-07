@@ -71,11 +71,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Pending Tasks
 
-- [ ] Implement `app.py` Streamlit web application
-- [ ] Implement `plot.py` plotting module
-- [ ] Create sample selection and filtering functionality
-- [ ] Implement QC rule processing engine
-- [ ] Add data visualization components
+- [x] Implement `app.py` Streamlit web application (COMPLETED)
+  - [x] Created comprehensive Streamlit dashboard for QC data visualization
+  - [x] Modularized plotting functionality into separate `plot.py` library
+  - [x] Implemented data filtering and interactive exploration features
+  - [x] Added QC outcomes visualization, species distribution, and failed rules analysis
+  - [x] Quality metrics visualization with distribution, box plots, and scatter plots
+  - [x] Sample detail views with individual QC rule analysis
+  - [x] Data export functionality with CSV/TSV download options
+  - [x] Fixed Streamlit duplicate element ID issues with unique keys
+- [x] Implement `plot.py` plotting module (COMPLETED)
+  - [x] Created QCPlotter class with comprehensive plotting functionality
+  - [x] Implemented pie charts, bar charts, histograms, box plots, and scatter plots
+  - [x] Added correlation heatmaps and overview dashboard generation
+  - [x] Integrated with Streamlit app for seamless visualization
+  - [x] Data export functionality (CSV/TSV formats)
+  - [x] Responsive multi-tab interface with sidebar filtering
+- [x] Implement `plot.py` plotting module (COMPLETED)
+  - [x] Extracted all plotting logic from app.py into dedicated plotting library
+  - [x] Created QCPlotter class with comprehensive visualization methods
+  - [x] Pie charts for QC outcome distribution
+  - [x] Bar charts for species and failed rules analysis
+  - [x] Distribution plots, box plots, and scatter plots for quality metrics
+  - [x] Correlation heatmaps for multi-metric analysis
+  - [x] Color mapping system using configuration-based themes
+  - [x] Quality overview dashboard with integrated plot collections
+- [ ] Create sample selection and filtering functionality (COMPLETED via Streamlit interface)
+- [ ] Implement QC rule processing engine (COMPLETED via CLI integration)
+- [ ] Add data visualization components (COMPLETED via plot.py)
 - [ ] Implement API integration for sample handling
 - [ ] Add comprehensive error handling and validation
 - [ ] Add user documentation and examples
@@ -98,8 +121,9 @@ The project follows a modular architecture:
 uQCme/
 ├── config.yaml              # Main configuration
 ├── uQCme.py                 # CLI QC processor (COMPLETED)
-├── app.py                   # Streamlit web app (skeleton)
-├── plot.py                  # Plotting utilities (planned)
+├── app.py                   # Streamlit web app (COMPLETED)
+├── plot.py                  # Plotting utilities (COMPLETED)
+├── requirements.txt         # Python dependencies
 ├── input/example/           # Sample data files
 │   ├── run_data.tsv        # Sequencing metrics (cleaned)
 │   ├── mapping.yaml        # Column mappings

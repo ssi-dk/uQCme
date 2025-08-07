@@ -18,7 +18,7 @@ app:
     data: "./output/example/uQCme_run_data.tsv"
     mapping: "./input/example/mapping.yaml"
     qc_rules: "./input/example/QC_rules.tsv"
-    qc_tests: "./input/example/QC_outcomes.tsv"
+    qc_tests: "./input/example/QC_tests.tsv"
   ui_styling:
   priority_colors:
     1: "#90EE90"

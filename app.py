@@ -11,7 +11,7 @@ import streamlit as st
 import pandas as pd
 import yaml
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from plot import QCPlotter, get_available_metrics
 
 
@@ -35,6 +35,11 @@ class QCDashboard:
         except Exception as e:
             st.error(f"Error loading config: {e}")
             st.stop()
+
+    def _get_dashboard_config(self, key: str, default_value):
+        """Get dashboard configuration value with fallback to default."""
+        dashboard_config = self.config.get('app', {}).get('dashboard', {})
+        return dashboard_config.get(key, default_value)
 
     def load_data(self):
         """Load all required data files."""
@@ -69,81 +74,201 @@ class QCDashboard:
             initial_sidebar_state="expanded"
         )
 
-    def render_header(self, filtered_data: pd.DataFrame):
-        """Render the application header with filtered data statistics."""
+    def render_header(self):
+        """Render the application header."""
         st.title("🔬 uQCme - Microbial Quality Control Dashboard")
-        st.markdown(f"**Version:** {self.config.get('version', 'Unknown')}")
+    
+    def render_sidebar_metrics(self, filtered_data: pd.DataFrame):
+        """Render summary metrics in the sidebar."""
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("📊 Summary")
         
-        # Add summary metrics based on filtered data
-        col1, col2, col3, col4, col5 = st.columns(5)
+        # Version info
+        version = self.config.get('version', 'Unknown')
+        st.sidebar.markdown(f"**Version:** {version}")
         
-        with col1:
-            total_samples = len(filtered_data)
-            total_all = len(self.data)
-            st.metric("Samples", total_samples, delta=f"of {total_all}")
+        # Sample count metrics
+        total_samples = len(filtered_data)
+        total_all = len(self.data)
+        st.sidebar.metric("Samples", total_samples, delta=f"of {total_all}")
         
-        with col2:
-            pass_filter = filtered_data['qc_outcome'] == 'PASS'
-            pass_count = len(filtered_data[pass_filter])
-            st.metric("PASS", pass_count)
+        # QC outcome metrics
+        pass_filter = filtered_data['qc_outcome'] == 'PASS'
+        pass_count = len(filtered_data[pass_filter])
+        st.sidebar.metric("PASS", pass_count)
         
-        with col3:
-            fail_filter = filtered_data['qc_outcome'] != 'PASS'
-            fail_count = len(filtered_data[fail_filter])
-            st.metric("Issues Found", fail_count)
+        fail_filter = filtered_data['qc_outcome'] != 'PASS'
+        fail_count = len(filtered_data[fail_filter])
+        st.sidebar.metric("Issues Found", fail_count)
+
+    def _get_filterable_fields(self, data: pd.DataFrame) -> list:
+        """Get all fields that should have filters based on mapping config."""
+        filterable_fields = []
+        sections_columns = self._get_columns_by_section(data)
         
-        with col4:
-            unique_species = filtered_data['species'].nunique()
-            st.metric("Unique Species", unique_species)
+        for section_name, section_cols in sections_columns.items():
+            for col_info in section_cols:
+                if col_info['filter'] and col_info['column'] in data.columns:
+                    filterable_fields.append({
+                        'column': col_info['column'],
+                        'field_name': col_info['field_name'],
+                        'section': section_name
+                    })
         
-        with col5:
-            column_count = len(filtered_data.columns)
-            st.metric("Columns", column_count)
+        return filterable_fields
+
+    def _create_numerical_filter(self, filtered_data: pd.DataFrame,
+                                 column: str, field_name: str) -> pd.DataFrame:
+        """Create and apply numerical range filter."""
+        unique_values = filtered_data[column].dropna()
+        
+        if len(unique_values) == 0:
+            return filtered_data
+            
+        min_val = float(unique_values.min())
+        max_val = float(unique_values.max())
+        
+        # Only show slider if there's a range
+        if min_val == max_val:
+            return filtered_data
+            
+        selected_range = st.sidebar.slider(
+            f"{field_name} Range",
+            min_value=min_val,
+            max_value=max_val,
+            value=(min_val, max_val),
+            key=f"range_{column}"
+        )
+        
+        # Apply range filter
+        # Include NaN values when slider is at full range
+        full_range = (selected_range[0] == min_val and
+                      selected_range[1] == max_val)
+        if full_range:
+            # Full range selected - don't filter anything
+            return filtered_data
+        else:
+            # Partial range - apply filter but preserve NaN
+            col_data = filtered_data[column]
+            min_check = col_data >= selected_range[0]
+            max_check = col_data <= selected_range[1]
+            in_range = min_check & max_check
+            range_condition = (in_range | col_data.isna())
+            return filtered_data[range_condition]
+
+    def _create_categorical_filter(self, filtered_data: pd.DataFrame,
+                                   column: str,
+                                   field_name: str) -> pd.DataFrame:
+        """Create and apply categorical dropdown filter."""
+        unique_values = filtered_data[column].dropna()
+        
+        if len(unique_values) == 0:
+            return filtered_data
+            
+        unique_sorted = sorted(unique_values.unique())
+        
+        # Only create filter if we have reasonable number of options
+        threshold = self._get_dashboard_config(
+            'categorical_filter_threshold', 20
+        )
+        if len(unique_sorted) > threshold:
+            return filtered_data
+            
+        options = ['All'] + list(unique_sorted)
+        selected_value = st.sidebar.selectbox(
+            f"Filter by {field_name}",
+            options,
+            index=0,
+            key=f"filter_{column}"
+        )
+        
+        if selected_value != 'All':
+            filter_condition = (filtered_data[column] == selected_value)
+            return filtered_data[filter_condition]
+        
+        return filtered_data
+
+    def _create_text_search_filter(self, filtered_data: pd.DataFrame,
+                                   column: str,
+                                   field_name: str) -> pd.DataFrame:
+        """Create and apply text search filter."""
+        search_value = st.sidebar.text_input(
+            f"Search {field_name}",
+            placeholder=f"Enter {field_name.lower()}...",
+            key=f"search_{column}"
+        )
+        
+        if search_value:
+            column_str = filtered_data[column].astype(str)
+            contains_filter = column_str.str.contains(
+                search_value, case=False, na=False
+            )
+            return filtered_data[contains_filter]
+        
+        return filtered_data
 
     def render_sidebar_filters(self):
         """Render sidebar filters for data exploration."""
         st.sidebar.header("🔍 Filters")
         
-        # Species filter
-        species_list = sorted(self.data['species'].unique().tolist())
-        species_options = ['All'] + species_list
-        selected_species = st.sidebar.selectbox(
-            "Filter by Species",
-            species_options,
-            index=0
-        )
-        
-        # QC outcome filter
-        outcome_list = sorted(self.data['qc_outcome'].unique().tolist())
-        outcome_options = ['All'] + outcome_list
-        selected_outcome = st.sidebar.selectbox(
-            "Filter by QC Outcome",
-            outcome_options,
-            index=0
-        )
-        
-        # Sample name filter
-        sample_filter = st.sidebar.text_input(
-            "Search Sample Names",
-            placeholder="Enter sample name..."
-        )
+        # Get filterable fields from mapping configuration
+        filterable_fields = self._get_filterable_fields(self.data)
         
         # Apply filters
         filtered_data = self.data.copy()
         
-        if selected_species != 'All':
-            condition = filtered_data['species'] == selected_species
-            filtered_data = filtered_data[condition]
+        # Generate dynamic filters based on mapping configuration
+        for field_info in filterable_fields:
+            column = field_info['column']
+            field_name = field_info['field_name']
+            
+            if column in filtered_data.columns:
+                # Get unique values for this column
+                unique_values = filtered_data[column].dropna()
+                
+                if len(unique_values) > 0:
+                    # Check if column is numerical
+                    is_numeric = pd.api.types.is_numeric_dtype(unique_values)
+                    
+                    if is_numeric:
+                        # Use extracted numerical filter method
+                        filtered_data = self._create_numerical_filter(
+                            filtered_data, column, field_name
+                        )
+                    else:
+                        # Categorical or text filters for non-numerical columns
+                        unique_sorted = sorted(unique_values.unique())
+                        
+                        # Determine filter type based on unique count
+                        threshold = self._get_dashboard_config(
+                            'categorical_filter_threshold', 20
+                        )
+                        if len(unique_sorted) <= threshold:
+                            # Use extracted categorical filter method
+                            filtered_data = self._create_categorical_filter(
+                                filtered_data, column, field_name
+                            )
+                        else:
+                            # Use extracted text search filter method
+                            filtered_data = self._create_text_search_filter(
+                                filtered_data, column, field_name
+                            )
         
-        if selected_outcome != 'All':
-            condition = filtered_data['qc_outcome'] == selected_outcome
-            filtered_data = filtered_data[condition]
+        # Add sample name search (always available)
+        sample_filter = st.sidebar.text_input(
+            "Search Sample Names",
+            placeholder="Enter sample name...",
+            key="search_sample_name"
+        )
         
         if sample_filter:
             contains_filter = filtered_data['sample_name'].str.contains(
                 sample_filter, case=False, na=False
             )
             filtered_data = filtered_data[contains_filter]
+        
+        # Render summary metrics in sidebar after filters
+        self.render_sidebar_metrics(filtered_data)
         
         return filtered_data
 
@@ -164,11 +289,19 @@ class QCDashboard:
                     
                 mapping_key = field_config.get('data', {}).get('mapping')
                 if mapping_key and mapping_key in data.columns:
+                    # Get report configuration
+                    report_config = field_config.get('report', {})
+                    
                     # Include hidden fields in the section but mark them
+                    is_hidden = (field_config.get('hidden', False) or
+                                 report_config.get('hidden', False))
+                    
                     section_cols.append({
                         'column': mapping_key,
                         'field_name': field_name,
-                        'hidden': field_config.get('hidden', False)
+                        'hidden': is_hidden,
+                        'filter': report_config.get('filter', False),
+                        'id': report_config.get('id', False)
                     })
             
             if section_cols:  # Only add sections that have columns
@@ -189,12 +322,25 @@ class QCDashboard:
                 {
                     'column': col,
                     'field_name': col.replace('_', ' ').title(),
-                    'hidden': False
+                    'hidden': False,
+                    'filter': False,
+                    'id': False
                 }
                 for col in unmapped_cols
             ]
         
         return sections_columns
+
+    def _get_id_column(self, data: pd.DataFrame) -> Optional[str]:
+        """Get the column marked as ID field in mapping configuration."""
+        sections_columns = self._get_columns_by_section(data)
+        
+        for section_cols in sections_columns.values():
+            for col_info in section_cols:
+                if col_info.get('id', False):
+                    return col_info['column']
+        
+        return None
 
     def _get_ordered_columns_with_sections(
         self,
@@ -213,11 +359,9 @@ class QCDashboard:
             section_visible = visible_sections.get(section_name, True)
             if section_name in sections_columns and section_visible:
                 for col_info in sections_columns[section_name]:
-                    # For QC_metrics, respect hidden field settings
-                    if section_name == 'QC_metrics' and col_info['hidden']:
-                        qc_key_fields = ['qc_outcome', 'failed_rules']
-                        if col_info['column'] not in qc_key_fields:
-                            continue
+                    # Skip hidden fields
+                    if col_info['hidden']:
+                        continue
                     ordered_cols.append(col_info['column'])
         
         # Add remaining sections not in the predefined order
@@ -233,38 +377,144 @@ class QCDashboard:
 
     def _get_qc_outcome_priority(self, outcome: str) -> int:
         """Get priority level for QC outcome."""
-        # Define outcome priority mapping (higher number = higher priority)
-        outcome_priorities = {
+        # Get outcome priority mapping from config, with fallback defaults
+        config_priorities = self.config.get('outcome_priorities', {})
+        
+        # Default outcome priority mapping (higher number = higher priority)
+        default_priorities = {
             'PASS': 1,
             'WARNING': 2,
             'FAIL': 3,
             'ERROR': 4
         }
-        return outcome_priorities.get(outcome.upper(), 4)
+        
+        # Use config priority if available, otherwise use default
+        outcome_upper = outcome.upper()
+        if outcome_upper in config_priorities:
+            return config_priorities[outcome_upper]
+        else:
+            return default_priorities.get(outcome_upper, 4)
 
     def _get_qc_outcome_color(self, outcome: str) -> str:
-        """Get background color for QC outcome based on priority."""
+        """Get color for QC outcome based on priority."""
         priority = self._get_qc_outcome_priority(outcome)
         priority_colors = self.config.get('priority_colors', {})
         
-        # Map config colors to darker text-friendly colors
-        color_mapping = {
+        # Default color mapping as fallback (darker text-friendly colors)
+        default_color_mapping = {
             1: "#00AA00",  # Dark green for PASS
             2: "#FF8C00",  # Dark orange for WARNING
             3: "#DC143C",  # Dark red for FAIL
             4: "#8B0000"   # Dark red for ERROR
         }
         
-        # Use config color if available, otherwise use our mapping
-        config_color = priority_colors.get(priority)
-        if config_color:
-            return config_color
+        # Use config color if available, otherwise use default mapping
+        if priority in priority_colors:
+            return priority_colors[priority]
         else:
-            return color_mapping.get(priority, "#000000")
+            return default_color_mapping.get(priority, "#000000")
 
-    def render_data_preview_tab(self, filtered_data: pd.DataFrame):
-        """Render the data preview tab with section toggles."""
-        st.header("📊 Data Preview")
+    def _render_plotly_chart(self, fig, key: str, title: Optional[str] = None):
+        """Helper method to render plotly charts with consistent styling."""
+        if title:
+            st.subheader(title)
+        if fig:
+            st.plotly_chart(
+                fig,
+                use_container_width=True,
+                key=key
+            )
+
+    def _render_styled_dataframe(self, filtered_data: pd.DataFrame,
+                                 column_order: list, key: str):
+        """Helper method to render dataframe with QC styling and selection."""
+        # Initialize session state for selected samples
+        if 'selected_samples' not in st.session_state:
+            st.session_state.selected_samples = set()
+        
+        # Get the ID column for sample selection
+        id_column = self._get_id_column(filtered_data)
+        
+        # Create a working copy of the data
+        display_data = filtered_data.copy()
+        
+        # Add selection checkbox column if ID column exists
+        if id_column and id_column in filtered_data.columns:
+            # Add a checkbox column for selection
+            display_data['Select'] = display_data[id_column].apply(
+                lambda x: x in st.session_state.selected_samples
+            )
+            # Put the select column first
+            column_order = ['Select'] + column_order
+        
+        # Configure columns
+        column_config = {}
+        
+        # Configure the select column if present
+        if 'Select' in display_data.columns:
+            column_config['Select'] = st.column_config.CheckboxColumn(
+                "Select",
+                help="Select this sample"
+            )
+        
+        # Apply QC outcome styling using pandas styler if column exists
+        if 'qc_outcome' in display_data.columns:
+            def highlight_qc_outcome(val):
+                if pd.isna(val):
+                    return ''
+                color = self._get_qc_outcome_color(str(val))
+                return (f'color: {color}; font-weight: bold; '
+                        f'text-shadow: 0 0 3px {color};')
+            
+            styled_data = display_data.style.map(
+                highlight_qc_outcome,
+                subset=['qc_outcome']
+            )
+        else:
+            styled_data = display_data
+        
+        # Disable all columns except Select to prevent accidental editing
+        disabled_columns = [col for col in display_data.columns
+                            if col != 'Select']
+        
+        # Use data_editor to enable checkbox interaction
+        edited_data = st.data_editor(
+            styled_data,
+            use_container_width=True,
+            key=key,
+            column_order=column_order,
+            column_config=column_config,
+            hide_index=True,
+            disabled=disabled_columns
+        )
+        
+        # Update selected samples based on checkbox changes
+        if 'Select' in edited_data.columns and id_column:
+            # Get current selections from the edited data
+            current_selections = set()
+            for idx, row in edited_data.iterrows():
+                if row['Select']:
+                    sample_id = str(row[id_column])
+                    current_selections.add(sample_id)
+            
+            # Update session state if there are changes
+            if current_selections != st.session_state.selected_samples:
+                st.session_state.selected_samples = current_selections
+                st.rerun()
+        
+        # Display selected samples summary
+        if st.session_state.selected_samples:
+            selected_samples = sorted(st.session_state.selected_samples)
+            selected_text = ', '.join(selected_samples)
+            st.info(f"**Selected samples:** {selected_text}")
+            
+            if st.button("Clear Selection", key=f"clear_{key}"):
+                st.session_state.selected_samples.clear()
+                st.rerun()
+
+    def render_data_tab(self, filtered_data: pd.DataFrame):
+        """Render the data tab with section toggles."""
+        st.header("📊 Data")
         
         sample_count = len(filtered_data)
         total_count = len(self.data)
@@ -275,43 +525,41 @@ class QCDashboard:
         sections_columns = self._get_columns_by_section(filtered_data)
         
         # Create columns for section toggles
-        col1, col2, col3 = st.columns(3)
+        num_columns = self._get_dashboard_config('section_toggle_columns', 3)
+        toggle_columns = st.columns(num_columns)
         
         visible_sections = {}
         section_names = list(sections_columns.keys())
         
         # Distribute toggles across columns
         for i, section_name in enumerate(section_names):
-            col_idx = i % 3
-            cols = [col1, col2, col3]
+            col_idx = i % num_columns
             
-            with cols[col_idx]:
+            with toggle_columns[col_idx]:
                 # Count visible columns in section
                 section_cols = sections_columns[section_name]
                 visible_col_count = len([
                     col for col in section_cols
-                    if not (section_name == 'QC_metrics' and
-                            col['hidden'] and
-                            col['column'] not in ['qc_outcome',
-                                                  'failed_rules'])
+                    if not col['hidden']
                 ])
+                
+                # Default visibility based on content
+                # Hide sections that are mostly hidden fields or experimental
+                default_visible = True
+                if visible_col_count == 0:
+                    default_visible = False
                 
                 visible_sections[section_name] = st.checkbox(
                     f"{section_name} ({visible_col_count} columns)",
-                    value=True,
+                    value=default_visible,
                     key=f"data_preview_toggle_{section_name}"
                 )
         
-        # Get ordered columns based on visible sections
+        # Get ordered columns based on visible sections for reference
         ordered_columns = self._get_ordered_columns_with_sections(
             filtered_data,
             visible_sections
         )
-        
-        if not ordered_columns:
-            st.warning("No columns selected. "
-                       "Please enable at least one section.")
-            return
         
         # Show active sections info
         active_sections = [
@@ -319,59 +567,39 @@ class QCDashboard:
             if visible
         ]
         
+        # Display helpful info about column organization
+        if ordered_columns:
+            tip_msg = (
+                f"💡 **Tip:** Use the column visibility controls (👁️) in the "
+                f"table to show/hide specific columns. Currently showing "
+                f"{len(ordered_columns)} columns from selected sections: "
+                f"{', '.join(active_sections)}"
+            )
+            st.info(tip_msg)
+        
+        # Reorder dataframe columns to put important ones first
+        # while preserving all columns for eyeball functionality
+        priority_columns = []
+        other_columns = []
+        
+        # Add columns in section order priority
+        for col in ordered_columns:
+            if col in filtered_data.columns:
+                priority_columns.append(col)
+        
+        # Add remaining columns
+        for col in filtered_data.columns:
+            if col not in priority_columns:
+                other_columns.append(col)
+        
+        # Create column order for Streamlit's column_order parameter
+        column_order = priority_columns + other_columns
+        
         # Display the dataframe with built-in controls and QC outcome styling
         # Use the full filtered data to ensure column controls are available
-        if 'qc_outcome' in filtered_data.columns:
-            
-            # Apply color styling to highlight QC outcomes by priority
-            def highlight_qc_outcome(val):
-                if pd.isna(val):
-                    return ''
-                color = self._get_qc_outcome_color(str(val))
-                # Use text color instead of background color
-                return (f'color: {color}; font-weight: bold; '
-                        f'text-shadow: 0 0 3px {color};')
-            
-            # Create styled dataframe - reorder columns first
-            if ordered_columns:
-                display_df = filtered_data[ordered_columns]
-            else:
-                display_df = filtered_data
-            
-            # Only apply styling if qc_outcome is in the display columns
-            if 'qc_outcome' in display_df.columns:
-                styled_df = display_df.style.map(
-                    highlight_qc_outcome,
-                    subset=['qc_outcome']
-                )
-                
-                st.dataframe(
-                    styled_df,
-                    use_container_width=True,
-                    key="data_preview_table"
-                )
-            else:
-                warning_msg = ("QC Outcome column is not visible in current "
-                               "selection. Enable QC_metrics section to see "
-                               "colored outcomes.")
-                st.warning(warning_msg)
-                st.dataframe(
-                    display_df,
-                    use_container_width=True,
-                    key="data_preview_table"
-                )
-        else:
-            # No styling if qc_outcome column not present
-            if ordered_columns:
-                display_df = filtered_data[ordered_columns]
-            else:
-                display_df = filtered_data
-                
-            st.dataframe(
-                display_df,
-                use_container_width=True,
-                key="data_preview_table"
-            )
+        self._render_styled_dataframe(
+            filtered_data, column_order, "data_preview_table"
+        )
         
         # Show column information organized by visible sections
         with st.expander("📋 Column Information"):
@@ -386,23 +614,30 @@ class QCDashboard:
                         mapping_key = col_info['column']
                         field_name = col_info['field_name']
                         hidden = col_info['hidden']
+                        has_filter = col_info['filter']
+                        is_id = col_info['id']
                         
                         if mapping_key in filtered_data.columns:
-                            # Skip truly hidden fields for QC_metrics
-                            skip_hidden = (
-                                section_name == 'QC_metrics' and
-                                hidden and
-                                mapping_key not in ['qc_outcome',
-                                                    'failed_rules']
-                            )
-                            if skip_hidden:
+                            # Skip hidden fields from display
+                            if hidden:
                                 continue
                                 
-                            hidden_status = " (Hidden)" if hidden else ""
+                            # Build display string with additional info
+                            extras = []
+                            if has_filter:
+                                extras.append("Filterable")
+                            if is_id:
+                                extras.append("ID")
+                            
+                            extra_info = ""
+                            if extras:
+                                extra_info = f" ({', '.join(extras)})"
+                            
                             field_display = (
                                 f"- **{field_name}**: `{mapping_key}`"
+                                f"{extra_info}"
                             )
-                            st.write(f"{field_display}{hidden_status}")
+                            st.write(field_display)
 
     def render_overview_tab(self, filtered_data: pd.DataFrame):
         """Render the overview tab with summary statistics."""
@@ -417,48 +652,38 @@ class QCDashboard:
         col1, col2 = st.columns(2)
         
         with col1:
-            st.subheader("QC Outcomes Distribution")
-            if 'outcome_pie' in overview_plots:
-                st.plotly_chart(
-                    overview_plots['outcome_pie'],
-                    use_container_width=True,
-                    key="overview_outcome_pie"
-                )
+            self._render_plotly_chart(
+                overview_plots.get('outcome_pie'),
+                "overview_outcome_pie",
+                "QC Outcomes Distribution"
+            )
         
         with col2:
-            st.subheader("Species Distribution")
-            if 'species_bar' in overview_plots:
-                st.plotly_chart(
-                    overview_plots['species_bar'],
-                    use_container_width=True,
-                    key="overview_species_bar"
-                )
+            self._render_plotly_chart(
+                overview_plots.get('species_bar'),
+                "overview_species_bar",
+                "Species Distribution"
+            )
         
         # Failed Rules Analysis
-        st.subheader("Most Common Failed Rules")
-        if 'failed_rules' in overview_plots:
-            st.plotly_chart(
-                overview_plots['failed_rules'],
-                use_container_width=True,
-                key="overview_failed_rules"
-            )
+        self._render_plotly_chart(
+            overview_plots.get('failed_rules'),
+            "overview_failed_rules",
+            "Most Common Failed Rules"
+        )
         
         # Quality metrics if available
-        if 'metric_dist' in overview_plots:
-            st.subheader("Quality Metrics Distribution")
-            st.plotly_chart(
-                overview_plots['metric_dist'],
-                use_container_width=True,
-                key="overview_metric_dist"
-            )
+        self._render_plotly_chart(
+            overview_plots.get('metric_dist'),
+            "overview_metric_dist",
+            "Quality Metrics Distribution"
+        )
         
-        if 'correlation' in overview_plots:
-            st.subheader("Metrics Correlation")
-            st.plotly_chart(
-                overview_plots['correlation'],
-                use_container_width=True,
-                key="overview_correlation"
-            )
+        self._render_plotly_chart(
+            overview_plots.get('correlation'),
+            "overview_correlation",
+            "Metrics Correlation"
+        )
 
     def render_quality_metrics_tab(self, filtered_data: pd.DataFrame):
         """Render quality metrics visualizations."""
@@ -498,21 +723,13 @@ class QCDashboard:
                 fig = self.plotter.create_distribution_plot(
                     filtered_data, selected_metric
                 )
-                st.plotly_chart(
-                    fig,
-                    use_container_width=True,
-                    key="metrics_distribution"
-                )
+                self._render_plotly_chart(fig, "metrics_distribution")
                 
             elif chart_type == "Box Plot":
                 fig = self.plotter.create_box_plot(
                     filtered_data, selected_metric
                 )
-                st.plotly_chart(
-                    fig,
-                    use_container_width=True,
-                    key="metrics_box_plot"
-                )
+                self._render_plotly_chart(fig, "metrics_box_plot")
                 
             elif chart_type == "Scatter Plot":
                 # Find another metric for comparison
@@ -536,11 +753,7 @@ class QCDashboard:
                         fig = self.plotter.create_scatter_plot(
                             filtered_data, selected_metric, y_metric
                         )
-                        st.plotly_chart(
-                            fig,
-                            use_container_width=True,
-                            key="metrics_scatter_plot"
-                        )
+                        self._render_plotly_chart(fig, "metrics_scatter_plot")
                 else:
                     warning_msg = (
                         "No additional metrics available for scatter plot."
@@ -606,10 +819,14 @@ class QCDashboard:
             if sample_data.get('passed_rules'):
                 st.write("**Passed Rules:**")
                 passed_rules = sample_data['passed_rules'].split(',')
-                for rule in passed_rules[:10]:  # Show first 10
+                max_rules = self._get_dashboard_config(
+                    'max_displayed_rules', 10
+                )
+                for rule in passed_rules[:max_rules]:
                     st.write(f"✅ {rule.strip()}")
-                if len(passed_rules) > 10:
-                    st.write(f"... and {len(passed_rules) - 10} more")
+                if len(passed_rules) > max_rules:
+                    remaining = len(passed_rules) - max_rules
+                    st.write(f"... and {remaining} more")
 
     def run(self):
         """Run the Streamlit application."""
@@ -619,11 +836,11 @@ class QCDashboard:
         # Load data
         self.load_data()
         
-        # Get filtered data
-        filtered_data = self.render_sidebar_filters()
+        # Render header (without metrics now)
+        self.render_header()
         
-        # Render header with filtered data
-        self.render_header(filtered_data)
+        # Get filtered data (this will also render sidebar metrics)
+        filtered_data = self.render_sidebar_filters()
         
         # Main content tabs
         tabs = st.tabs([
@@ -634,7 +851,7 @@ class QCDashboard:
         ])
         
         with tabs[0]:
-            self.render_data_preview_tab(filtered_data)
+            self.render_data_tab(filtered_data)
         
         with tabs[1]:
             self.render_overview_tab(filtered_data)

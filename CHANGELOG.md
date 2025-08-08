@@ -31,6 +31,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Code quality improvements and refactoring**:
+  - Extracted filter creation methods from `render_sidebar_filters()` for better modularity
+  - Added `_create_numerical_filter()`, `_create_categorical_filter()`, and `_create_text_search_filter()` methods
+  - Created reusable `_render_plotly_chart()` helper to eliminate code duplication
+  - Added `_render_styled_dataframe()` method for consistent DataFrame rendering
+  - **Moved hardcoded constants to configurable YAML settings**:
+    - `categorical_filter_threshold`: Controls when to use dropdown vs text search (default: 20)
+    - `section_toggle_columns`: Number of columns for section toggles (default: 3)
+    - `max_displayed_rules`: Maximum rules shown in sample details (default: 10)
+    - Added `_get_dashboard_config()` helper for config value retrieval with fallbacks
+  - Reduced function complexity: `render_sidebar_filters()` now 50% shorter and more readable
+  - Eliminated repetitive Plotly chart rendering patterns across all visualization tabs
+  - Improved type annotations with `Optional` for better code documentation
+  - Enhanced maintainability through method extraction and consistent patterns
+- **Enhanced UI layout and space optimization**:
+  - Moved version, sample count, and QC metrics from main header to sidebar
+  - Created dedicated `render_sidebar_metrics()` method for summary statistics
+  - Significantly increased available space for data tables and visualizations
+  - Improved information organization with logical grouping of filters and metrics
+- **Fixed NaN handling in numerical filters**:
+  - Resolved issue where samples with missing values in numerical columns were incorrectly filtered out
+  - Range sliders now preserve NaN values when set to full range (no filtering applied)
+  - Partial range filtering includes NaN values to prevent data loss
+  - Now correctly shows all 97/97 samples when no filters are applied
 - **Reorganized test directory structure according to Python best practices**:
   - Moved test data files to organized subdirectories (`data/`, `fixtures/`)
   - Created proper Python package structure with `__init__.py` files

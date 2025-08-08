@@ -3,12 +3,13 @@ version: "0.1.0"
 
 qc:
   input:
-    data: "./input/example/run_data.tsv"
+    data: "./input/example/example_run_data.tsv"
     mapping: "./input/example/mapping.yaml"
     qc_rules: "./input/example/QC_rules.tsv"
     qc_tests: "./input/example/QC_tests.tsv"
   output:
     results: "./output/example/uQCme_run_data.tsv"
+    warnings: "./output/example/uQCme_rule_warnings.tsv"
 
 app:
   server:
@@ -19,6 +20,7 @@ app:
     mapping: "./input/example/mapping.yaml"
     qc_rules: "./input/example/QC_rules.tsv"
     qc_tests: "./input/example/QC_tests.tsv"
+    warnings: "./output/example/uQCme_rule_warnings.tsv"
   dashboard:
     categorical_filter_threshold: 20  # Max unique values for dropdown filter
     section_toggle_columns: 3         # Number of columns for section toggles  

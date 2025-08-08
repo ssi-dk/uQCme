@@ -199,7 +199,7 @@ class QCProcessor:
         """
         # Get the field value from sample data
         field_name = rule['field']
-        rule_id = rule['ruleID']
+        rule_id = rule['rule_id']
 
         # Build dynamic field mapping from configuration
         field_mapping = self._build_field_mapping()
@@ -288,7 +288,7 @@ class QCProcessor:
 
             # Test each rule against this sample
             for _, rule in self.qc_rules.iterrows():
-                rule_id = rule['ruleID']
+                rule_id = rule['rule_id']
 
                 # Check if rule applies to this sample
                 if not self._rule_matches_criteria(rule, sample_attributes):
@@ -313,6 +313,10 @@ class QCProcessor:
             qc_outcomes = self._determine_qc_outcomes(failed_rules)
             outcome_str = ','.join(qc_outcomes) if qc_outcomes else 'PASS'
             sample_results['qc_outcome'] = outcome_str
+            
+            # Determine QC action based on highest priority outcome
+            qc_action = self._determine_qc_action(qc_outcomes)
+            sample_results['qc_action'] = qc_action
 
             results_list.append(sample_results)
 
@@ -351,6 +355,36 @@ class QCProcessor:
 
         return outcomes
 
+    def _determine_qc_action(self, qc_outcomes: List[str]) -> str:
+        """Determine the action required based on highest priority outcome."""
+        if not qc_outcomes:
+            # If no outcomes (PASS case), find the PASS action
+            pass_test = self.qc_tests[
+                self.qc_tests['outcome_id'] == 'PASS'
+            ]
+            if not pass_test.empty:
+                return pass_test.iloc[0]['action_required']
+            return 'none'
+        
+        # Find the highest priority among the outcomes
+        highest_priority = 0
+        action_required = 'none'
+        
+        for outcome_id in qc_outcomes:
+            test_match = self.qc_tests[
+                self.qc_tests['outcome_id'] == outcome_id
+            ]
+            if not test_match.empty:
+                test_priority = test_match.iloc[0]['priority']
+                test_action = test_match.iloc[0]['action_required']
+                
+                # Higher number = higher priority
+                if test_priority > highest_priority:
+                    highest_priority = test_priority
+                    action_required = test_action
+        
+        return action_required
+
     def save_results(self):
         """Save processing results to output file."""
         try:
@@ -359,6 +393,46 @@ class QCProcessor:
             self.logger.info(f"✓ Results saved to {output_path}")
         except Exception as e:
             self.logger.error(f"✗ Error saving results: {e}")
+    
+    def save_warnings(self):
+        """Save warnings to output file."""
+        try:
+            warnings_path = self.config['qc']['output']['warnings']
+            
+            # Create warnings dataframe
+            warnings_data = []
+            for warning in sorted(self.warnings):
+                warnings_data.append({
+                    'warning_type': 'processing',
+                    'warning_message': warning,
+                    'timestamp': pd.Timestamp.now().isoformat()
+                })
+            
+            # Add skipped rules as warnings
+            for rule in sorted(self.skipped_rules):
+                warning_msg = f"Rule {rule} skipped due to missing fields"
+                warnings_data.append({
+                    'warning_type': 'skipped_rule',
+                    'warning_message': warning_msg,
+                    'timestamp': pd.Timestamp.now().isoformat()
+                })
+            
+            if warnings_data:
+                warnings_df = pd.DataFrame(warnings_data)
+                warnings_df.to_csv(warnings_path, sep='\t', index=False)
+                self.logger.info(f"✓ Warnings saved to {warnings_path}")
+            else:
+                # Create empty file with headers
+                empty_df = pd.DataFrame(columns=[
+                    'warning_type', 'warning_message', 'timestamp'
+                ])
+                empty_df.to_csv(warnings_path, sep='\t', index=False)
+                info_msg = (f"✓ No warnings - empty file created at "
+                            f"{warnings_path}")
+                self.logger.info(info_msg)
+                
+        except Exception as e:
+            self.logger.error(f"✗ Error saving warnings: {e}")
 
     def print_summary(self):
         """Print processing summary statistics."""
@@ -371,7 +445,8 @@ class QCProcessor:
             if outcomes_str and outcomes_str != 'PASS':
                 for outcome in outcomes_str.split(','):
                     outcome = outcome.strip()
-                    outcome_counts[outcome] = outcome_counts.get(outcome, 0) + 1
+                    current_count = outcome_counts.get(outcome, 0)
+                    outcome_counts[outcome] = current_count + 1
 
         if outcome_counts:
             self.logger.info("   QC Outcomes:")
@@ -436,6 +511,9 @@ def main():
 
         # Save results
         processor.save_results()
+        
+        # Save warnings
+        processor.save_warnings()
 
         # Print summary
         processor.print_summary()

@@ -303,7 +303,7 @@ class TestDataIntegrity(unittest.TestCase):
         rules_path = self.test_dir / "data" / "QC_rules.tsv"
         rules = pd.read_csv(rules_path, sep='\t')
         
-        required_rule_columns = ['ruleID', 'species', 'assembly_type', 'software', 'field', 'operator', 'value']
+        required_rule_columns = ['rule_id', 'species', 'assembly_type', 'software', 'field', 'operator', 'value']
         for col in required_rule_columns:
             self.assertIn(col, rules.columns,
                 f"Required column {col} missing from QC_rules.tsv")

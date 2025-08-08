@@ -21,11 +21,18 @@ Sections:
       report:
         id: true # represents the unique identifier for the sample which can be passed to other systems
   QC_metrics:
+    QC action: # generated from qc
+      data:
+        mapping: qc_action
+      report:
+        filter: true
+        priority_coloring: true
     QC outcome: # generated from qc
       data:
         mapping: qc_outcome
       report:
         filter: true
+        priority_coloring: true
     Failed Rules: # generated from qc
       data:
         mapping: failed_rules
@@ -54,13 +61,15 @@ Sections:
         software: "checkm"
         assembly_type: "short"
         mapping: ["Genome size (bp)", "Total length (>= 0 bp)"]
-      report: 
+      report:
         filter: true
     GC:
       data:
         mapping: GC
       QC:
         mapping: ["GC", "GC (%)"]
+      report:
+        description: GC content
     N50:
       data:
         mapping: N50

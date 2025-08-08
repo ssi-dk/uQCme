@@ -1,4 +1,4 @@
-ruleID	species	assembly_type	software	field	operator	value	special_field
+rule_id	species	assembly_type	software	field	operator	value	special_field
 A1	all	all	Checkm	Completeness	>=	80
 A2	all	all	Checkm	Contamination	<=	10
 A3	all	all	Checkm	Marker lineage	regex	^.+	species_field

@@ -275,7 +275,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 For questions, issues, or feature requests:
 
 - Create an issue on GitHub
-- Contact: Kim Ng (kimleeng@gmail.com)
+- Contact: Kim Ng (kimn@ssi.dk)
 
 ## Changelog
 

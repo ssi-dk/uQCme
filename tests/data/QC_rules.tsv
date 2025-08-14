@@ -5,13 +5,13 @@ A3	all	all	Checkm	Marker lineage	regex	^.+	species_field
 A4	all	all	Checkm	GC	>=	10
 A5	all	all	Checkm	GC	<=	70
 A6	all	all	Checkm	Genome size (bp)	>=	500000
-A7	all	all	Checkm	Genome size (bp)	<=	1200000
+A7	all	all	Checkm	Genome size (bp)	<=	12000000
 A8	all	short	Checkm	# contigs	<=	600
 A9	all	short	Checkm	N50 (scaffolds)	>	15000
 A10	all	short	Quast	N50	>	15000
 A11	all	short	Quast	# contigs (>= 0 bp)	<	600
 A12	all	all	Quast	Total length (>= 0 bp)	>	500000
-A13	all	all	Quast	Total length (>= 0 bp)	<	1200000
+A13	all	all	Quast	Total length (>= 0 bp)	<	12000000
 A14	all	all	Quast	GC (%)	>	10
 A15	all	all	Quast	GC (%)	<	70
 A16	all	all	Quast	Ns per 100 kbp	<=	1000

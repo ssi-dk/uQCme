@@ -39,7 +39,11 @@ class TestUQCmeOutcomes(unittest.TestCase):
         """Test samples that should pass all applicable QC rules."""
         expected_pass_samples = [
             'PASS_General_01',
-            'PASS_General_02'
+            'PASS_General_02',
+            'PASS_E_coli_01',
+            'PASS_K_pneumoniae_01',
+            'SPECIES_SPECIFIC_KP_PASS',
+            'SPECIES_SPECIFIC_SA_PASS'
         ]
         
         for sample_name in expected_pass_samples:
@@ -62,8 +66,6 @@ class TestUQCmeOutcomes(unittest.TestCase):
     def test_size_failure_samples(self):
         """Test samples that should fail size-related QC rules."""
         expected_size_failures = {
-            'PASS_E_coli_01': ['FAIL_SIZE', 'FAIL_ECOLI_SPECIES'],
-            'PASS_K_pneumoniae_01': ['FAIL_SIZE'],
             'FAIL_SIZE_TOO_SMALL': ['FAIL_SIZE'],
             'FAIL_SIZE_TOO_LARGE': ['FAIL_SIZE'],
             'FAIL_ECOLI_SIZE_SMALL': ['WARN_ECOLI_QC', 'FAIL_SIZE', 'FAIL_ECOLI_SIZE', 'FAIL_ECOLI_SPECIES'],
@@ -177,9 +179,7 @@ class TestUQCmeOutcomes(unittest.TestCase):
     def test_species_specific_outcomes(self):
         """Test species-specific rule evaluation."""
         species_samples = {
-            'SPECIES_SPECIFIC_KP_PASS': ['FAIL_SIZE'],
             'SPECIES_SPECIFIC_KP_FAIL': ['WARN_COMPLETENESS', 'WARN_CONTAMINATION', 'FAIL_SIZE'],
-            'SPECIES_SPECIFIC_SA_PASS': ['FAIL_SIZE'],
             'SPECIES_SPECIFIC_SA_FAIL': ['WARN_COMPLETENESS', 'WARN_CONTAMINATION', 'FAIL_SIZE']
         }
         

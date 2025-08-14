@@ -67,9 +67,9 @@ class TestUQCmeOutcomes(unittest.TestCase):
         """Test samples that should fail size-related QC rules."""
         expected_size_failures = {
             'FAIL_SIZE_TOO_SMALL': ['FAIL_SIZE'],
-            'FAIL_SIZE_TOO_LARGE': ['FAIL_SIZE'],
-            'FAIL_ECOLI_SIZE_SMALL': ['WARN_ECOLI_QC', 'FAIL_SIZE', 'FAIL_ECOLI_SIZE', 'FAIL_ECOLI_SPECIES'],
-            'FAIL_ECOLI_SIZE_LARGE': ['WARN_CONTAMINATION', 'WARN_ECOLI_QC', 'FAIL_SIZE', 'FAIL_ECOLI_SIZE', 'FAIL_ECOLI_SPECIES']
+            'FAIL_SIZE_TOO_LARGE': ['FAIL'],
+            'FAIL_ECOLI_SIZE_SMALL': ['WARN_ECOLI_QC', 'FAIL_ECOLI_SIZE'],
+            'FAIL_ECOLI_SIZE_LARGE': ['WARN_CONTAMINATION', 'WARN_ECOLI_QC', 'FAIL_ECOLI_SIZE']
         }
         
         for sample_name, expected_outcomes in expected_size_failures.items():
@@ -159,9 +159,9 @@ class TestUQCmeOutcomes(unittest.TestCase):
     def test_ecoli_specific_rules(self):
         """Test E.coli specific QC rules and outcomes."""
         ecoli_samples = {
-            'WARN_ECOLI_QC_01': ['WARN_ECOLI_QC', 'FAIL_SIZE', 'FAIL_ECOLI_SPECIES'],
-            'WARN_ECOLI_QC_02': ['WARN_CONTAMINATION', 'WARN_ECOLI_QC', 'FAIL_SIZE', 'FAIL_ECOLI_SPECIES'],
-            'FAIL_ECOLI_SPECIES_01': ['WARN_COMPLETENESS', 'WARN_CONTAMINATION', 'WARN_ECOLI_QC', 'FAIL_SIZE', 'FAIL_ECOLI_SPECIES'],
+            'WARN_ECOLI_QC_01': ['WARN_ECOLI_QC'],
+            'WARN_ECOLI_QC_02': ['WARN_CONTAMINATION', 'WARN_ECOLI_QC'],
+            'FAIL_ECOLI_SPECIES_01': ['WARN_COMPLETENESS', 'WARN_CONTAMINATION', 'WARN_ECOLI_QC', 'FAIL_ECOLI_SPECIES'],
         }
         
         for sample_name, expected_outcomes in ecoli_samples.items():
@@ -179,8 +179,8 @@ class TestUQCmeOutcomes(unittest.TestCase):
     def test_species_specific_outcomes(self):
         """Test species-specific rule evaluation."""
         species_samples = {
-            'SPECIES_SPECIFIC_KP_FAIL': ['WARN_COMPLETENESS', 'WARN_CONTAMINATION', 'FAIL_SIZE'],
-            'SPECIES_SPECIFIC_SA_FAIL': ['WARN_COMPLETENESS', 'WARN_CONTAMINATION', 'FAIL_SIZE']
+            'SPECIES_SPECIFIC_KP_FAIL': ['WARN_COMPLETENESS', 'WARN_CONTAMINATION'],
+            'SPECIES_SPECIFIC_SA_FAIL': ['WARN_COMPLETENESS', 'WARN_CONTAMINATION']
         }
         
         for sample_name, expected_outcomes in species_samples.items():

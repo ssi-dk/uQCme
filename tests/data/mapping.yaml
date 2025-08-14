@@ -43,6 +43,11 @@ Sections:
     Species:
       QC:
         mapping: ["speciesName", "genusName", "Marker lineage"]
+    Marker lineage:
+      data:
+        mapping: name_classified_species_1_whats_my_species
+      QC:
+        mapping: ["Marker lineage"]
     Genome size (bp):
       data:
         mapping: bin_length_at_1x

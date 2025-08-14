@@ -39,8 +39,6 @@ Sections:
     Passed Rules: # generated from qc
       data:
         mapping: passed_rules
-      report:
-        hidden: true
     Expected species:
       data:
         mapping: provided_species
@@ -54,6 +52,8 @@ Sections:
     Species:
       QC:
         mapping: ["speciesName", "genusName", "Marker lineage"]
+      report:
+        filter: true
     Genome size (bp):
       data:
         mapping: bin_length_at_1x
@@ -69,6 +69,7 @@ Sections:
       QC:
         mapping: ["GC", "GC (%)"]
       report:
+        filter: true
         description: GC content
     N50:
       data:

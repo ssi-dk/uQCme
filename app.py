@@ -97,24 +97,47 @@ class QCDashboard:
         # Create columns for horizontal layout
         col1, col2, col3 = st.sidebar.columns(3)
         
-        # Sample count metrics
+        # Sample count metrics (filtered vs total)
         total_samples = len(filtered_data)
         total_all = len(self.data)
         with col1:
-            st.metric("Samples", total_samples, delta=f"of {total_all}")
+            # Show filtered count vs total
+            if total_samples == total_all:
+                st.metric("Samples", total_samples)
+            else:
+                delta_text = f"of {total_all}"
+                st.metric("Samples", total_samples, delta=delta_text)
         
         st.sidebar.markdown("---")
 
-        # QC outcome metrics
+        # QC outcome metrics (based on filtered data)
         pass_filter = filtered_data['qc_outcome'] == 'PASS'
         pass_count = len(filtered_data[pass_filter])
+        
+        # Calculate total PASS from unfiltered data
+        total_pass_filter = self.data['qc_outcome'] == 'PASS'
+        total_pass_count = len(self.data[total_pass_filter])
+        
         with col2:
-            st.metric("PASS", pass_count)
+            if pass_count == total_pass_count:
+                st.metric("PASS", pass_count)
+            else:
+                delta_text = f"of {total_pass_count}"
+                st.metric("PASS", pass_count, delta=delta_text)
         
         fail_filter = filtered_data['qc_outcome'] != 'PASS'
         fail_count = len(filtered_data[fail_filter])
+        
+        # Calculate total Issues from unfiltered data
+        total_fail_filter = self.data['qc_outcome'] != 'PASS'
+        total_fail_count = len(self.data[total_fail_filter])
+        
         with col3:
-            st.metric("Issues", fail_count)
+            if fail_count == total_fail_count:
+                st.metric("Issues", fail_count)
+            else:
+                delta_text = f"of {total_fail_count}"
+                st.metric("Issues", fail_count, delta=delta_text)
 
     def _get_filterable_fields(self, data: pd.DataFrame) -> list:
         """Get all fields that should have filters based on mapping config."""
@@ -146,12 +169,22 @@ class QCDashboard:
         # Only show slider if there's a range
         if min_val == max_val:
             return filtered_data
+        
+        # Check if filters should be reset
+        reset_filters = st.session_state.get('filters_reset', False)
+        default_value = (min_val, max_val)
+        
+        # Clear the reset flag after using it
+        if reset_filters:
+            key = f"range_{column}"
+            if key in st.session_state:
+                del st.session_state[key]
             
         selected_range = st.sidebar.slider(
             f"{field_name} Range",
             min_value=min_val,
             max_value=max_val,
-            value=(min_val, max_val),
+            value=default_value,
             key=f"range_{column}"
         )
         
@@ -190,10 +223,21 @@ class QCDashboard:
             return filtered_data
             
         options = ['All'] + list(unique_sorted)
+        
+        # Check if filters should be reset
+        reset_filters = st.session_state.get('filters_reset', False)
+        default_index = 0  # 'All'
+        
+        # Clear the reset flag after using it
+        if reset_filters:
+            key = f"filter_{column}"
+            if key in st.session_state:
+                del st.session_state[key]
+        
         selected_value = st.sidebar.selectbox(
             f"Filter by {field_name}",
             options,
-            index=0,
+            index=default_index,
             key=f"filter_{column}"
         )
         
@@ -207,9 +251,20 @@ class QCDashboard:
                                    column: str,
                                    field_name: str) -> pd.DataFrame:
         """Create and apply text search filter."""
+        # Check if filters should be reset
+        reset_filters = st.session_state.get('filters_reset', False)
+        default_value = ""
+        
+        # Clear the reset flag after using it
+        if reset_filters:
+            key = f"search_{column}"
+            if key in st.session_state:
+                del st.session_state[key]
+        
         search_value = st.sidebar.text_input(
             f"Search {field_name}",
             placeholder=f"Enter {field_name.lower()}...",
+            value=default_value,
             key=f"search_{column}"
         )
         
@@ -222,13 +277,20 @@ class QCDashboard:
         
         return filtered_data
 
+    def _clear_all_filters(self):
+        """Clear all filter-related session state values and selections."""
+        # Set a reset flag instead of trying to modify widget values directly
+        st.session_state['filters_reset'] = True
+        
+        # Clear sample selections
+        if 'selected_samples' in st.session_state:
+            st.session_state.selected_samples.clear()
+        
+        # Force a rerun to refresh the interface
+        st.rerun()
+
     def render_sidebar_filters(self):
         """Render sidebar filters for data exploration."""
-        # Render summary metrics first (before filters)
-        self.render_sidebar_metrics(self.data)
-        
-        st.sidebar.header("🔍 Filters")
-        
         # Get filterable fields from mapping configuration
         filterable_fields = self._get_filterable_fields(self.data)
         
@@ -273,9 +335,20 @@ class QCDashboard:
                             )
         
         # Add sample name search (always available)
+        # Check if filters should be reset
+        reset_filters = st.session_state.get('filters_reset', False)
+        default_sample_value = ""
+        
+        # Clear the reset flag for sample search
+        if reset_filters:
+            key = "search_sample_name"
+            if key in st.session_state:
+                del st.session_state[key]
+        
         sample_filter = st.sidebar.text_input(
             "Search Sample Names",
             placeholder="Enter sample name...",
+            value=default_sample_value,
             key="search_sample_name"
         )
         
@@ -284,6 +357,19 @@ class QCDashboard:
                 sample_filter, case=False, na=False
             )
             filtered_data = filtered_data[contains_filter]
+        
+        # Clear the reset flag after all filters have been processed
+        if st.session_state.get('filters_reset', False):
+            st.session_state['filters_reset'] = False
+        
+        # Render summary metrics at the top with filtered data
+        self.render_sidebar_metrics(filtered_data)
+        
+        st.sidebar.header("🔍 Filters")
+        
+        # Add Clear All Filters button
+        if st.sidebar.button("🗑️ Clear All Filters", type="secondary"):
+            self._clear_all_filters()
         
         return filtered_data
 

@@ -17,8 +17,8 @@ app:
     port: 3838
   input:
     data:
-      file: "./output/example/uQCme_run_data.tsv" # can also load via an API, only 1 can be enabled
-      api_call: ""
+      # file: "./output/example/uQCme_run_data.tsv" # can also load via an API, only 1 can be enabled
+      api_call: "https://microapi.ugerm.dksund.dk/v1/freeform/?irida_ids=190&irida_ids=189&fields=Bifrost_QC%2FMLST_ST"
     mapping: "./input/example/mapping.yaml"
     qc_rules: "./input/example/QC_rules.tsv"
     qc_tests: "./input/example/QC_tests.tsv"

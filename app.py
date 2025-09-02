@@ -135,7 +135,7 @@ class QCDashboard:
     def _validate_api_data(self, data: pd.DataFrame) -> pd.DataFrame:
         """Validate that API data contains required fields."""
         if data.empty:
-            st.error("API returned empty dataset")
+            st.error("API returned no data")
             st.stop()
         
         required_fields = self._get_required_fields()
@@ -154,60 +154,16 @@ class QCDashboard:
         
         # Handle missing critical fields (fatal errors)
         if missing_critical:
-            st.error("❌ **Critical fields missing from API response**")
-            st.error(f"Missing required fields: {', '.join(missing_critical)}")
-            
-            # Show sample of API data for debugging
-            st.write("**Available fields in API response:**")
-            available_fields = sorted(data.columns.tolist())
-            st.code(', '.join(available_fields))
-            
-            # Show first few rows if data is available
-            if len(data) > 0:
-                st.write("**Sample of API data (first 3 rows):**")
-                sample_data = data.head(3)
-                st.dataframe(sample_data, use_container_width=True)
-            
-            st.write("**Expected field mappings:**")
-            st.write("- `sample_name`: Unique identifier for each sample")
-            st.write("- `qc_outcome`: QC result (PASS, FAIL, WARNING, etc.)")
-            
-            if missing_important:
-                st.write("**Also missing optional fields:**")
-                for field in missing_important:
-                    st.write(f"- `{field}`: Used for enhanced functionality")
-            
-            st.write("**Suggestions:**")
-            st.write("1. Check your API endpoint configuration")
-            st.write("2. Verify the API returns the expected field names")
-            st.write("3. Update your mapping.yaml file to match API field "
-                     "names")
-            st.write("4. Consider field name mapping if API uses different "
-                     "column names")
-            
+            st.error(
+                "Missing required fields: " + ", ".join(missing_critical)
+            )
             st.stop()
         
         # Handle missing important fields (warnings)
         if missing_important:
-            warning_msg = ("⚠️ **Some optional fields are missing from API "
-                           "response**")
-            st.warning(warning_msg)
-            st.warning(f"Missing fields: {', '.join(missing_important)}")
-            
-            st.write("**Impact:**")
-            for field in missing_important:
-                if field == 'species':
-                    st.write("- Species distribution charts will not be "
-                             "available")
-                elif field == 'provided_species':
-                    st.write("- Sample details will show limited species "
-                             "information")
-                elif field == 'qc_action':
-                    st.write("- QC action priority coloring will not be "
-                             "available")
-            
-            st.write("These features will be disabled, but core "
-                     "functionality will work.")
+            st.warning(
+                "Optional fields missing: " + ", ".join(missing_important)
+            )
         
         return data
 

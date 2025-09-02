@@ -11,6 +11,7 @@ import os
 import streamlit as st
 import pandas as pd
 import yaml
+import requests
 from pathlib import Path
 from typing import Dict, Any, Optional
 from plot import QCPlotter, get_available_metrics
@@ -43,11 +44,27 @@ class QCDashboard:
         return dashboard_config.get(key, default_value)
 
     def load_data(self):
-        """Load all required data files."""
+        """Load all required data files or from API."""
         try:
-            # Load processed QC results
-            data_path = self.config['app']['input']['data']
-            self.data = pd.read_csv(data_path, sep='\t')
+            # Load processed QC results - check if API or file
+            data_config = self.config['app']['input']['data']
+            
+            if isinstance(data_config, dict):
+                # New structure with file/api_call options
+                if data_config.get('api_call'):
+                    # Load data from API
+                    api_url = data_config['api_call']
+                    self.data = self._load_data_from_api(api_url)
+                elif data_config.get('file'):
+                    # Load data from file
+                    self.data = pd.read_csv(data_config['file'], sep='\t')
+                else:
+                    error_msg = ("Either 'file' or 'api_call' must be "
+                                 "specified for data input")
+                    raise ValueError(error_msg)
+            else:
+                # Legacy structure - direct file path
+                self.data = pd.read_csv(data_config, sep='\t')
             
             # Load mapping configuration
             mapping_path = self.config['app']['input']['mapping']
@@ -71,6 +88,195 @@ class QCDashboard:
             
         except Exception as e:
             st.error(f"Error loading data: {e}")
+            st.stop()
+
+    def _get_required_fields(self) -> dict:
+        """Get required fields from mapping configuration."""
+        required_fields = {
+            'critical': [],  # Fields that will break core functionality
+            'important': []  # Fields that will break specific features
+        }
+        
+        # Critical fields that are used throughout the application
+        critical_fields = [
+            'sample_name',  # Used for sample selection and display
+            'qc_outcome'    # Used for metrics and filtering
+        ]
+        
+        # Important fields that are used in specific features
+        important_fields = [
+            'species',           # Used in overview charts and sample details
+            'provided_species',  # Used in sample details
+            'qc_action'          # Used for priority coloring
+        ]
+        
+        # Get field mappings from configuration
+        sections = self.mapping.get('Sections', {})
+        
+        for section_data in sections.values():
+            for field_config in section_data.values():
+                if not isinstance(field_config, dict):
+                    continue
+                    
+                mapping_key = field_config.get('data', {}).get('mapping')
+                if mapping_key:
+                    if mapping_key in critical_fields:
+                        required_fields['critical'].append(mapping_key)
+                    elif mapping_key in important_fields:
+                        required_fields['important'].append(mapping_key)
+        
+        # Add fallback for critical fields if not found in mapping
+        for field in critical_fields:
+            if field not in required_fields['critical']:
+                required_fields['critical'].append(field)
+        
+        return required_fields
+
+    def _validate_api_data(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Validate that API data contains required fields."""
+        if data.empty:
+            st.error("API returned empty dataset")
+            st.stop()
+        
+        required_fields = self._get_required_fields()
+        missing_critical = []
+        missing_important = []
+        
+        # Check for missing critical fields
+        for field in required_fields['critical']:
+            if field not in data.columns:
+                missing_critical.append(field)
+        
+        # Check for missing important fields
+        for field in required_fields['important']:
+            if field not in data.columns:
+                missing_important.append(field)
+        
+        # Handle missing critical fields (fatal errors)
+        if missing_critical:
+            st.error("❌ **Critical fields missing from API response**")
+            st.error(f"Missing required fields: {', '.join(missing_critical)}")
+            
+            # Show sample of API data for debugging
+            st.write("**Available fields in API response:**")
+            available_fields = sorted(data.columns.tolist())
+            st.code(', '.join(available_fields))
+            
+            # Show first few rows if data is available
+            if len(data) > 0:
+                st.write("**Sample of API data (first 3 rows):**")
+                sample_data = data.head(3)
+                st.dataframe(sample_data, use_container_width=True)
+            
+            st.write("**Expected field mappings:**")
+            st.write("- `sample_name`: Unique identifier for each sample")
+            st.write("- `qc_outcome`: QC result (PASS, FAIL, WARNING, etc.)")
+            
+            if missing_important:
+                st.write("**Also missing optional fields:**")
+                for field in missing_important:
+                    st.write(f"- `{field}`: Used for enhanced functionality")
+            
+            st.write("**Suggestions:**")
+            st.write("1. Check your API endpoint configuration")
+            st.write("2. Verify the API returns the expected field names")
+            st.write("3. Update your mapping.yaml file to match API field "
+                     "names")
+            st.write("4. Consider field name mapping if API uses different "
+                     "column names")
+            
+            st.stop()
+        
+        # Handle missing important fields (warnings)
+        if missing_important:
+            warning_msg = ("⚠️ **Some optional fields are missing from API "
+                           "response**")
+            st.warning(warning_msg)
+            st.warning(f"Missing fields: {', '.join(missing_important)}")
+            
+            st.write("**Impact:**")
+            for field in missing_important:
+                if field == 'species':
+                    st.write("- Species distribution charts will not be "
+                             "available")
+                elif field == 'provided_species':
+                    st.write("- Sample details will show limited species "
+                             "information")
+                elif field == 'qc_action':
+                    st.write("- QC action priority coloring will not be "
+                             "available")
+            
+            st.write("These features will be disabled, but core "
+                     "functionality will work.")
+        
+        return data
+
+    def _load_data_from_api(self, api_url: str) -> pd.DataFrame:
+        """Load data from API endpoint."""
+        try:
+            st.info("Loading data from API...")
+            
+            # Make API request with JSON accept header
+            headers = {'accept': 'application/json'}
+            
+            # Try with SSL verification first, then without if it fails
+            try:
+                response = requests.get(
+                    api_url, headers=headers, timeout=30, verify=True
+                )
+            except requests.exceptions.SSLError:
+                warning_msg = ("SSL verification failed, retrying without "
+                               "SSL verification...")
+                st.warning(warning_msg)
+                # Disable SSL warnings for cleaner output
+                import urllib3
+                urllib3.disable_warnings(
+                    urllib3.exceptions.InsecureRequestWarning
+                )
+                response = requests.get(
+                    api_url, headers=headers, timeout=30, verify=False
+                )
+            
+            response.raise_for_status()
+            
+            # Parse response based on content type
+            content_type = response.headers.get('content-type', '')
+            
+            if content_type.startswith('application/json'):
+                # Handle JSON response
+                json_data = response.json()
+                if isinstance(json_data, list):
+                    data = pd.DataFrame(json_data)
+                elif isinstance(json_data, dict) and 'data' in json_data:
+                    data = pd.DataFrame(json_data['data'])
+                else:
+                    data = pd.DataFrame([json_data])
+            else:
+                # Handle CSV/TSV response (like your example)
+                from io import StringIO
+                response_text = response.text.strip()
+                
+                # Check if it looks like CSV data
+                if ',' in response_text and '\n' in response_text:
+                    # Parse as CSV
+                    data = pd.read_csv(StringIO(response_text))
+                else:
+                    # Try TSV format as fallback
+                    data = pd.read_csv(StringIO(response_text), sep='\t')
+            
+            # Validate the loaded data
+            validated_data = self._validate_api_data(data)
+            
+            success_msg = (f"Successfully loaded {len(validated_data)} "
+                           f"samples from API")
+            st.success(success_msg)
+            return validated_data
+            
+        except requests.exceptions.RequestException as e:
+            st.error(f"API request failed: {e}")
+            st.stop()
+        except Exception as e:
+            st.error(f"Error processing API response: {e}")
             st.stop()
 
     def setup_page(self):

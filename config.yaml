@@ -16,14 +16,16 @@ app:
     host: "127.0.0.1"
     port: 3838
   input:
-    data: "./output/example/uQCme_run_data.tsv"
+    data:
+      file: "./output/example/uQCme_run_data.tsv" # can also load via an API, only 1 can be enabled
+      api_call: ""
     mapping: "./input/example/mapping.yaml"
     qc_rules: "./input/example/QC_rules.tsv"
     qc_tests: "./input/example/QC_tests.tsv"
     warnings: "./output/example/uQCme_rule_warnings.tsv"
   dashboard:
     categorical_filter_threshold: 20  # Max unique values for dropdown filter
-    section_toggle_columns: 3         # Number of columns for section toggles  
+    section_toggle_columns: 3         # Number of columns for section toggles
     max_displayed_rules: 10           # Max rules shown in sample details
   ui_styling:
   priority_colors:
@@ -31,7 +33,6 @@ app:
     2: "#FFFFE0"
     3: "#F08080"
     4: "#FFB6C1"
-
 log:
   file: "./log/log.tsv"
 

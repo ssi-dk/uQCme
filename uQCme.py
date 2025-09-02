@@ -181,6 +181,9 @@ class QCProcessor:
             elif operator == '=':
                 return str(value) == str(threshold)
             elif operator == 'regex':
+                # Handle NaN values properly for regex
+                if pd.isna(value) or pd.isna(threshold):
+                    return False
                 return bool(re.match(str(threshold), str(value)))
             else:
                 self.logger.warning(f"Unknown operator {operator}")
@@ -265,9 +268,9 @@ class QCProcessor:
             allowed_software = self.qc_overrides['software']
             # If software is specified in rule, it must be in allowed list
             # (case-insensitive comparison)
-            if rule_software:
+            if rule_software and pd.notna(rule_software):
                 allowed_lower = [s.lower() for s in allowed_software]
-                if rule_software.lower() not in allowed_lower:
+                if str(rule_software).lower() not in allowed_lower:
                     return False
 
         return True

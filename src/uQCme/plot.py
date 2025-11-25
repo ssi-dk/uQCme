@@ -10,15 +10,16 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from typing import Dict, Any, Optional
+from uQCme.core.config import UQCMeConfig
 
 
 class QCPlotter:
     """Class containing all plotting functionality for QC data visualization."""
 
-    def __init__(self, config: Dict[str, Any]):
+    def __init__(self, config: UQCMeConfig):
         """Initialize plotter with configuration."""
         self.config = config
-        self.priority_colors = config.get('priority_colors', {})
+        self.priority_colors = config.app.priority_colors if config.app and config.app.priority_colors else {}
 
     def create_outcome_pie_chart(
         self,

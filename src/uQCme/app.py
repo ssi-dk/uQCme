@@ -16,8 +16,10 @@ import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional
 from uQCme.plot import QCPlotter, get_available_metrics
-from uQCme.utils import load_data_from_config, load_config_from_file
-from uQCme.cli import QCProcessor
+from uQCme.core.loader import load_data_from_config, load_config_from_file
+from uQCme.core.engine import QCProcessor
+from uQCme.core.config import UQCMeConfig
+from uQCme.core.exceptions import ConfigError, DataLoadError
 
 
 class QCDashboard:
@@ -26,90 +28,107 @@ class QCDashboard:
     def __init__(self, config_path: str):
         """Initialize the dashboard with configuration."""
         self.config_path = config_path
-        self.config = self._load_config(config_path)
+        self.config: UQCMeConfig = self._load_config(config_path)
         self.data: pd.DataFrame = pd.DataFrame()
         self.mapping: Dict[str, Any] = {}
         self.qc_rules: pd.DataFrame = pd.DataFrame()
         self.qc_tests: pd.DataFrame = pd.DataFrame()
         self.plotter: QCPlotter = QCPlotter(self.config)
         
-    def _load_config(self, config_path: Optional[str]) -> Dict[str, Any]:
+    def _load_config(self, config_path: Optional[str]) -> UQCMeConfig:
         """Load configuration from YAML file or use defaults."""
         if config_path:
             try:
                 return load_config_from_file(config_path)
+            except ConfigError as e:
+                st.error(f"Configuration Error: {e}")
+                st.stop()
             except Exception as e:
-                st.error(f"Error loading config: {e}")
+                st.error(f"Unexpected error loading config: {e}")
                 st.stop()
         else:
             return self._get_default_config()
 
-    def _get_default_config(self) -> Dict[str, Any]:
+    def _get_default_config(self) -> UQCMeConfig:
         """Get default configuration using bundled files."""
         defaults_dir = Path(__file__).parent / 'defaults'
         config_path = defaults_dir / 'config.yaml'
         
         try:
             config = load_config_from_file(str(config_path))
-        except Exception as e:
+        except ConfigError as e:
             st.error(f"Error loading default config: {e}")
             st.stop()
             
         # Update paths to point to the defaults directory if local files don't exist
-        if 'app' in config and 'input' in config['app']:
-            inp = config['app']['input']
+        if config.app and config.app.input:
+            inp = config.app.input
             # Update mapping, rules, tests to absolute paths in defaults dir
-            for key in ['mapping', 'qc_rules', 'qc_tests']:
-                if key in inp and not os.path.exists(inp[key]):
-                    inp[key] = str(defaults_dir / Path(inp[key]).name)
+            if not os.path.exists(inp.mapping):
+                inp.mapping = str(defaults_dir / Path(inp.mapping).name)
+            if not os.path.exists(inp.qc_rules):
+                inp.qc_rules = str(defaults_dir / Path(inp.qc_rules).name)
+            if not os.path.exists(inp.qc_tests):
+                inp.qc_tests = str(defaults_dir / Path(inp.qc_tests).name)
                     
-        if 'qc' in config and 'input' in config['qc']:
-            inp = config['qc']['input']
+        if config.qc and config.qc.input:
+            inp = config.qc.input
             # Update mapping, rules, tests to absolute paths in defaults dir
-            for key in ['mapping', 'qc_rules', 'qc_tests']:
-                if key in inp and not os.path.exists(inp[key]):
-                    inp[key] = str(defaults_dir / Path(inp[key]).name)
+            if not os.path.exists(inp.mapping):
+                inp.mapping = str(defaults_dir / Path(inp.mapping).name)
+            if not os.path.exists(inp.qc_rules):
+                inp.qc_rules = str(defaults_dir / Path(inp.qc_rules).name)
+            if not os.path.exists(inp.qc_tests):
+                inp.qc_tests = str(defaults_dir / Path(inp.qc_tests).name)
         
         return config
 
     def _get_dashboard_config(self, key: str, default_value):
         """Get dashboard configuration value with fallback to default."""
-        dashboard_config = self.config.get('app', {}).get('dashboard', {})
-        return dashboard_config.get(key, default_value)
+        if self.config.app and self.config.app.dashboard:
+            return getattr(self.config.app.dashboard, key, default_value)
+        return default_value
 
     def load_data(self):
         """Load all required data files or from API."""
+        if not self.config.app:
+            st.error("Configuration error: 'app' section missing.")
+            st.stop()
+
         try:
             # Load mapping configuration first as it's needed for validation
-            mapping_path = self.config['app']['input']['mapping']
+            mapping_path = self.config.app.input.mapping
             with open(mapping_path, 'r', encoding='utf-8') as f:
                 self.mapping = yaml.safe_load(f)
             
             # Load processed QC results - check if API or file
-            data_config = self.config['app']['input']['data']
+            data_config = self.config.app.input.data
             
             try:
                 self.data = load_data_from_config(data_config)
                 # Validate the loaded data if not empty
                 if not self.data.empty:
                     self.data = self._validate_api_data(self.data)
-            except (FileNotFoundError, ValueError, Exception) as e:
+            except (DataLoadError, ConfigError) as e:
                 # Show why loading failed but don't stop
-                st.error(f"Data was not processed successfully: {e}")
+                st.error(f"Data loading failed: {e}")
                 # If data loading fails, we'll handle it in run() by asking
                 # for upload
                 self.data = pd.DataFrame()
+            except Exception as e:
+                st.error(f"Unexpected error loading data: {e}")
+                self.data = pd.DataFrame()
             
             # Load QC rules
-            rules_path = self.config['app']['input']['qc_rules']
+            rules_path = self.config.app.input.qc_rules
             self.qc_rules = pd.read_csv(rules_path, sep='\t')
             
             # Load QC tests
-            tests_path = self.config['app']['input']['qc_tests']
+            tests_path = self.config.app.input.qc_tests
             self.qc_tests = pd.read_csv(tests_path, sep='\t')
             
             # Load warnings if available
-            warnings_path = self.config['app']['input'].get('warnings')
+            warnings_path = self.config.app.input.warnings
             if warnings_path and os.path.exists(warnings_path):
                 self.warnings = pd.read_csv(warnings_path, sep='\t')
             else:
@@ -1332,7 +1351,9 @@ class QCDashboard:
                     "during processing.")
             
             # Show information about warnings output
-            warnings_path = self.config['app']['input'].get('warnings')
+            warnings_path = (
+                self.config.app.input.warnings if self.config.app else None
+            )
             if warnings_path:
                 st.write(f"**Expected warnings file:** `{warnings_path}`")
                 st.write("Warnings will be saved here during the next "

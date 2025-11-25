@@ -14,7 +14,8 @@ import pandas as pd
 
 # Add the src directory to sys.path to import uQCme package
 sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
-from uQCme.cli import QCProcessor
+from uQCme.core.engine import QCProcessor
+from uQCme.core.config import UQCMeConfig
 
 
 class TestQCProcessor(unittest.TestCase):
@@ -28,10 +29,10 @@ class TestQCProcessor(unittest.TestCase):
 
     def test_load_config(self):
         """Test configuration loading."""
-        self.assertIsInstance(self.processor.config, dict)
-        self.assertIn('qc', self.processor.config)
-        self.assertIn('input', self.processor.config['qc'])
-        self.assertIn('output', self.processor.config['qc'])
+        self.assertIsInstance(self.processor.config, UQCMeConfig)
+        self.assertIsNotNone(self.processor.config.qc)
+        self.assertIsNotNone(self.processor.config.qc.input)
+        self.assertIsNotNone(self.processor.config.qc.output)
 
     def test_apply_operator(self):
         """Test operator application logic."""
@@ -98,6 +99,141 @@ class TestQCProcessor(unittest.TestCase):
                 rule_specific, sample_attributes
             )
         )
+
+    def test_determine_qc_outcomes(self):
+        """Test QC outcome determination logic."""
+        # Mock QC tests dataframe
+        self.processor.qc_tests = pd.DataFrame([
+            {
+                'outcome_id': 'PASS',
+                'rule_conditions': 'no_failed_rules',
+                'priority': 1,
+                'action_required': 'none'
+            },
+            {
+                'outcome_id': 'WARN_TEST',
+                'rule_conditions': 'failed_rules_contain:R1,R2',
+                'priority': 2,
+                'action_required': 'review'
+            },
+            {
+                'outcome_id': 'FAIL_TEST',
+                'rule_conditions': 'failed_rules_contain:R3',
+                'priority': 3,
+                'action_required': 'reject'
+            }
+        ])
+
+        # Test no failed rules
+        outcomes = self.processor._determine_qc_outcomes([])
+        self.assertIn('PASS', outcomes)
+
+        # Test warning condition (R1 failed)
+        outcomes = self.processor._determine_qc_outcomes(['R1'])
+        self.assertIn('WARN_TEST', outcomes)
+        self.assertNotIn('PASS', outcomes)
+
+        # Test fail condition (R3 failed)
+        outcomes = self.processor._determine_qc_outcomes(['R3'])
+        self.assertIn('FAIL_TEST', outcomes)
+
+        # Test multiple failures
+        outcomes = self.processor._determine_qc_outcomes(['R1', 'R3'])
+        self.assertIn('WARN_TEST', outcomes)
+        self.assertIn('FAIL_TEST', outcomes)
+
+        # Test unknown rule failure (should default to FAIL)
+        outcomes = self.processor._determine_qc_outcomes(['R99'])
+        self.assertIn('FAIL', outcomes)
+
+    def test_determine_qc_action(self):
+        """Test QC action determination logic."""
+        # Mock QC tests dataframe
+        self.processor.qc_tests = pd.DataFrame([
+            {
+                'outcome_id': 'PASS',
+                'priority': 1,
+                'action_required': 'none'
+            },
+            {
+                'outcome_id': 'WARN_TEST',
+                'priority': 2,
+                'action_required': 'review'
+            },
+            {
+                'outcome_id': 'FAIL_TEST',
+                'priority': 3,
+                'action_required': 'reject'
+            }
+        ])
+
+        # Test PASS action
+        action = self.processor._determine_qc_action(['PASS'])
+        self.assertEqual(action, 'none')
+
+        # Test WARN action
+        action = self.processor._determine_qc_action(['WARN_TEST'])
+        self.assertEqual(action, 'review')
+
+        # Test FAIL action (higher priority)
+        action = self.processor._determine_qc_action(['FAIL_TEST'])
+        self.assertEqual(action, 'reject')
+
+        # Test mixed actions (should take highest priority)
+        action = self.processor._determine_qc_action(
+            ['WARN_TEST', 'FAIL_TEST']
+        )
+        self.assertEqual(action, 'reject')
+
+    def test_evaluate_rule(self):
+        """Test rule evaluation logic."""
+        # Mock field mapping
+        self.processor.mapping = {
+            'Sections': {
+                'Test': {
+                    'Metric': {
+                        'QC': {'mapping': 'Test Metric'},
+                        'data': {'mapping': 'test_metric'}
+                    }
+                }
+            }
+        }
+        
+        sample = pd.Series({'test_metric': 10})
+        
+        # Test PASS rule
+        pass_rule = pd.Series({
+            'rule_id': 'R1',
+            'field': 'Test Metric',
+            'operator': '>=',
+            'value': 5
+        })
+        self.assertEqual(
+            self.processor._evaluate_rule(sample, pass_rule), 'PASS'
+        )
+        
+        # Test FAIL rule
+        fail_rule = pd.Series({
+            'rule_id': 'R2',
+            'field': 'Test Metric',
+            'operator': '>=',
+            'value': 15
+        })
+        self.assertEqual(
+            self.processor._evaluate_rule(sample, fail_rule), 'FAIL'
+        )
+        
+        # Test SKIP rule (missing field)
+        skip_rule = pd.Series({
+            'rule_id': 'R3',
+            'field': 'Missing Metric',
+            'operator': '>=',
+            'value': 5
+        })
+        self.assertEqual(
+            self.processor._evaluate_rule(sample, skip_rule), 'SKIP'
+        )
+        self.assertIn('R3', self.processor.skipped_rules)
 
 
 class TestFieldMapping(unittest.TestCase):

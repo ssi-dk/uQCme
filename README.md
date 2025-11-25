@@ -19,6 +19,7 @@ uQCme consists of two main components:
 -   **Species-specific QC rules**: Support for numerous microbial species with tailored quality control criteria defined in `QC_rules.tsv`.
 -   **Configurable QC tests**: Define custom QC outcomes with priority-based rule conditions.
 -   **Flexible rule engine**: Regex-based validation with threshold checks for various QC metrics.
+-   **Robust Validation**: Data validation using Pandera schemas and Pydantic configuration management.
 -   **Interactive dashboard**: Web-based visualization with filtering, sorting, and detailed sample exploration.
 -   **Comprehensive logging**: Detailed logging system with both file and console output.
 
@@ -193,6 +194,20 @@ FAIL_CUSTOM	Fail - Custom QC	Custom quality control failed	3	failed_rules_contai
 ```
 
 ## Development
+
+This project uses [pixi](https://prefix.dev/) for dependency management and development workflow.
+
+To set up the development environment:
+
+```bash
+pixi install
+```
+
+To run tests:
+
+```bash
+pixi run pytest
+```
 
 ### Project Structure
 

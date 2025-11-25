@@ -16,8 +16,10 @@ import yaml
 from pathlib import Path
 from typing import Dict, Any, Optional
 from uQCme.plot import QCPlotter, get_available_metrics
-from uQCme.utils import load_data_from_config, load_config_from_file
-from uQCme.cli import QCProcessor
+from uQCme.core.loader import load_data_from_config, load_config_from_file
+from uQCme.core.engine import QCProcessor
+from uQCme.core.config import UQCMeConfig, DataInput
+from uQCme.core.exceptions import ConfigError, DataLoadError
 
 
 class QCDashboard:
@@ -26,90 +28,107 @@ class QCDashboard:
     def __init__(self, config_path: str):
         """Initialize the dashboard with configuration."""
         self.config_path = config_path
-        self.config = self._load_config(config_path)
+        self.config: UQCMeConfig = self._load_config(config_path)
         self.data: pd.DataFrame = pd.DataFrame()
         self.mapping: Dict[str, Any] = {}
         self.qc_rules: pd.DataFrame = pd.DataFrame()
         self.qc_tests: pd.DataFrame = pd.DataFrame()
         self.plotter: QCPlotter = QCPlotter(self.config)
         
-    def _load_config(self, config_path: Optional[str]) -> Dict[str, Any]:
+    def _load_config(self, config_path: Optional[str]) -> UQCMeConfig:
         """Load configuration from YAML file or use defaults."""
         if config_path:
             try:
                 return load_config_from_file(config_path)
+            except ConfigError as e:
+                st.error(f"Configuration Error: {e}")
+                st.stop()
             except Exception as e:
-                st.error(f"Error loading config: {e}")
+                st.error(f"Unexpected error loading config: {e}")
                 st.stop()
         else:
             return self._get_default_config()
 
-    def _get_default_config(self) -> Dict[str, Any]:
+    def _get_default_config(self) -> UQCMeConfig:
         """Get default configuration using bundled files."""
         defaults_dir = Path(__file__).parent / 'defaults'
         config_path = defaults_dir / 'config.yaml'
         
         try:
             config = load_config_from_file(str(config_path))
-        except Exception as e:
+        except ConfigError as e:
             st.error(f"Error loading default config: {e}")
             st.stop()
             
         # Update paths to point to the defaults directory if local files don't exist
-        if 'app' in config and 'input' in config['app']:
-            inp = config['app']['input']
+        if config.app and config.app.input:
+            inp = config.app.input
             # Update mapping, rules, tests to absolute paths in defaults dir
-            for key in ['mapping', 'qc_rules', 'qc_tests']:
-                if key in inp and not os.path.exists(inp[key]):
-                    inp[key] = str(defaults_dir / Path(inp[key]).name)
+            if not os.path.exists(inp.mapping):
+                inp.mapping = str(defaults_dir / Path(inp.mapping).name)
+            if not os.path.exists(inp.qc_rules):
+                inp.qc_rules = str(defaults_dir / Path(inp.qc_rules).name)
+            if not os.path.exists(inp.qc_tests):
+                inp.qc_tests = str(defaults_dir / Path(inp.qc_tests).name)
                     
-        if 'qc' in config and 'input' in config['qc']:
-            inp = config['qc']['input']
+        if config.qc and config.qc.input:
+            inp = config.qc.input
             # Update mapping, rules, tests to absolute paths in defaults dir
-            for key in ['mapping', 'qc_rules', 'qc_tests']:
-                if key in inp and not os.path.exists(inp[key]):
-                    inp[key] = str(defaults_dir / Path(inp[key]).name)
+            if not os.path.exists(inp.mapping):
+                inp.mapping = str(defaults_dir / Path(inp.mapping).name)
+            if not os.path.exists(inp.qc_rules):
+                inp.qc_rules = str(defaults_dir / Path(inp.qc_rules).name)
+            if not os.path.exists(inp.qc_tests):
+                inp.qc_tests = str(defaults_dir / Path(inp.qc_tests).name)
         
         return config
 
     def _get_dashboard_config(self, key: str, default_value):
         """Get dashboard configuration value with fallback to default."""
-        dashboard_config = self.config.get('app', {}).get('dashboard', {})
-        return dashboard_config.get(key, default_value)
+        if self.config.app and self.config.app.dashboard:
+            return getattr(self.config.app.dashboard, key, default_value)
+        return default_value
 
     def load_data(self):
         """Load all required data files or from API."""
+        if not self.config.app:
+            st.error("Configuration error: 'app' section missing.")
+            st.stop()
+
         try:
             # Load mapping configuration first as it's needed for validation
-            mapping_path = self.config['app']['input']['mapping']
+            mapping_path = self.config.app.input.mapping
             with open(mapping_path, 'r', encoding='utf-8') as f:
                 self.mapping = yaml.safe_load(f)
             
             # Load processed QC results - check if API or file
-            data_config = self.config['app']['input']['data']
+            data_config = self.config.app.input.data
             
             try:
                 self.data = load_data_from_config(data_config)
                 # Validate the loaded data if not empty
                 if not self.data.empty:
                     self.data = self._validate_api_data(self.data)
-            except (FileNotFoundError, ValueError, Exception) as e:
+            except (DataLoadError, ConfigError) as e:
                 # Show why loading failed but don't stop
-                st.error(f"Data was not processed successfully: {e}")
+                st.error(f"Data loading failed: {e}")
                 # If data loading fails, we'll handle it in run() by asking
                 # for upload
                 self.data = pd.DataFrame()
+            except Exception as e:
+                st.error(f"Unexpected error loading data: {e}")
+                self.data = pd.DataFrame()
             
             # Load QC rules
-            rules_path = self.config['app']['input']['qc_rules']
+            rules_path = self.config.app.input.qc_rules
             self.qc_rules = pd.read_csv(rules_path, sep='\t')
             
             # Load QC tests
-            tests_path = self.config['app']['input']['qc_tests']
+            tests_path = self.config.app.input.qc_tests
             self.qc_tests = pd.read_csv(tests_path, sep='\t')
             
             # Load warnings if available
-            warnings_path = self.config['app']['input'].get('warnings')
+            warnings_path = self.config.app.input.warnings
             if warnings_path and os.path.exists(warnings_path):
                 self.warnings = pd.read_csv(warnings_path, sep='\t')
             else:
@@ -198,7 +217,7 @@ class QCDashboard:
     def setup_page(self):
         """Set up the Streamlit page configuration."""
         st.set_page_config(
-            page_title=self.config.get('title', 'uQCme Dashboard'),
+            page_title=self.config.title,
             page_icon="🔬",
             layout="wide",
             initial_sidebar_state="expanded"
@@ -213,7 +232,7 @@ class QCDashboard:
         st.sidebar.subheader("📊 Summary")
         
         # Version info
-        version = self.config.get('version', 'Unknown')
+        version = self.config.version
         st.sidebar.markdown(f"**Version:** {version}")
         
         # Create columns for horizontal layout
@@ -662,7 +681,7 @@ class QCDashboard:
     def _get_qc_outcome_priority(self, outcome: str) -> int:
         """Get priority level for QC outcome."""
         # Get outcome priority mapping from config, with fallback defaults
-        config_priorities = self.config.get('outcome_priorities', {})
+        config_priorities = self.config.outcome_priorities or {}
         
         # Default outcome priority mapping (higher number = higher priority)
         default_priorities = {
@@ -682,7 +701,9 @@ class QCDashboard:
     def _get_qc_outcome_color(self, outcome: str) -> str:
         """Get color for QC outcome based on priority."""
         priority = self._get_qc_outcome_priority(outcome)
-        priority_colors = self.config.get('priority_colors', {})
+        priority_colors = {}
+        if self.config.app and self.config.app.priority_colors:
+            priority_colors = self.config.app.priority_colors
         
         # Default color mapping as fallback (darker text-friendly colors)
         default_color_mapping = {
@@ -718,7 +739,7 @@ class QCDashboard:
         if fig:
             st.plotly_chart(
                 fig,
-                use_container_width=True,
+                width='content',
                 key=key
             )
 
@@ -794,7 +815,7 @@ class QCDashboard:
         # Use data_editor to enable checkbox interaction
         edited_data = st.data_editor(
             styled_data,
-            use_container_width=True,
+            width='stretch',
             key=key,
             column_order=column_order,
             column_config=column_config,
@@ -1200,7 +1221,7 @@ class QCDashboard:
         # Display selectable dataframe
         selected_rows = st.dataframe(
             selection_df,
-            use_container_width=True,
+            width='stretch',
             hide_index=True,
             on_select="rerun",
             selection_mode="single-row",
@@ -1260,7 +1281,7 @@ class QCDashboard:
                 rules_df = pd.DataFrame(rules_table_data)
                 st.dataframe(
                     rules_df,
-                    use_container_width=True,
+                    width='stretch',
                     hide_index=True
                 )
                 
@@ -1312,7 +1333,7 @@ class QCDashboard:
                     rules_df = pd.DataFrame(rules_table_data)
                     st.dataframe(
                         rules_df,
-                        use_container_width=True,
+                        width='stretch',
                         hide_index=True
                     )
                 else:
@@ -1332,7 +1353,9 @@ class QCDashboard:
                     "during processing.")
             
             # Show information about warnings output
-            warnings_path = self.config['app']['input'].get('warnings')
+            warnings_path = (
+                self.config.app.input.warnings if self.config.app else None
+            )
             if warnings_path:
                 st.write(f"**Expected warnings file:** `{warnings_path}`")
                 st.write("Warnings will be saved here during the next "
@@ -1437,7 +1460,7 @@ class QCDashboard:
             # Display as a dataframe with styling
             st.dataframe(
                 display_warnings,
-                use_container_width=True,
+                width='stretch',
                 hide_index=True,
                 column_config={
                     'Type': st.column_config.TextColumn(
@@ -1560,17 +1583,22 @@ class QCDashboard:
             st.subheader("📁 Data Source")
             
             # Get source description
-            data_config = self.config.get('app', {}).get('input', {}).get(
-                'data'
-            )
             source_desc = "Unknown"
-            if isinstance(data_config, dict):
-                if data_config.get('api_call'):
-                    source_desc = f"API: {data_config['api_call']}"
-                elif data_config.get('file'):
-                    source_desc = f"File: {data_config['file']}"
-            elif isinstance(data_config, str):
-                source_desc = f"File: {data_config}"
+            if (self.config.app and self.config.app.input and
+                    self.config.app.input.data):
+                data_config = self.config.app.input.data
+                if isinstance(data_config, DataInput):
+                    if data_config.api_call:
+                        source_desc = f"API: {data_config.api_call}"
+                    elif data_config.file:
+                        source_desc = f"File: {data_config.file}"
+                elif isinstance(data_config, dict):
+                    if data_config.get('api_call'):
+                        source_desc = f"API: {data_config['api_call']}"
+                    elif data_config.get('file'):
+                        source_desc = f"File: {data_config['file']}"
+                elif isinstance(data_config, str):
+                    source_desc = f"File: {data_config}"
 
             if not self.data.empty:
                 source_info_placeholder = st.empty()

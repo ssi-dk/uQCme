@@ -95,7 +95,7 @@ sys.modules["streamlit"] = streamlit_stub
 sys.modules["uQCme.plot"] = plot_stub
 
 from uQCme import app
-from uQCme import utils
+from uQCme.core import loader
 
 
 class DummyResponse:
@@ -164,7 +164,7 @@ def test_load_data_from_api(monkeypatch, tmp_path, test_data_paths):
         assert verify is True
         return response
 
-    monkeypatch.setattr(utils.requests, "get", fake_get)
+    monkeypatch.setattr(loader.requests, "get", fake_get)
 
     dashboard.load_data()
 

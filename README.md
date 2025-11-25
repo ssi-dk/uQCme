@@ -68,14 +68,34 @@ pip install .
 
 The CLI tool reads your sequencing run data and applies the QC rules defined in your configuration.
 
-**Command:**
+**Basic Usage (using defaults):**
 ```bash
-uqcme --config config.yaml
+uqcme
+```
+This will use the bundled default configuration and look for input files in the current directory as specified in the default config.
+
+**Override Data Source:**
+You can process a specific data file or API endpoint without creating a full config file:
+
+```bash
+# Process a local file
+uqcme --file path/to/my_run_data.tsv
+
+# Process data from an API
+uqcme --api-call "https://api.example.com/runs/123"
+```
+
+**Custom Configuration:**
+For full control over rules, tests, and mappings, provide a custom configuration file:
+
+```bash
+uqcme --config my_config.yaml
 ```
 
 **What it does:**
-1.  Loads run data (from file or API) as specified in `config.yaml`.
+1.  Loads run data (from file, API, or defaults).
 2.  Loads QC rules (`QC_rules.tsv`) and QC tests (`QC_tests.tsv`).
+    *   *Note: If local rule files are missing, it falls back to bundled defaults.*
 3.  Evaluates each sample against the rules for its species.
 4.  Determines the final QC outcome (e.g., PASS, FAIL).
 5.  Outputs a new TSV file containing the original data plus the QC results (e.g., `uQCme_run_data.tsv`).

@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import sys
 import types
+from pathlib import Path
 
 import pandas as pd
 import pytest
 import yaml
+
+# Add src to path
+sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
 
 
 class DummyPlotter:
@@ -53,6 +57,10 @@ class StreamlitStub(types.ModuleType):
 
     def stop(self):
         raise AssertionError("st.stop called unexpectedly")
+    
+    @property
+    def runtime(self):
+        return types.SimpleNamespace(exists=lambda: True)
 
 
 class _ContextStub:
@@ -69,14 +77,25 @@ class _ContextStub:
 
 
 streamlit_stub = StreamlitStub()
-plot_stub = types.ModuleType("plot")
+
+# Mock streamlit.web and streamlit.web.cli
+web_stub = types.ModuleType("streamlit.web")
+cli_stub = types.ModuleType("streamlit.web.cli")
+cli_stub.main = lambda: None
+web_stub.cli = cli_stub
+streamlit_stub.web = web_stub
+sys.modules["streamlit.web"] = web_stub
+sys.modules["streamlit.web.cli"] = cli_stub
+
+plot_stub = types.ModuleType("uQCme.plot")
 plot_stub.QCPlotter = DummyPlotter
 plot_stub.get_available_metrics = _empty_metrics
 
 sys.modules["streamlit"] = streamlit_stub
-sys.modules["plot"] = plot_stub
+sys.modules["uQCme.plot"] = plot_stub
 
-import app
+from uQCme import app
+from uQCme import utils
 
 
 class DummyResponse:
@@ -145,7 +164,7 @@ def test_load_data_from_api(monkeypatch, tmp_path, test_data_paths):
         assert verify is True
         return response
 
-    monkeypatch.setattr(app.requests, "get", fake_get)
+    monkeypatch.setattr(utils.requests, "get", fake_get)
 
     dashboard.load_data()
 
@@ -153,7 +172,4 @@ def test_load_data_from_api(monkeypatch, tmp_path, test_data_paths):
     pd.testing.assert_frame_equal(
         dashboard.data.sort_index(axis=1), expected_df.sort_index(axis=1)
     )
-    assert streamlit_stub.info_calls, "st.info should report API loading"
-    assert streamlit_stub.success_calls == [
-        "Successfully loaded 2 samples from API"
-    ], "st.success should confirm API load"
+

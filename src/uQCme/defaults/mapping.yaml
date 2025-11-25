@@ -1,0 +1,181 @@
+
+# Headers Configuration - Proper YAML Format
+# Defines the sections and their corresponding columns for the QC report
+
+# Headers Configuration - Enhanced with Display Names
+# Defines the sections and their corresponding columns for the QC report
+# Each column can have both the actual column name and a user-friendly display name
+
+qc_rules_file: ./input/QC_rules.csv
+qc_judgement_file: ./input/qc_judgment.tsv
+
+QC_overrides:
+  software: ["checkm", "quast"]
+  assembly_type: "short"  # Default assembly type for QC metrics
+
+# # Example data entry
+# # {
+# #   "irida_ID": 1186,
+# #   "sampleName": "STA009116-AAH7JMVM5_251028",
+# #   "createdDate": 1761723054000,
+# #   "modifiedDate": 1761724217000,
+# #   "QC": {
+# "fastp_Before_Filtering_Total_Reads",
+# "fastp_Before_Filtering_Read1_Mean_Length",
+# "fastp_Before_Filtering_Read2_Mean_Length",
+# "fastp_After_Filtering_Total_Reads",
+# "fastp_After_Filtering_Read1_Mean_Length",
+# "fastp_After_Filtering_Read2_Mean_Length",
+# #     "fastp_Low_Quality_Reads": "15926",
+# "fastp_Too_Many_N_Reads",
+# "fastp_Too_Short_Reads",
+# "fastp_Too_Long_Reads",
+# "fastp_Duplication_Rate",
+# "fastp_Adapter_Trimmed_Reads",
+# "fastp_Adapter_Trimmed_Bases",
+# "fastp_Read1_Before_Filtering_Total_Cycles",
+# "fastp_Read1_After_Filtering_Total_Cycles",
+# "fastp_Read2_Before_Filtering_Total_Cycles",
+# "fastp_Read2_After_Filtering_Total_Cycles",
+# #     "PFinder_Database": "Inc18,Inc18,Rep3,RepA_N,RepA_N,RepL,Rep_trans",
+# "PFinder_Plasmid",
+# "PFinder_Identity",
+# "PFinder_Coverage",
+# "PFinder_Contig",
+# "pMLST_plasmids",
+# "pMLST_IncF",
+# "pMLST_IncI1",
+# "pMLST_IncA/C",
+# "pMLST_IncHI1",
+# "pMLST_IncHI2",
+# "pMLST_IncN",
+# "pMLST_summary",
+# #     "rMLST_match": "Staphylococcus aureus",
+# #     "rMLST_rank": "SPECIES",
+# #     "rMLST_support": "100",
+# #     "MLST_Species": "saureus",
+# #     "MLST_ST": "8",
+# #     "MLST_Alleles": "arcC(3),aroE(3),glpF(1),gmk(1),pta(4),tpi(4),yqiL(3)",
+# "AMR_ContigID",
+# "AMR_Start",
+# "AMR_Stop",
+# "AMR_Strand",
+# #     "AMR_ElementSymbol": "tet(38),fosB,blaI,blaZ,dfrG,mecA,erm(C),aac(6')-Ie/aph(2'')-Ia,qacC",
+# #     "AMR_ElementName": "tetracycline efflux MFS transporter Tet(38), FosB/FosD family fosfomycin resistance bacillithiol transferase, penicillinase repressor BlaI, penicillin-hydrolyzing class A beta-lactamase BlaZ, trimethoprim-resistant dihydrofolate reductase DfrG, PBP2a family beta-lactam-resistant peptidoglycan transpeptidase MecA, 23S rRNA (adenine(2058)-N(6))-methyltransferase Erm(C), bifunctional aminoglycoside N-acetyltransferase AAC(6')-Ie/aminoglycoside O-phosphotransferase APH(2'')-Ia, quaternary ammonium compound efflux SMR transporter QacC",
+# #     "AMR_Subclass": "TETRACYCLINE,FOSFOMYCIN,BETA-LACTAM,BETA-LACTAM,TRIMETHOPRIM,METHICILLIN,CLINDAMYCIN/ERYTHROMYCIN/STREPTOGRAMIN B/TYLOSIN,AMIKACIN/GENTAMICIN/KANAMYCIN/TOBRAMYCIN,QUATERNARY AMMONIUM",
+# "AMR_Coverage",
+# #     "AMR_Identity": "100.0,97.84,96.83,94.31,100.0,100.0,100.0,100.0,99.07",
+# "AMR_dbv_toolv",
+# #     "Bracken_Species": "Staphylococcus aureus + unclassified",
+# #     "Bracken_Species1": "Staphylococcus aureus",
+# #     "Bracken_Species1_Pct": "97.54",
+# #     "Bracken_Species2": "Staphylococcus argenteus",
+# #     "Bracken_Species2_Pct": "0.07",
+# #     "Bracken_Species_Pct": "99.55",
+# #     "Bracken_Unclassified_Pct": "2.01",
+# #     "Quast_Contigs": "98",
+# #     "Quast_Total_Length": "2855703",
+# #     "Quast_GC_Pct": "32.63",
+# #     "Quast_N50": "304675",
+# "Quast_N90",
+# #     "Quast_L50": "3",
+# "Quast_L90",
+# #     "Quast_Largest_Contig": "854424",
+# #     "ssiamb_count": "0",
+# #   }
+# # }
+
+Sections:
+  Basic:
+    Name:
+      data:
+        mapping: sample_name
+      report:
+        id: true # represents the unique identifier for the sample which can be passed to other systems
+  QC_metrics:
+    QC action: # generated from qc
+      data:
+        mapping: qc_action
+      report:
+        filter: true
+        priority_coloring: true
+    QC outcome: # generated from qc
+      data:
+        mapping: qc_outcome
+      report:
+        filter: true
+        priority_coloring: true
+    Failed Rules: # generated from qc
+      data:
+        mapping: failed_rules
+    Passed Rules: # generated from qc
+      data:
+        mapping: passed_rules
+    Expected species:
+      data:
+        mapping: rMLST_match
+      QC:
+        mapping: ["speciesName", "genusName", "Marker lineage"]
+      report:
+        filter: true
+    Provided Species:
+      data:
+        mapping: species
+    Species:
+      QC:
+        mapping: ["speciesName", "genusName", "Marker lineage"]
+      report:
+        filter: true
+    Genome size (bp):
+      data:
+        mapping: bin_length_at_1x
+      QC:
+        software: "checkm"
+        assembly_type: "short"
+        mapping: ["Genome size (bp)", "Total length (>= 0 bp)"]
+      report:
+        filter: true
+    GC:
+      data:
+        mapping: GC
+      QC:
+        mapping: ["GC", "GC (%)"]
+      report:
+        filter: true
+        description: GC content
+    N50:
+      data:
+        mapping: N50
+      QC:
+        mapping: ["N50", "N50 (scaffolds)"]
+    Contigs:
+      data:
+        mapping: bin_contigs_at_1x
+      QC:
+        mapping: ["# contigs", "# contigs (>= 0 bp)"]
+    Completeness:
+      data:
+        mapping: percent_classified_species_1_whats_my_species
+      QC:
+        mapping: ["Completeness"]
+      hidden: true
+    Contamination:
+      data:
+        mapping: percent_classified_species_2_whats_my_species
+      QC:
+        mapping: ["Contamination"]
+      hidden: true
+    Depth:
+      data:
+        mapping: bin_coverage_at_1x
+      QC:
+        mapping: ["Depth"]
+  Experimental:
+    Depth 10x:
+      data:
+        mapping: bin_coverage_at_10x
+    Depth 25x:
+      data:
+        mapping: bin_coverage_at_25x
+  Other:
+    unmapped: true # this is unique

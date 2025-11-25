@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pandas as pd
 
-# Add the project root to sys.path to import uQCme
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-from uQCme import QCProcessor
+# Add the src directory to sys.path to import uQCme package
+sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
+from uQCme.cli import QCProcessor
 
 
 class TestQCProcessor(unittest.TestCase):

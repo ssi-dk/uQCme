@@ -50,6 +50,9 @@ class QCPlotter:
         title: str = "Species Distribution"
     ) -> go.Figure:
         """Create horizontal bar chart for species distribution."""
+        if 'species' not in data.columns:
+            return go.Figure()
+
         species_counts = data['species'].value_counts().head(top_n)
         
         fig = px.bar(

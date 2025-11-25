@@ -13,9 +13,9 @@ import sys
 import os
 from pathlib import Path
 
-# Add the parent directory to sys.path to import uQCme
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from uQCme import QCProcessor
+# Add the src directory to sys.path to import uQCme package
+sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
+from uQCme.cli import QCProcessor
 
 
 class TestUQCmeOutcomes(unittest.TestCase):

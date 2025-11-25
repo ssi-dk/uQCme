@@ -8,13 +8,16 @@ interactive data exploration, with plotting functionality handled by plot.py.
 """
 
 import os
+import sys
 import streamlit as st
+from streamlit.web import cli as stcli
 import pandas as pd
 import yaml
-import requests
 from pathlib import Path
 from typing import Dict, Any, Optional
-from plot import QCPlotter, get_available_metrics
+from uQCme.plot import QCPlotter, get_available_metrics
+from uQCme.utils import load_data_from_config, load_config_from_file
+from uQCme.cli import QCProcessor
 
 
 class QCDashboard:
@@ -22,6 +25,7 @@ class QCDashboard:
 
     def __init__(self, config_path: str):
         """Initialize the dashboard with configuration."""
+        self.config_path = config_path
         self.config = self._load_config(config_path)
         self.data: pd.DataFrame = pd.DataFrame()
         self.mapping: Dict[str, Any] = {}
@@ -32,8 +36,7 @@ class QCDashboard:
     def _load_config(self, config_path: str) -> Dict[str, Any]:
         """Load configuration from YAML file."""
         try:
-            with open(config_path, 'r', encoding='utf-8') as f:
-                return yaml.safe_load(f)
+            return load_config_from_file(config_path)
         except Exception as e:
             st.error(f"Error loading config: {e}")
             st.stop()
@@ -46,30 +49,25 @@ class QCDashboard:
     def load_data(self):
         """Load all required data files or from API."""
         try:
-            # Load processed QC results - check if API or file
-            data_config = self.config['app']['input']['data']
-            
-            if isinstance(data_config, dict):
-                # New structure with file/api_call options
-                if data_config.get('api_call'):
-                    # Load data from API
-                    api_url = data_config['api_call']
-                    self.data = self._load_data_from_api(api_url)
-                elif data_config.get('file'):
-                    # Load data from file
-                    self.data = pd.read_csv(data_config['file'], sep='\t')
-                else:
-                    error_msg = ("Either 'file' or 'api_call' must be "
-                                 "specified for data input")
-                    raise ValueError(error_msg)
-            else:
-                # Legacy structure - direct file path
-                self.data = pd.read_csv(data_config, sep='\t')
-            
-            # Load mapping configuration
+            # Load mapping configuration first as it's needed for validation
             mapping_path = self.config['app']['input']['mapping']
             with open(mapping_path, 'r', encoding='utf-8') as f:
                 self.mapping = yaml.safe_load(f)
+            
+            # Load processed QC results - check if API or file
+            data_config = self.config['app']['input']['data']
+            
+            try:
+                self.data = load_data_from_config(data_config)
+                # Validate the loaded data if not empty
+                if not self.data.empty:
+                    self.data = self._validate_api_data(self.data)
+            except (FileNotFoundError, ValueError, Exception) as e:
+                # Show why loading failed but don't stop
+                st.error(f"Data was not processed successfully: {e}")
+                # If data loading fails, we'll handle it in run() by asking
+                # for upload
+                self.data = pd.DataFrame()
             
             # Load QC rules
             rules_path = self.config['app']['input']['qc_rules']
@@ -87,7 +85,7 @@ class QCDashboard:
                 self.warnings = None
             
         except Exception as e:
-            st.error(f"Error loading data: {e}")
+            st.error(f"Error loading configuration files: {e}")
             st.stop()
 
     def _get_required_fields(self) -> dict:
@@ -135,8 +133,7 @@ class QCDashboard:
     def _validate_api_data(self, data: pd.DataFrame) -> pd.DataFrame:
         """Validate that API data contains required fields."""
         if data.empty:
-            st.error("API returned no data")
-            st.stop()
+            raise ValueError("Data source returned no data")
         
         required_fields = self._get_required_fields()
         missing_critical = []
@@ -154,10 +151,9 @@ class QCDashboard:
         
         # Handle missing critical fields (fatal errors)
         if missing_critical:
-            st.error(
+            raise ValueError(
                 "Missing required fields: " + ", ".join(missing_critical)
             )
-            st.stop()
         
         # Handle missing important fields (warnings)
         if missing_important:
@@ -167,73 +163,6 @@ class QCDashboard:
         
         return data
 
-    def _load_data_from_api(self, api_url: str) -> pd.DataFrame:
-        """Load data from API endpoint."""
-        try:
-            st.info("Loading data from API...")
-            
-            # Make API request with JSON accept header
-            headers = {'accept': 'application/json'}
-            
-            # Try with SSL verification first, then without if it fails
-            try:
-                response = requests.get(
-                    api_url, headers=headers, timeout=30, verify=True
-                )
-            except requests.exceptions.SSLError:
-                warning_msg = ("SSL verification failed, retrying without "
-                               "SSL verification...")
-                st.warning(warning_msg)
-                # Disable SSL warnings for cleaner output
-                import urllib3
-                urllib3.disable_warnings(
-                    urllib3.exceptions.InsecureRequestWarning
-                )
-                response = requests.get(
-                    api_url, headers=headers, timeout=30, verify=False
-                )
-            
-            response.raise_for_status()
-            
-            # Parse response based on content type
-            content_type = response.headers.get('content-type', '')
-            
-            if content_type.startswith('application/json'):
-                # Handle JSON response
-                json_data = response.json()
-                if isinstance(json_data, list):
-                    data = pd.DataFrame(json_data)
-                elif isinstance(json_data, dict) and 'data' in json_data:
-                    data = pd.DataFrame(json_data['data'])
-                else:
-                    data = pd.DataFrame([json_data])
-            else:
-                # Handle CSV/TSV response (like your example)
-                from io import StringIO
-                response_text = response.text.strip()
-                
-                # Check if it looks like CSV data
-                if ',' in response_text and '\n' in response_text:
-                    # Parse as CSV
-                    data = pd.read_csv(StringIO(response_text))
-                else:
-                    # Try TSV format as fallback
-                    data = pd.read_csv(StringIO(response_text), sep='\t')
-            
-            # Validate the loaded data
-            validated_data = self._validate_api_data(data)
-            
-            success_msg = (f"Successfully loaded {len(validated_data)} "
-                           f"samples from API")
-            st.success(success_msg)
-            return validated_data
-            
-        except requests.exceptions.RequestException as e:
-            st.error(f"API request failed: {e}")
-            st.stop()
-        except Exception as e:
-            st.error(f"Error processing API response: {e}")
-            st.stop()
 
     def setup_page(self):
         """Set up the Streamlit page configuration."""
@@ -1504,6 +1433,86 @@ class QCDashboard:
                     st.write(f"**{warning_type}:** {count} warnings "
                              f"({percentage:.1f}%)")
 
+    def _process_uploaded_file(self, uploaded_file) -> bool:
+        """Process an uploaded raw data file and update self.data."""
+        try:
+            with st.spinner("Processing data..."):
+                # Try to read as TSV first (standard for this tool)
+                uploaded_file.seek(0)
+                try:
+                    df = pd.read_csv(uploaded_file, sep='\t')
+                except Exception:
+                    df = pd.DataFrame()
+
+                # If it looks like it failed to parse (only 1 column), try CSV
+                if len(df.columns) <= 1:
+                    uploaded_file.seek(0)
+                    try:
+                        df_csv = pd.read_csv(uploaded_file, sep=',')
+                        if len(df_csv.columns) > 1:
+                            df = df_csv
+                    except Exception:
+                        # If CSV fails, stick with the TSV result
+                        pass
+                
+                if df.empty:
+                    st.error("Uploaded file is empty or could not be read.")
+                    return False
+
+                # Check for ID column
+                id_col = self._get_id_column(df)
+                if not id_col and 'sample_name' not in df.columns:
+                    st.error(
+                        "⚠️ Could not find the configured ID column or "
+                        "'sample_name' in the uploaded file. Please check "
+                        "your file format (TSV/CSV) and headers."
+                    )
+                    return False
+
+                # Initialize processor
+                processor = QCProcessor(self.config_path)
+                
+                # Load reference data
+                processor.load_reference_data()
+                
+                # Set run data directly
+                processor.run_data = df
+                
+                # Process
+                processor.process_samples()
+                
+                # Get results
+                self.data = processor.results
+                
+                # Convert warnings set to DataFrame for display
+                warnings_data = []
+                for warning in sorted(processor.warnings):
+                    warnings_data.append({
+                        'warning_type': 'processing',
+                        'warning_message': warning,
+                        'timestamp': pd.Timestamp.now().isoformat()
+                    })
+                for rule in sorted(processor.skipped_rules):
+                    warning_msg = (f"Rule {rule} skipped due to "
+                                   f"missing fields")
+                    warnings_data.append({
+                        'warning_type': 'skipped_rule',
+                        'warning_message': warning_msg,
+                        'timestamp': pd.Timestamp.now().isoformat()
+                    })
+                
+                if warnings_data:
+                    self.warnings = pd.DataFrame(warnings_data)
+                else:
+                    self.warnings = pd.DataFrame()
+                
+                st.success("Data processed successfully!")
+                return True
+                
+        except Exception as e:
+            st.error(f"Data was not processed successfully: {e}")
+            return False
+
     def run(self):
         """Run the Streamlit application."""
         # Setup page
@@ -1512,9 +1521,68 @@ class QCDashboard:
         # Load data
         self.load_data()
         
-        # Render header (without metrics now)
+        # Render header
         self.render_header()
         
+        # Data Source Info & Override in Sidebar
+        with st.sidebar:
+            st.subheader("📁 Data Source")
+            
+            # Get source description
+            data_config = self.config.get('app', {}).get('input', {}).get(
+                'data'
+            )
+            source_desc = "Unknown"
+            if isinstance(data_config, dict):
+                if data_config.get('api_call'):
+                    source_desc = f"API: {data_config['api_call']}"
+                elif data_config.get('file'):
+                    source_desc = f"File: {data_config['file']}"
+            elif isinstance(data_config, str):
+                source_desc = f"File: {data_config}"
+
+            if not self.data.empty:
+                source_info_placeholder = st.empty()
+                
+                with st.expander("Upload New Raw Data"):
+                    st.write("Upload a raw run data file to process and "
+                             "replace the current data.")
+                    uploaded_file = st.file_uploader(
+                        "Upload Run Data (TSV)",
+                        type=['tsv', 'txt', 'csv'],
+                        key="sidebar_uploader"
+                    )
+                    
+                    if uploaded_file:
+                        if self._process_uploaded_file(uploaded_file):
+                            source_desc = f"User Upload: {uploaded_file.name}"
+                        else:
+                            # If processing failed, clear the data so we don't
+                            # show stale data with a confusing error state
+                            self.data = pd.DataFrame()
+                
+                if not self.data.empty:
+                    source_info_placeholder.info(
+                        f"**Current Source:**\n{source_desc}"
+                    )
+            
+            st.markdown("---")
+        
+        # Check if data is loaded (if empty and no upload in sidebar)
+        if self.data.empty:
+            st.info("No processed QC data found. Please upload a raw run "
+                    "data file to process.")
+            uploaded_file = st.file_uploader(
+                "Upload Run Data (TSV)", type=['tsv', 'txt', 'csv'],
+                key="main_uploader"
+            )
+            
+            if uploaded_file:
+                if not self._process_uploaded_file(uploaded_file):
+                    st.stop()
+            else:
+                st.stop()
+
         # Get filtered data (this will also render sidebar metrics)
         filtered_data = self.render_sidebar_filters()
         
@@ -1547,11 +1615,25 @@ class QCDashboard:
             self.render_warnings_tab()
 
 
-def main():
-    """Main entry point for the Streamlit app."""
-    # Configuration file path
-    config_path = "config.yaml"
+def _run_dashboard():
+    """Internal function to run the dashboard logic."""
+    import argparse
     
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='uQCme Dashboard')
+    parser.add_argument(
+        '--config',
+        default='config.yaml',
+        help='Path to configuration file'
+    )
+    
+    try:
+        args = parser.parse_args()
+        config_path = args.config
+    except SystemExit:
+        # Streamlit might trigger this if --help is passed
+        return
+
     # Check if config file exists
     if not Path(config_path).exists():
         st.error(f"Configuration file '{config_path}' not found!")
@@ -1560,6 +1642,15 @@ def main():
     # Initialize and run dashboard
     dashboard = QCDashboard(config_path)
     dashboard.run()
+
+
+def main():
+    """Entry point for the application script."""
+    if st.runtime.exists():
+        _run_dashboard()
+    else:
+        sys.argv = ["streamlit", "run", __file__] + sys.argv[1:]
+        sys.exit(stcli.main())
 
 
 if __name__ == "__main__":

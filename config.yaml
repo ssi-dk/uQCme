@@ -3,7 +3,8 @@ version: "0.1.0"
 
 qc:
   input:
-    data: "./input/example/run_data.tsv"
+    data:
+      file: "./input/example/run_data.tsv"
     mapping: "./input/example/mapping.yaml"
     qc_rules: "./input/example/QC_rules.tsv"
     qc_tests: "./input/example/QC_tests.tsv"

@@ -70,6 +70,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Log levels: INFO for normal operations, WARNING for issues, ERROR for failures
   - Timestamp and log level tracking for better debugging and monitoring
   - Updated `.gitignore` to include comprehensive Python development patterns
+- Restructured project for PyPI deployment:
+  - Moved source code to `src/uQCme` directory
+  - Renamed `uQCme.py` to `cli.py`
+  - Added `pyproject.toml` and `MANIFEST.in`
+  - Updated imports to use relative paths within the package
+- Refactored data loading logic into `utils.py` to support API data loading in both CLI and App
+- Refactored configuration loading logic into `utils.py` to be shared between CLI and App
+- Updated README.md with correct usage instructions for `uqcme` and `uqcme-dashboard` commands
+  - Implemented Streamlit launcher in `app.py` to support `uqcme-dashboard` entry point
+
+### Fixed
+
+- Fixed an issue where the dashboard would stop execution instead of offering a file upload option when the configured data file is missing or empty.
 
 ### In Progress
 
@@ -144,9 +157,12 @@ The project follows a modular architecture:
 ```text
 uQCme/
 ├── config.yaml              # Main configuration
-├── uQCme.py                 # CLI QC processor (COMPLETED)
-├── app.py                   # Streamlit web app (COMPLETED)
-├── plot.py                  # Plotting utilities (COMPLETED)
+├── src/
+│   └── uQCme/
+│       ├── __init__.py      # Package initialization
+│       ├── cli.py           # CLI QC processor (COMPLETED)
+│       ├── app.py           # Streamlit web app (COMPLETED)
+│       └── plot.py          # Plotting utilities (COMPLETED)
 ├── requirements.txt         # Python dependencies
 ├── input/example/           # Sample data files
 │   ├── run_data.tsv        # Sequencing metrics (cleaned)

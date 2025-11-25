@@ -13,15 +13,28 @@ import yaml
 import sys
 import re
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
+from .utils import load_data_from_config, load_config_from_file
 
 
 class QCProcessor:
     """Main class for processing QC rules and generating outcomes."""
 
-    def __init__(self, config_path: str):
+    def __init__(self, config_path: Optional[str] = None,
+                 data_override: Optional[Dict[str, Any]] = None):
         """Initialize the QC processor with configuration."""
         self.config = self._load_config(config_path)
+        
+        # Apply data override if provided
+        if data_override:
+            if 'qc' not in self.config:
+                self.config['qc'] = {}
+            if 'input' not in self.config['qc']:
+                self.config['qc']['input'] = {}
+            
+            self.config['qc']['input']['data'] = data_override
+            print(f"✓ Data source overridden: {data_override}")
+
         self.logger = self._setup_logging()
         self.run_data: pd.DataFrame = pd.DataFrame()
         self.qc_rules: pd.DataFrame = pd.DataFrame()
@@ -72,52 +85,83 @@ class QCProcessor:
         
         return logger
 
-    def _load_config(self, config_path: str) -> Dict[str, Any]:
-        """Load configuration from YAML file."""
-        try:
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config = yaml.safe_load(f)
-            # Can't use self.logger yet since it's not created
-            print(f"✓ Configuration loaded from {config_path}")
-            return config
-        except Exception as e:
-            print(f"✗ Error loading config: {e}")
-            sys.exit(1)
+    def _load_config(self, config_path: Optional[str]) -> Dict[str, Any]:
+        """Load configuration from YAML file or use defaults."""
+        if config_path:
+            try:
+                config = load_config_from_file(config_path)
+                # Can't use self.logger yet since it's not created
+                print(f"✓ Configuration loaded from {config_path}")
+                return config
+            except Exception as e:
+                print(f"✗ Error loading config: {e}")
+                sys.exit(1)
+        else:
+            return self._get_default_config()
+
+    def _get_default_config(self) -> Dict[str, Any]:
+        """Get default configuration using bundled files."""
+        defaults_dir = Path(__file__).parent / 'defaults'
+        
+        print(f"✓ Using default configuration from {defaults_dir}")
+        
+        return {
+            'qc': {
+                'input': {
+                    'data': {},  # Will be overridden or empty
+                    'mapping': str(defaults_dir / 'mapping.yaml'),
+                    'qc_rules': str(defaults_dir / 'QC_rules.tsv'),
+                    'qc_tests': str(defaults_dir / 'QC_tests.tsv')
+                },
+                'output': {
+                    'results': 'qc_results.tsv',
+                    'warnings': 'qc_warnings.tsv'
+                }
+            },
+            'log': {
+                'file': 'uqcme.log'
+            }
+        }
 
     def load_input_files(self):
         """Load all input files specified in configuration."""
         try:
-            # Load run data
-            data_path = self.config['qc']['input']['data']
-            self.run_data = pd.read_csv(data_path, sep='\t')
-            self.logger.info("✓ Run data loaded: %d samples from %s",
-                           len(self.run_data), data_path)
-
-            # Load QC rules
-            rules_path = self.config['qc']['input']['qc_rules']
-            self.qc_rules = pd.read_csv(rules_path, sep='\t')
-            self.logger.info("✓ QC rules loaded: %d rules from %s",
-                           len(self.qc_rules), rules_path)
-
-            # Load QC tests
-            tests_path = self.config['qc']['input']['qc_tests']
-            self.qc_tests = pd.read_csv(tests_path, sep='\t')
-            self.logger.info("✓ QC tests loaded: %d tests from %s",
-                           len(self.qc_tests), tests_path)
-
-            # Load mapping configuration
-            mapping_path = self.config['qc']['input']['mapping']
-            with open(mapping_path, 'r', encoding='utf-8') as f:
-                self.mapping = yaml.safe_load(f)
-            self.logger.info("✓ Mapping configuration loaded from %s",
-                           mapping_path)
-
-            # Extract and normalize QC overrides
-            self._load_qc_overrides()
-
+            self.load_run_data()
+            self.load_reference_data()
         except Exception as e:
             self.logger.error(f"✗ Error loading files: {e}")
             sys.exit(1)
+
+    def load_run_data(self):
+        """Load run data from configuration."""
+        data_config = self.config['qc']['input']['data']
+        self.run_data = load_data_from_config(data_config)
+        self.logger.info("✓ Run data loaded: %d samples",
+                         len(self.run_data))
+
+    def load_reference_data(self):
+        """Load QC rules, tests, and mapping configuration."""
+        # Load QC rules
+        rules_path = self.config['qc']['input']['qc_rules']
+        self.qc_rules = pd.read_csv(rules_path, sep='\t')
+        self.logger.info("✓ QC rules loaded: %d rules from %s",
+                         len(self.qc_rules), rules_path)
+
+        # Load QC tests
+        tests_path = self.config['qc']['input']['qc_tests']
+        self.qc_tests = pd.read_csv(tests_path, sep='\t')
+        self.logger.info("✓ QC tests loaded: %d tests from %s",
+                         len(self.qc_tests), tests_path)
+
+        # Load mapping configuration
+        mapping_path = self.config['qc']['input']['mapping']
+        with open(mapping_path, 'r', encoding='utf-8') as f:
+            self.mapping = yaml.safe_load(f)
+        self.logger.info("✓ Mapping configuration loaded from %s",
+                         mapping_path)
+
+        # Extract and normalize QC overrides
+        self._load_qc_overrides()
 
     def _build_field_mapping(self) -> Dict[str, str]:
         """Build field mapping from config, treating strings as lists."""
@@ -492,8 +536,19 @@ def main():
     )
     parser.add_argument(
         '--config',
-        required=True,
+        required=False,
         help='Path to configuration YAML file'
+    )
+    
+    # Add data override arguments
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        '--file',
+        help='Override data source with a local file path'
+    )
+    group.add_argument(
+        '--api-call',
+        help='Override data source with an API URL'
     )
 
     args = parser.parse_args()
@@ -503,8 +558,15 @@ def main():
     print("=" * 50)
 
     try:
-        # Initialize processor
-        processor = QCProcessor(args.config)
+        # Prepare data override if arguments are provided
+        data_override = None
+        if args.file:
+            data_override = {'file': args.file}
+        elif args.api_call:
+            data_override = {'api_call': args.api_call}
+
+        # Initialize processor with optional override
+        processor = QCProcessor(args.config, data_override=data_override)
 
         # Load input data
         processor.load_input_files()

@@ -16,7 +16,8 @@ class QCRulesSchema(pa.DataFrameModel):
     assembly_type: Series[str] = pa.Field(
         description="Target assembly type or 'all'"
     )
-    software: Series[str] = pa.Field(
+    software: Optional[Series[str]] = pa.Field(
+        nullable=True,
         description="Software used to generate the metric"
     )
     field: Series[str] = pa.Field(description="Metric name to evaluate")

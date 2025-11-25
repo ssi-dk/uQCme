@@ -18,7 +18,7 @@ from typing import Dict, Any, Optional
 from uQCme.plot import QCPlotter, get_available_metrics
 from uQCme.core.loader import load_data_from_config, load_config_from_file
 from uQCme.core.engine import QCProcessor
-from uQCme.core.config import UQCMeConfig
+from uQCme.core.config import UQCMeConfig, DataInput
 from uQCme.core.exceptions import ConfigError, DataLoadError
 
 
@@ -217,7 +217,7 @@ class QCDashboard:
     def setup_page(self):
         """Set up the Streamlit page configuration."""
         st.set_page_config(
-            page_title=self.config.get('title', 'uQCme Dashboard'),
+            page_title=self.config.title,
             page_icon="🔬",
             layout="wide",
             initial_sidebar_state="expanded"
@@ -232,7 +232,7 @@ class QCDashboard:
         st.sidebar.subheader("📊 Summary")
         
         # Version info
-        version = self.config.get('version', 'Unknown')
+        version = self.config.version
         st.sidebar.markdown(f"**Version:** {version}")
         
         # Create columns for horizontal layout
@@ -681,7 +681,7 @@ class QCDashboard:
     def _get_qc_outcome_priority(self, outcome: str) -> int:
         """Get priority level for QC outcome."""
         # Get outcome priority mapping from config, with fallback defaults
-        config_priorities = self.config.get('outcome_priorities', {})
+        config_priorities = self.config.outcome_priorities or {}
         
         # Default outcome priority mapping (higher number = higher priority)
         default_priorities = {
@@ -701,7 +701,9 @@ class QCDashboard:
     def _get_qc_outcome_color(self, outcome: str) -> str:
         """Get color for QC outcome based on priority."""
         priority = self._get_qc_outcome_priority(outcome)
-        priority_colors = self.config.get('priority_colors', {})
+        priority_colors = {}
+        if self.config.app and self.config.app.priority_colors:
+            priority_colors = self.config.app.priority_colors
         
         # Default color mapping as fallback (darker text-friendly colors)
         default_color_mapping = {
@@ -737,7 +739,7 @@ class QCDashboard:
         if fig:
             st.plotly_chart(
                 fig,
-                use_container_width=True,
+                width='content',
                 key=key
             )
 
@@ -813,7 +815,7 @@ class QCDashboard:
         # Use data_editor to enable checkbox interaction
         edited_data = st.data_editor(
             styled_data,
-            use_container_width=True,
+            width='stretch',
             key=key,
             column_order=column_order,
             column_config=column_config,
@@ -1219,7 +1221,7 @@ class QCDashboard:
         # Display selectable dataframe
         selected_rows = st.dataframe(
             selection_df,
-            use_container_width=True,
+            width='stretch',
             hide_index=True,
             on_select="rerun",
             selection_mode="single-row",
@@ -1279,7 +1281,7 @@ class QCDashboard:
                 rules_df = pd.DataFrame(rules_table_data)
                 st.dataframe(
                     rules_df,
-                    use_container_width=True,
+                    width='stretch',
                     hide_index=True
                 )
                 
@@ -1331,7 +1333,7 @@ class QCDashboard:
                     rules_df = pd.DataFrame(rules_table_data)
                     st.dataframe(
                         rules_df,
-                        use_container_width=True,
+                        width='stretch',
                         hide_index=True
                     )
                 else:
@@ -1458,7 +1460,7 @@ class QCDashboard:
             # Display as a dataframe with styling
             st.dataframe(
                 display_warnings,
-                use_container_width=True,
+                width='stretch',
                 hide_index=True,
                 column_config={
                     'Type': st.column_config.TextColumn(
@@ -1581,17 +1583,22 @@ class QCDashboard:
             st.subheader("📁 Data Source")
             
             # Get source description
-            data_config = self.config.get('app', {}).get('input', {}).get(
-                'data'
-            )
             source_desc = "Unknown"
-            if isinstance(data_config, dict):
-                if data_config.get('api_call'):
-                    source_desc = f"API: {data_config['api_call']}"
-                elif data_config.get('file'):
-                    source_desc = f"File: {data_config['file']}"
-            elif isinstance(data_config, str):
-                source_desc = f"File: {data_config}"
+            if (self.config.app and self.config.app.input and
+                    self.config.app.input.data):
+                data_config = self.config.app.input.data
+                if isinstance(data_config, DataInput):
+                    if data_config.api_call:
+                        source_desc = f"API: {data_config.api_call}"
+                    elif data_config.file:
+                        source_desc = f"File: {data_config.file}"
+                elif isinstance(data_config, dict):
+                    if data_config.get('api_call'):
+                        source_desc = f"API: {data_config['api_call']}"
+                    elif data_config.get('file'):
+                        source_desc = f"File: {data_config['file']}"
+                elif isinstance(data_config, str):
+                    source_desc = f"File: {data_config}"
 
             if not self.data.empty:
                 source_info_placeholder = st.empty()

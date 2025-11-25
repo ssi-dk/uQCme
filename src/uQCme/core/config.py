@@ -65,6 +65,7 @@ class UQCMeConfig(BaseModel):
     qc: Optional[QCConfig] = None
     app: Optional[AppConfig] = None
     log: LogConfig = Field(default_factory=LogConfig)
+    outcome_priorities: Optional[Dict[str, int]] = None
 
     @field_validator('qc', 'app', mode='before')
     @classmethod

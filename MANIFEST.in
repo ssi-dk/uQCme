@@ -3,3 +3,4 @@ include CHANGELOG.md
 include requirements.txt
 include config.yaml
 recursive-include input *
+recursive-include src/uQCme/defaults *

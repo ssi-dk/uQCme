@@ -33,13 +33,44 @@ class QCDashboard:
         self.qc_tests: pd.DataFrame = pd.DataFrame()
         self.plotter: QCPlotter = QCPlotter(self.config)
         
-    def _load_config(self, config_path: str) -> Dict[str, Any]:
-        """Load configuration from YAML file."""
+    def _load_config(self, config_path: Optional[str]) -> Dict[str, Any]:
+        """Load configuration from YAML file or use defaults."""
+        if config_path:
+            try:
+                return load_config_from_file(config_path)
+            except Exception as e:
+                st.error(f"Error loading config: {e}")
+                st.stop()
+        else:
+            return self._get_default_config()
+
+    def _get_default_config(self) -> Dict[str, Any]:
+        """Get default configuration using bundled files."""
+        defaults_dir = Path(__file__).parent / 'defaults'
+        config_path = defaults_dir / 'config.yaml'
+        
         try:
-            return load_config_from_file(config_path)
+            config = load_config_from_file(str(config_path))
         except Exception as e:
-            st.error(f"Error loading config: {e}")
+            st.error(f"Error loading default config: {e}")
             st.stop()
+            
+        # Update paths to point to the defaults directory if local files don't exist
+        if 'app' in config and 'input' in config['app']:
+            inp = config['app']['input']
+            # Update mapping, rules, tests to absolute paths in defaults dir
+            for key in ['mapping', 'qc_rules', 'qc_tests']:
+                if key in inp and not os.path.exists(inp[key]):
+                    inp[key] = str(defaults_dir / Path(inp[key]).name)
+                    
+        if 'qc' in config and 'input' in config['qc']:
+            inp = config['qc']['input']
+            # Update mapping, rules, tests to absolute paths in defaults dir
+            for key in ['mapping', 'qc_rules', 'qc_tests']:
+                if key in inp and not os.path.exists(inp[key]):
+                    inp[key] = str(defaults_dir / Path(inp[key]).name)
+        
+        return config
 
     def _get_dashboard_config(self, key: str, default_value):
         """Get dashboard configuration value with fallback to default."""

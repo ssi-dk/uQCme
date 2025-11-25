@@ -102,26 +102,26 @@ class QCProcessor:
     def _get_default_config(self) -> Dict[str, Any]:
         """Get default configuration using bundled files."""
         defaults_dir = Path(__file__).parent / 'defaults'
+        config_path = defaults_dir / 'config.yaml'
         
         print(f"✓ Using default configuration from {defaults_dir}")
         
-        return {
-            'qc': {
-                'input': {
-                    'data': {},  # Will be overridden or empty
-                    'mapping': str(defaults_dir / 'mapping.yaml'),
-                    'qc_rules': str(defaults_dir / 'QC_rules.tsv'),
-                    'qc_tests': str(defaults_dir / 'QC_tests.tsv')
-                },
-                'output': {
-                    'results': 'qc_results.tsv',
-                    'warnings': 'qc_warnings.tsv'
-                }
-            },
-            'log': {
-                'file': 'uqcme.log'
-            }
-        }
+        try:
+            config = load_config_from_file(str(config_path))
+        except Exception as e:
+            print(f"✗ Error loading default config: {e}")
+            sys.exit(1)
+            
+        # Update paths to point to the defaults directory if local files don't exist
+        if 'qc' in config and 'input' in config['qc']:
+            inp = config['qc']['input']
+            # Update mapping, rules, tests to absolute paths in defaults dir
+            for key in ['mapping', 'qc_rules', 'qc_tests']:
+                if key in inp and not Path(inp[key]).exists():
+                    # We assume the default config has just filenames
+                    inp[key] = str(defaults_dir / Path(inp[key]).name)
+        
+        return config
 
     def load_input_files(self):
         """Load all input files specified in configuration."""

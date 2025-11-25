@@ -1,0 +1,38 @@
+title: "uQCme - Microbial QC Reporter"
+version: "0.1.0"
+
+qc:
+  input:
+    data:
+      file: ""
+    mapping: "mapping.yaml"
+    qc_rules: "QC_rules.tsv"
+    qc_tests: "QC_tests.tsv"
+  output:
+    results: "qc_results.tsv"
+    warnings: "qc_warnings.tsv"
+
+app:
+  server:
+    host: "127.0.0.1"
+    port: 3838
+  input:
+    data:
+      file: "qc_results.tsv"
+      api_call: ""
+    mapping: "mapping.yaml"
+    qc_rules: "QC_rules.tsv"
+    qc_tests: "QC_tests.tsv"
+    warnings: "qc_warnings.tsv"
+  dashboard:
+    categorical_filter_threshold: 20
+    section_toggle_columns: 3
+    max_displayed_rules: 10
+  ui_styling:
+  priority_colors:
+    1: "#90EE90"
+    2: "#FFFFE0"
+    3: "#F08080"
+    4: "#FFB6C1"
+log:
+  file: "uqcme.log"

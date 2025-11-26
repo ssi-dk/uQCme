@@ -2,7 +2,7 @@
 Pandera schemas for data validation.
 """
 
-import pandera.pandas as pa
+import pandera as pa
 from pandera.typing import Series
 from typing import Optional
 

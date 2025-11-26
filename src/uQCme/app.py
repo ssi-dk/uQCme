@@ -25,7 +25,7 @@ from uQCme.core.exceptions import ConfigError, DataLoadError
 class QCDashboard:
     """Main class for the QC dashboard application."""
 
-    def __init__(self, config_path: str):
+    def __init__(self, config_path: Optional[str]):
         """Initialize the dashboard with configuration."""
         self.config_path = config_path
         self.config: UQCMeConfig = self._load_config(config_path)
@@ -1682,7 +1682,7 @@ def _run_dashboard():
     parser = argparse.ArgumentParser(description='uQCme Dashboard')
     parser.add_argument(
         '--config',
-        default='config.yaml',
+        default=None,
         help='Path to configuration file'
     )
     
@@ -1693,10 +1693,29 @@ def _run_dashboard():
         # Streamlit might trigger this if --help is passed
         return
 
-    # Check if config file exists
-    if not Path(config_path).exists():
-        st.error(f"Configuration file '{config_path}' not found!")
-        st.stop()
+    # Logic to find config file
+    if config_path:
+        # User explicitly provided a path
+        if not Path(config_path).exists():
+            st.error(f"Configuration file '{config_path}' not found!")
+            st.stop()
+    else:
+        # Try default locations
+        possible_paths = ['config.yaml', 'config/config.yaml']
+        found = False
+        for path in possible_paths:
+            if Path(path).exists():
+                config_path = path
+                found = True
+                break
+        
+        if not found:
+            # If no config found, we'll let QCDashboard load defaults
+            # instead of stopping execution
+            config_path = None
+            st.info(
+                "No configuration file found. Using default configuration."
+            )
     
     # Initialize and run dashboard
     dashboard = QCDashboard(config_path)

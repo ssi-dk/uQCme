@@ -104,19 +104,35 @@ class QCDashboard:
             # Load processed QC results - check if API or file
             data_config = self.config.app.input.data
             
-            try:
-                self.data = load_data_from_config(data_config)
-                # Validate the loaded data if not empty
-                if not self.data.empty:
-                    self.data = self._validate_api_data(self.data)
-            except (DataLoadError, ConfigError) as e:
-                # Show why loading failed but don't stop
-                st.error(f"Data loading failed: {e}")
-                # If data loading fails, we'll handle it in run() by asking
-                # for upload
-                self.data = pd.DataFrame()
-            except Exception as e:
-                st.error(f"Unexpected error loading data: {e}")
+            # Check if data source is configured (file or api_call)
+            has_configured_source = False
+            if isinstance(data_config, DataInput):
+                if data_config.file or data_config.api_call:
+                    has_configured_source = True
+            elif isinstance(data_config, dict):
+                if data_config.get('file') or data_config.get('api_call'):
+                    has_configured_source = True
+            elif isinstance(data_config, str) and data_config:
+                has_configured_source = True
+
+            # Only attempt to load if a source is configured
+            if has_configured_source:
+                try:
+                    self.data = load_data_from_config(data_config)
+                    # Validate the loaded data if not empty
+                    if not self.data.empty:
+                        self.data = self._validate_api_data(self.data)
+                except (DataLoadError, ConfigError) as e:
+                    # Show why loading failed but don't stop
+                    st.error(f"Data loading failed: {e}")
+                    # If data loading fails, we'll handle it in run() by asking
+                    # for upload
+                    self.data = pd.DataFrame()
+                except Exception as e:
+                    st.error(f"Unexpected error loading data: {e}")
+                    self.data = pd.DataFrame()
+            else:
+                # No source configured, start with empty dataframe
                 self.data = pd.DataFrame()
             
             # Load QC rules

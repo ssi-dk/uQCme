@@ -829,6 +829,14 @@ class QCDashboard:
         # Configure columns
         column_config = {}
         
+        # Configure float columns to show compact numbers
+        for col in display_data.columns:
+            if display_data[col].dtype in ['float64', 'float32']:
+                column_config[col] = st.column_config.NumberColumn(
+                    col,
+                    format="compact"
+                )
+        
         # Configure the select column if present
         if 'Select' in display_data.columns:
             column_config['Select'] = st.column_config.CheckboxColumn(
@@ -1228,13 +1236,8 @@ class QCDashboard:
                 try:
                     val = sample_data[col]
                     if pd.notna(val) and isinstance(val, (int, float)):
-                        # Format based on value size
-                        if val > 1000:
-                            st.write(f"**{col}:** {val:,.0f}")
-                        elif val < 1:
-                            st.write(f"**{col}:** {val:.4f}")
-                        else:
-                            st.write(f"**{col}:** {val:.2f}")
+                        # Format with 2 decimal places
+                        st.write(f"**{col}:** {val:.2f}")
                         quality_metrics_displayed += 1
                 except (ValueError, TypeError):
                     continue

@@ -118,22 +118,41 @@ class QCDashboard:
             # Only attempt to load if a source is configured
             if has_configured_source:
                 try:
-                    self.data = load_data_from_config(data_config)
+                    self.data = load_data_from_config(data_config, self.mapping)
                     # Validate the loaded data if not empty
                     if not self.data.empty:
                         self.data = self._validate_api_data(self.data)
-                except (DataLoadError, ConfigError) as e:
-                    # Show why loading failed but don't stop
-                    st.error(f"Data loading failed: {e}")
+                    # Clear any previous API warnings
+                    self.api_warning = None
+                except DataLoadError as e:
+                    # Check for timeout/502 errors and show specific warnings
+                    if hasattr(e, 'error_type') and e.error_type in ['timeout', '502']:
+                        self.api_warning = {
+                            'type': e.error_type,
+                            'message': str(e),
+                            'status_code': getattr(e, 'status_code', None)
+                        }
+                        st.warning(
+                            f"⚠️ API Error ({e.error_type.upper()}): {e}\n\n"
+                            "You can upload a data file manually below."
+                        )
+                    else:
+                        st.error(f"Data loading failed: {e}")
                     # If data loading fails, we'll handle it in run() by asking
                     # for upload
                     self.data = pd.DataFrame()
+                except ConfigError as e:
+                    st.error(f"Configuration error: {e}")
+                    self.data = pd.DataFrame()
+                    self.api_warning = None
                 except Exception as e:
                     st.error(f"Unexpected error loading data: {e}")
                     self.data = pd.DataFrame()
+                    self.api_warning = None
             else:
                 # No source configured, start with empty dataframe
                 self.data = pd.DataFrame()
+                self.api_warning = None
             
             # Load QC rules
             rules_path = self.config.app.input.qc_rules
@@ -154,6 +173,60 @@ class QCDashboard:
             st.error(f"Error loading configuration files: {e}")
             st.stop()
 
+    def _get_field_by_role(self, role: str) -> Optional[str]:
+        """Get field name from mapping by its role (e.g., 'id', 'outcome', 'action').
+        
+        Searches the mapping configuration for fields with specific report roles.
+        """
+        sections = self.mapping.get('Sections', {})
+        
+        for section_data in sections.values():
+            for field_name, field_config in section_data.items():
+                if not isinstance(field_config, dict):
+                    continue
+                
+                report_config = field_config.get('report', {})
+                data_config = field_config.get('data', {})
+                qc_config = field_config.get('QC', {})
+                
+                # Check for specific roles
+                if role == 'id' and report_config.get('id'):
+                    # Return the QC mapping (output column name) if available
+                    return qc_config.get('mapping') or data_config.get('mapping')
+                elif role == 'outcome' and data_config.get('mapping') == 'qc_outcome':
+                    return 'qc_outcome'
+                elif role == 'action' and data_config.get('mapping') == 'qc_action':
+                    return 'qc_action'
+                elif role == 'failed_rules' and data_config.get('mapping') == 'failed_rules':
+                    return 'failed_rules'
+                elif role == 'passed_rules' and data_config.get('mapping') == 'passed_rules':
+                    return 'passed_rules'
+                elif role == 'species':
+                    qc_mapping = qc_config.get('mapping')
+                    if qc_mapping:
+                        if isinstance(qc_mapping, list) and 'species' in qc_mapping:
+                            return 'species'
+                        elif qc_mapping == 'species':
+                            return 'species'
+        
+        return None
+
+    def _get_id_field(self) -> Optional[str]:
+        """Get the ID field name from mapping configuration."""
+        return self._get_field_by_role('id')
+
+    def _get_outcome_field(self) -> Optional[str]:
+        """Get the QC outcome field name from mapping configuration."""
+        return self._get_field_by_role('outcome') or 'qc_outcome'
+
+    def _get_action_field(self) -> Optional[str]:
+        """Get the QC action field name from mapping configuration."""
+        return self._get_field_by_role('action') or 'qc_action'
+
+    def _get_species_field(self) -> Optional[str]:
+        """Get the species field name from mapping configuration."""
+        return self._get_field_by_role('species') or 'species'
+
     def _get_required_fields(self) -> dict:
         """Get required fields from mapping configuration."""
         required_fields = {
@@ -161,18 +234,25 @@ class QCDashboard:
             'important': []  # Fields that will break specific features
         }
         
-        # Critical fields that are used throughout the application
-        critical_fields = [
-            'sample_name',  # Used for sample selection and display
-            'qc_outcome'    # Used for metrics and filtering
-        ]
+        # Critical fields determined from mapping roles
+        id_field = self._get_id_field()
+        outcome_field = self._get_outcome_field()
         
-        # Important fields that are used in specific features
-        important_fields = [
-            'species',           # Used in overview charts and sample details
-            'provided_species',  # Used in sample details
-            'qc_action'          # Used for priority coloring
-        ]
+        critical_fields = []
+        if id_field:
+            critical_fields.append(id_field)
+        if outcome_field:
+            critical_fields.append(outcome_field)
+        
+        # Important fields determined from mapping roles
+        species_field = self._get_species_field()
+        action_field = self._get_action_field()
+        
+        important_fields = []
+        if species_field:
+            important_fields.append(species_field)
+        if action_field:
+            important_fields.append(action_field)
         
         # Get field mappings from configuration
         sections = self.mapping.get('Sections', {})
@@ -268,33 +348,48 @@ class QCDashboard:
         st.sidebar.markdown("---")
 
         # QC outcome metrics (based on filtered data)
-        pass_filter = filtered_data['qc_outcome'] == 'PASS'
-        pass_count = len(filtered_data[pass_filter])
-        
-        # Calculate total PASS from unfiltered data
-        total_pass_filter = self.data['qc_outcome'] == 'PASS'
-        total_pass_count = len(self.data[total_pass_filter])
-        
-        with col2:
-            if pass_count == total_pass_count:
-                st.metric("PASS", pass_count)
-            else:
-                delta_text = f"of {total_pass_count}"
-                st.metric("PASS", pass_count, delta=delta_text)
-        
-        fail_filter = filtered_data['qc_outcome'] != 'PASS'
-        fail_count = len(filtered_data[fail_filter])
-        
-        # Calculate total Issues from unfiltered data
-        total_fail_filter = self.data['qc_outcome'] != 'PASS'
-        total_fail_count = len(self.data[total_fail_filter])
-        
-        with col3:
-            if fail_count == total_fail_count:
-                st.metric("Issues", fail_count)
-            else:
-                delta_text = f"of {total_fail_count}"
-                st.metric("Issues", fail_count, delta=delta_text)
+        outcome_field = self._get_outcome_field()
+        if outcome_field and outcome_field in filtered_data.columns:
+            # Count PASS outcomes (check if any outcome contains 'PASS' prefix)
+            def contains_only_pass(val):
+                if pd.isna(val):
+                    return False
+                outcomes = str(val).split(',')
+                return all(o.strip().upper().startswith('PASS') for o in outcomes)
+            
+            pass_filter = filtered_data[outcome_field].apply(contains_only_pass)
+            pass_count = len(filtered_data[pass_filter])
+            
+            # Calculate total PASS from unfiltered data
+            total_pass_filter = self.data[outcome_field].apply(contains_only_pass)
+            total_pass_count = len(self.data[total_pass_filter])
+            
+            with col2:
+                if pass_count == total_pass_count:
+                    st.metric("PASS", pass_count)
+                else:
+                    delta_text = f"of {total_pass_count}"
+                    st.metric("PASS", pass_count, delta=delta_text)
+            
+            fail_filter = ~filtered_data[outcome_field].apply(contains_only_pass)
+            fail_count = len(filtered_data[fail_filter])
+            
+            # Calculate total Issues from unfiltered data
+            total_fail_filter = ~self.data[outcome_field].apply(contains_only_pass)
+            total_fail_count = len(self.data[total_fail_filter])
+            
+            with col3:
+                if fail_count == total_fail_count:
+                    st.metric("Issues", fail_count)
+                else:
+                    delta_text = f"of {total_fail_count}"
+                    st.metric("Issues", fail_count, delta=delta_text)
+        else:
+            # No outcome field available
+            with col2:
+                st.metric("PASS", "N/A")
+            with col3:
+                st.metric("Issues", "N/A")
 
     def _get_filterable_fields(self, data: pd.DataFrame) -> list:
         """Get all fields that should have filters based on mapping config."""
@@ -492,6 +587,10 @@ class QCDashboard:
                             )
         
         # Add sample name search (always available)
+        # Get the ID field from mapping
+        id_field = self._get_id_field()
+        search_field = id_field if id_field and id_field in filtered_data.columns else None
+        
         # Check if filters should be reset
         reset_filters = st.session_state.get('filters_reset', False)
         default_sample_value = ""
@@ -502,18 +601,19 @@ class QCDashboard:
             if key in st.session_state:
                 del st.session_state[key]
         
-        sample_filter = st.sidebar.text_input(
-            "Search Sample Names",
-            placeholder="Enter sample name...",
-            value=default_sample_value,
-            key="search_sample_name"
-        )
-        
-        if sample_filter:
-            contains_filter = filtered_data['sample_name'].str.contains(
-                sample_filter, case=False, na=False
+        if search_field:
+            sample_filter = st.sidebar.text_input(
+                f"Search {search_field}",
+                placeholder=f"Enter {search_field}...",
+                value=default_sample_value,
+                key="search_sample_name"
             )
-            filtered_data = filtered_data[contains_filter]
+            
+            if sample_filter:
+                contains_filter = filtered_data[search_field].astype(str).str.contains(
+                    sample_filter, case=False, na=False
+                )
+                filtered_data = filtered_data[contains_filter]
         
         # Clear the reset flag after all filters have been processed
         if st.session_state.get('filters_reset', False):
@@ -544,9 +644,26 @@ class QCDashboard:
                 # Skip if field_config is not a dict (e.g., boolean values)
                 if not isinstance(field_config, dict):
                     continue
-                    
+                
+                # Try data.mapping first, then QC.mapping as fallback
                 mapping_key = field_config.get('data', {}).get('mapping')
+                qc_mapping = field_config.get('QC', {}).get('mapping')
+                
+                # Determine which column to use based on what exists in the data
+                actual_column = None
                 if mapping_key and mapping_key in data.columns:
+                    actual_column = mapping_key
+                elif qc_mapping:
+                    # QC mapping can be a string or list
+                    if isinstance(qc_mapping, str) and qc_mapping in data.columns:
+                        actual_column = qc_mapping
+                    elif isinstance(qc_mapping, list):
+                        for qc_col in qc_mapping:
+                            if qc_col in data.columns:
+                                actual_column = qc_col
+                                break
+                
+                if actual_column:
                     # Get report configuration
                     report_config = field_config.get('report', {})
                     
@@ -555,7 +672,7 @@ class QCDashboard:
                                  report_config.get('hidden', False))
                     
                     section_cols.append({
-                        'column': mapping_key,
+                        'column': actual_column,
                         'field_name': field_name,
                         'hidden': is_hidden,
                         'filter': report_config.get('filter', False),
@@ -630,36 +747,18 @@ class QCDashboard:
         # Return None if no mapping found
         return None
 
-    def _get_priority_colored_columns(self, data: pd.DataFrame) -> list:
-        """Get columns that should have priority coloring based on mapping."""
-        priority_columns = []
-        sections_columns = self._get_columns_by_section(data)
+    def _get_qc_action_color(self, action: str) -> str:
+        """Get color for QC action based on action type."""
+        # Map actions to colors
+        action_colors = {
+            'none': "#00AA00",      # Green for no action needed
+            'review': "#FF8C00",    # Orange for review needed
+            'reject': "#DC143C",    # Red for reject
+            'return_to_lab': "#8B0000"  # Dark red for return to lab
+        }
         
-        for section_cols in sections_columns.values():
-            for col_info in section_cols:
-                column_name = col_info['column']
-                # Check if this column has priority_coloring enabled
-                if (column_name in data.columns and
-                        self._column_has_priority_coloring(column_name)):
-                    priority_columns.append(column_name)
-        
-        return priority_columns
-    
-    def _column_has_priority_coloring(self, column_name: str) -> bool:
-        """Check if a column has priority coloring enabled in mapping."""
-        sections = self.mapping.get('Sections', {})
-        
-        for section_data in sections.values():
-            for field_config in section_data.values():
-                if not isinstance(field_config, dict):
-                    continue
-                    
-                mapping_key = field_config.get('data', {}).get('mapping')
-                if mapping_key == column_name:
-                    report_config = field_config.get('report', {})
-                    return report_config.get('priority_coloring', False)
-        
-        return False
+        action_lower = str(action).lower()
+        return action_colors.get(action_lower, "#000000")
 
     def _get_ordered_columns_with_sections(
         self,
@@ -694,60 +793,6 @@ class QCDashboard:
         
         return ordered_cols
 
-    def _get_qc_outcome_priority(self, outcome: str) -> int:
-        """Get priority level for QC outcome."""
-        # Get outcome priority mapping from config, with fallback defaults
-        config_priorities = self.config.outcome_priorities or {}
-        
-        # Default outcome priority mapping (higher number = higher priority)
-        default_priorities = {
-            'PASS': 1,
-            'WARNING': 2,
-            'FAIL': 3,
-            'ERROR': 4
-        }
-        
-        # Use config priority if available, otherwise use default
-        outcome_upper = outcome.upper()
-        if outcome_upper in config_priorities:
-            return config_priorities[outcome_upper]
-        else:
-            return default_priorities.get(outcome_upper, 4)
-
-    def _get_qc_outcome_color(self, outcome: str) -> str:
-        """Get color for QC outcome based on priority."""
-        priority = self._get_qc_outcome_priority(outcome)
-        priority_colors = {}
-        if self.config.app and self.config.app.priority_colors:
-            priority_colors = self.config.app.priority_colors
-        
-        # Default color mapping as fallback (darker text-friendly colors)
-        default_color_mapping = {
-            1: "#00AA00",  # Dark green for PASS
-            2: "#FF8C00",  # Dark orange for WARNING
-            3: "#DC143C",  # Dark red for FAIL
-            4: "#8B0000"   # Dark red for ERROR
-        }
-        
-        # Use config color if available, otherwise use default mapping
-        if priority in priority_colors:
-            return priority_colors[priority]
-        else:
-            return default_color_mapping.get(priority, "#000000")
-
-    def _get_qc_action_color(self, action: str) -> str:
-        """Get color for QC action based on action type."""
-        # Map actions to colors
-        action_colors = {
-            'none': "#00AA00",      # Green for no action needed
-            'review': "#FF8C00",    # Orange for review needed
-            'reject': "#DC143C",    # Red for reject
-            'return_to_lab': "#8B0000"  # Dark red for return to lab
-        }
-        
-        action_lower = action.lower()
-        return action_colors.get(action_lower, "#000000")
-
     def _render_plotly_chart(self, fig, key: str, title: Optional[str] = None):
         """Helper method to render plotly charts with consistent styling."""
         if title:
@@ -761,7 +806,7 @@ class QCDashboard:
 
     def _render_styled_dataframe(self, filtered_data: pd.DataFrame,
                                  column_order: list, key: str):
-        """Helper method to render dataframe with QC styling and selection."""
+        """Helper method to render dataframe with selection checkboxes."""
         # Initialize session state for selected samples
         if 'selected_samples' not in st.session_state:
             st.session_state.selected_samples = set()
@@ -791,36 +836,20 @@ class QCDashboard:
                 help="Select this sample"
             )
         
-        # Apply QC styling for columns with priority coloring enabled
-        priority_columns = self._get_priority_colored_columns(display_data)
-        
-        if priority_columns:
-            def highlight_priority_values(val, column_name):
+        # Apply QC action styling if the column exists
+        action_field = self._get_action_field()
+        if action_field and action_field in display_data.columns:
+            def highlight_action_values(val):
                 if pd.isna(val):
                     return ''
-                
-                # For qc_outcome columns, use outcome-based coloring
-                if column_name == 'qc_outcome':
-                    color = self._get_qc_outcome_color(str(val))
-                # For qc_action columns, use action-based coloring
-                elif column_name == 'qc_action':
-                    color = self._get_qc_action_color(str(val))
-                else:
-                    # For other priority columns, try to get color by value
-                    color = self._get_qc_outcome_color(str(val))
-                
+                color = self._get_qc_action_color(str(val))
                 return (f'color: {color}; font-weight: bold; '
                         f'text-shadow: 0 0 3px {color};')
             
-            # Apply styling to all priority columns at once
-            styled_data = display_data.style
-            for column in priority_columns:
-                if column in display_data.columns:
-                    styled_data = styled_data.map(
-                        lambda val, col=column: highlight_priority_values(
-                            val, col),
-                        subset=[column]
-                    )
+            styled_data = display_data.style.map(
+                highlight_action_values,
+                subset=[action_field]
+            )
         else:
             styled_data = display_data
         
@@ -925,27 +954,26 @@ class QCDashboard:
             st.info(tip_msg)
         
         # Reorder dataframe columns to put important ones first
-        # while preserving all columns for eyeball functionality
+        # Only show columns from visible sections
         priority_columns = []
-        other_columns = []
         
-        # Add columns in section order priority
+        # Add columns in section order priority (only from visible sections)
         for col in ordered_columns:
             if col in filtered_data.columns:
                 priority_columns.append(col)
         
-        # Add remaining columns
-        for col in filtered_data.columns:
-            if col not in priority_columns:
-                other_columns.append(col)
+        # Create column order for Streamlit - only visible section columns
+        column_order = priority_columns
         
-        # Create column order for Streamlit's column_order parameter
-        column_order = priority_columns + other_columns
+        # Filter the dataframe to only show columns from visible sections
+        display_data = filtered_data[
+            [col for col in priority_columns if col in filtered_data.columns]
+        ] if priority_columns else filtered_data
         
-        # Display the dataframe with built-in controls and QC outcome styling
-        # Use the full filtered data to ensure column controls are available
+        # Display the dataframe with built-in controls and QC action styling
+        # Only show columns from visible sections
         self._render_styled_dataframe(
-            filtered_data, column_order, "data_preview_table"
+            display_data, column_order, "data_preview_table"
         )
         
         # Show column information organized by visible sections
@@ -1123,8 +1151,18 @@ class QCDashboard:
         """Render detailed sample information."""
         st.header("🔬 Sample Details")
         
-        # Sample selection
-        sample_options = filtered_data['sample_name'].tolist()
+        # Get field names from mapping
+        id_field = self._get_id_field()
+        outcome_field = self._get_outcome_field()
+        action_field = self._get_action_field()
+        species_field = self._get_species_field()
+        
+        # Sample selection - use ID field from mapping
+        if id_field and id_field in filtered_data.columns:
+            sample_options = filtered_data[id_field].tolist()
+        else:
+            st.warning("No ID field configured in mapping.")
+            return
         
         if not sample_options:
             st.warning("No samples match the current filters.")
@@ -1136,7 +1174,7 @@ class QCDashboard:
         )
         
         # Get sample data
-        selected_filter = filtered_data['sample_name'] == selected_sample
+        selected_filter = filtered_data[id_field] == selected_sample
         sample_data = filtered_data[selected_filter].iloc[0]
         
         # Display sample information
@@ -1144,21 +1182,62 @@ class QCDashboard:
         
         with col1:
             st.subheader("Basic Information")
-            st.write(f"**Sample Name:** {sample_data['sample_name']}")
-            st.write(f"**Species:** {sample_data['species']}")
-            provided_spec = sample_data.get('provided_species', 'N/A')
-            st.write(f"**Provided Species:** {provided_spec}")
-            st.write(f"**QC Outcome:** {sample_data['qc_outcome']}")
+            st.write(f"**{id_field}:** {sample_data[id_field]}")
+            
+            if species_field and species_field in sample_data:
+                species_val = sample_data.get(species_field, 'N/A')
+                st.write(f"**{species_field}:** {species_val}")
+            
+            # Display QC outcome
+            if outcome_field and outcome_field in sample_data:
+                outcome = sample_data[outcome_field]
+                st.write(f"**{outcome_field}:** {outcome}")
+            
+            # Display QC action with color highlighting if available
+            if action_field and action_field in sample_data and pd.notna(sample_data.get(action_field)):
+                action = sample_data[action_field]
+                action_color = self._get_qc_action_color(action)
+                st.markdown(
+                    f"**{action_field}:** <span style='color: {action_color}; "
+                    f"font-weight: bold;'>{action}</span>",
+                    unsafe_allow_html=True
+                )
         
         with col2:
             st.subheader("Quality Metrics")
-            if 'GC' in sample_data:
-                st.write(f"**GC Content:** {sample_data['GC']:.2f}%")
-            if 'N50' in sample_data:
-                st.write(f"**N50:** {sample_data['N50']:,.0f}")
-            if 'bin_length_at_1x' in sample_data:
-                genome_size = sample_data['bin_length_at_1x']
-                st.write(f"**Genome Size:** {genome_size:,.0f} bp")
+            # Display available numeric quality metrics dynamically
+            # Get system fields to skip from mapping
+            system_fields = set()
+            if id_field:
+                system_fields.add(id_field)
+            if outcome_field:
+                system_fields.add(outcome_field)
+            if action_field:
+                system_fields.add(action_field)
+            if species_field:
+                system_fields.add(species_field)
+            system_fields.update(['failed_rules', 'passed_rules', 'error'])
+            
+            quality_metrics_displayed = 0
+            for col in sample_data.index:
+                if quality_metrics_displayed >= 3:  # Limit to 3 metrics
+                    break
+                # Skip system columns
+                if col in system_fields:
+                    continue
+                try:
+                    val = sample_data[col]
+                    if pd.notna(val) and isinstance(val, (int, float)):
+                        # Format based on value size
+                        if val > 1000:
+                            st.write(f"**{col}:** {val:,.0f}")
+                        elif val < 1:
+                            st.write(f"**{col}:** {val:.4f}")
+                        else:
+                            st.write(f"**{col}:** {val:.2f}")
+                        quality_metrics_displayed += 1
+                except (ValueError, TypeError):
+                    continue
         
         # Failed and passed rules
         st.subheader("QC Rules Analysis")
@@ -1313,6 +1392,59 @@ class QCDashboard:
                 num_rules = len(rule_ids)
                 st.info(f"This test triggers when any of these "
                         f"{num_rules} rules fail:")
+                
+                # Create table with matching rules
+                rules_table_data = []
+                for rule_id in rule_ids:
+                    matching_rules = self.qc_rules[
+                        self.qc_rules['rule_id'] == rule_id
+                    ]
+                    
+                    if not matching_rules.empty:
+                        rule = matching_rules.iloc[0]
+                        rules_table_data.append({
+                            'Rule ID': rule_id,
+                            'Species': rule.get('species', 'N/A'),
+                            'Assembly Type': rule.get('assembly_type', 'N/A'),
+                            'Software': rule.get('software', 'N/A'),
+                            'Field': rule.get('field', 'N/A'),
+                            'Operator': rule.get('operator', 'N/A'),
+                            'Value': rule.get('value', 'N/A'),
+                            'Special Field': rule.get('special_field', 'N/A')
+                        })
+                    else:
+                        rules_table_data.append({
+                            'Rule ID': rule_id,
+                            'Species': 'Rule not found',
+                            'Assembly Type': '-',
+                            'Software': '-',
+                            'Field': '-',
+                            'Operator': '-',
+                            'Value': '-',
+                            'Special Field': '-'
+                        })
+                
+                if rules_table_data:
+                    rules_df = pd.DataFrame(rules_table_data)
+                    st.dataframe(
+                        rules_df,
+                        width='stretch',
+                        hide_index=True
+                    )
+                else:
+                    st.warning("No matching rules found.")
+            elif conditions.startswith('passed_rules_contain:'):
+                # Extract rule IDs and show them in a table
+                condition_part = conditions.replace(
+                    'passed_rules_contain:', ''
+                )
+                rule_ids = [
+                    rule.strip() for rule in condition_part.split(',')
+                ]
+                
+                num_rules = len(rule_ids)
+                st.info(f"This test triggers when any of these "
+                        f"{num_rules} rules pass:")
                 
                 # Create table with matching rules
                 rules_table_data = []
@@ -1529,12 +1661,13 @@ class QCDashboard:
                     st.error("Uploaded file is empty or could not be read.")
                     return False
 
-                # Check for ID column
+                # Check for ID column using mapping configuration
                 id_col = self._get_id_column(df)
-                if not id_col and 'sample_name' not in df.columns:
+                if not id_col:
+                    id_field = self._get_id_field()
                     st.error(
-                        "⚠️ Could not find the configured ID column or "
-                        "'sample_name' in the uploaded file. Please check "
+                        f"⚠️ Could not find the configured ID column "
+                        f"('{id_field}') in the uploaded file. Please check "
                         "your file format (TSV/CSV) and headers."
                     )
                     return False
@@ -1645,8 +1778,31 @@ class QCDashboard:
         
         # Check if data is loaded (if empty and no upload in sidebar)
         if self.data.empty:
-            st.info("No processed QC data found. Please upload a raw run "
-                    "data file to process.")
+            # Show specific message for API timeout/502 errors
+            if hasattr(self, 'api_warning') and self.api_warning:
+                error_type = self.api_warning.get('type', 'unknown')
+                if error_type == '502':
+                    st.warning(
+                        "⚠️ **API returned 502 Bad Gateway error**\n\n"
+                        "The server may be overloaded or temporarily "
+                        "unavailable. **All samples from this API request "
+                        "are affected** - no data was retrieved.\n\n"
+                        "Please try again later or upload a data file "
+                        "manually below."
+                    )
+                elif error_type == 'timeout':
+                    st.warning(
+                        "⚠️ **API request timed out**\n\n"
+                        "The request took too long to complete (>30 seconds). "
+                        "**All samples from this API request are affected** - "
+                        "no data was retrieved.\n\n"
+                        "This may indicate the server is processing many "
+                        "samples or is under heavy load. Please try again "
+                        "later or upload a data file manually below."
+                    )
+            else:
+                st.info("No processed QC data found. Please upload a raw run "
+                        "data file to process.")
             uploaded_file = st.file_uploader(
                 "Upload Run Data (TSV)", type=['tsv', 'txt', 'csv'],
                 key="main_uploader"

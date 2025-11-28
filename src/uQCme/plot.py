@@ -182,6 +182,11 @@ class QCPlotter:
             y_name = self._format_column_name(y_metric)
             title = f"{x_name} vs {y_name}"
         
+        # Determine which columns to include in hover_data
+        hover_cols = ['sample_name']
+        if 'species' in data.columns:
+            hover_cols.append('species')
+        
         fig = px.scatter(
             data,
             x=x_metric,
@@ -192,7 +197,7 @@ class QCPlotter:
                 x_metric: self._format_column_name(x_metric),
                 y_metric: self._format_column_name(y_metric)
             },
-            hover_data=['sample_name', 'species'],
+            hover_data=hover_cols,
             color_discrete_map=self._get_outcome_colors()
         )
         
@@ -259,9 +264,8 @@ class QCPlotter:
         # Failed rules analysis
         plots['failed_rules'] = self.create_failed_rules_chart(data)
         
-        # Quality metrics (if available)
-        numeric_cols = ['GC', 'N50', 'bin_length_at_1x', 'filtered_reads_num']
-        available_cols = [col for col in numeric_cols if col in data.columns]
+        # Quality metrics (dynamically find available numeric columns)
+        available_cols = get_available_metrics(data)
         
         if available_cols:
             # Distribution of first available metric
@@ -303,18 +307,17 @@ class QCPlotter:
 
     def _format_column_name(self, col_name: str) -> str:
         """Format column name for display."""
-        name_mapping = {
-            'GC': 'GC Content (%)',
-            'N50': 'N50 (bp)',
-            'bin_length_at_1x': 'Genome Size (bp)',
-            'filtered_reads_num': 'Filtered Reads Count',
-            'completeness': 'Completeness (%)',
-            'contamination': 'Contamination (%)',
-            'contigs': 'Contig Count',
-            'largest_contig': 'Largest Contig (bp)',
-            'total_length': 'Total Length (bp)'
-        }
-        return name_mapping.get(col_name, col_name.replace('_', ' ').title())
+        # Handle common patterns and return human-readable names
+        # Remove common prefixes
+        display_name = col_name
+        for prefix in ['QC/', 'QC.', 'QC_']:
+            if display_name.startswith(prefix):
+                display_name = display_name[len(prefix):]
+                break
+        
+        # Replace underscores and format
+        display_name = display_name.replace('_', ' ').title()
+        return display_name
 
     def _get_outcome_colors(self) -> Dict[str, str]:
         """Get color mapping for QC outcomes."""
@@ -337,13 +340,23 @@ class QCPlotter:
 
 def get_available_metrics(data: pd.DataFrame) -> list:
     """Get list of available numeric metrics for plotting."""
-    potential_metrics = [
-        'GC', 'N50', 'bin_length_at_1x', 'filtered_reads_num',
-        'completeness', 'contamination', 'contigs',
-        'largest_contig', 'total_length'
+    # Exclude system/non-metric columns
+    excluded_cols = [
+        'sample_name', 'species', 'qc_outcome', 'qc_action',
+        'failed_rules', 'passed_rules', 'error', 'Select'
     ]
     
-    return [col for col in potential_metrics if col in data.columns]
+    available_metrics = []
+    for col in data.columns:
+        if col in excluded_cols:
+            continue
+        # Check if column is numeric
+        if pd.api.types.is_numeric_dtype(data[col]):
+            # Ensure there's actual data (not all NaN)
+            if data[col].notna().any():
+                available_metrics.append(col)
+    
+    return available_metrics
 
 
 def validate_metric_for_plotting(data: pd.DataFrame, metric: str) -> bool:

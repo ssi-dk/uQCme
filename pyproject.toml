@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "uQCme"
 dynamic = ["version"]
-description = "Microbial Quality Control Dashboard"
+description = "Microbial Quality Control Tool - CLI and Dashboard"
 readme = "README.md"
 requires-python = ">=3.8"
 authors = [
@@ -17,14 +17,20 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
+# Core dependencies for CLI (lightweight)
 dependencies = [
-    "streamlit>=1.28.0",
     "pandas>=1.5.0",
-    "plotly>=5.15.0",
     "PyYAML>=6.0",
-    "openpyxl>=3.0.0",
     "pydantic>=2.0.0",
     "pandera>=0.18.0",
+]
+
+[project.optional-dependencies]
+# Full installation with dashboard
+full = [
+    "streamlit>=1.28.0",
+    "plotly>=5.15.0",
+    "openpyxl>=3.0.0",
 ]
 
 [project.scripts]

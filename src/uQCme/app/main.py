@@ -1348,8 +1348,15 @@ class QCDashboard:
         st.write(f"**Description:** {description}")
         action = selected_test['action_required']
         st.write(f"**Action Required:** {action}")
-        conditions = selected_test['rule_conditions']
-        st.write(f"**Rule Conditions:** {conditions}")
+        
+        # Display rule conditions
+        passed_conditions = selected_test.get('passed_rule_conditions', '')
+        failed_conditions = selected_test.get('failed_rule_conditions', '')
+        
+        if pd.notna(passed_conditions) and passed_conditions:
+            st.write(f"**Passed Rule Conditions:** {passed_conditions}")
+        if pd.notna(failed_conditions) and failed_conditions:
+            st.write(f"**Failed Rule Conditions:** {failed_conditions}")
         
         # Related QC Rules Table
         st.subheader("Related QC Rules")
@@ -1358,145 +1365,78 @@ class QCDashboard:
             st.warning("No QC rules data available.")
             return
         
-        # Parse rule conditions to find related rules
-        conditions = selected_test['rule_conditions']
+        # Parse rule conditions from the two columns
+        passed_conditions = selected_test.get('passed_rule_conditions', '')
+        failed_conditions = selected_test.get('failed_rule_conditions', '')
         
-        if pd.notna(conditions) and isinstance(conditions, str):
-            if conditions == 'no_failed_rules':
-                st.info("This test passes when no rules fail. "
-                        "Showing all QC rules:")
-                # Show all rules in a table
-                rules_table_data = []
-                for _, rule in self.qc_rules.iterrows():
-                    rules_table_data.append({
-                        'Rule ID': rule.get('rule_id', 'Unknown'),
-                        'Species': rule.get('species', 'N/A'),
-                        'Assembly Type': rule.get('assembly_type', 'N/A'),
-                        'Software': rule.get('software', 'N/A'),
-                        'Field': rule.get('field', 'N/A'),
-                        'Operator': rule.get('operator', 'N/A'),
-                        'Value': rule.get('value', 'N/A'),
-                        'Special Field': rule.get('special_field', 'N/A')
-                    })
-                
+        has_passed = pd.notna(passed_conditions) and passed_conditions and passed_conditions.strip()
+        has_failed = pd.notna(failed_conditions) and failed_conditions and failed_conditions.strip()
+        
+        if not has_passed and not has_failed:
+            st.info("No rule conditions specified for this test.")
+            return
+        
+        # Build description
+        desc_parts = []
+        if has_failed:
+            failed_rule_ids = [r.strip() for r in failed_conditions.split(',')]
+            desc_parts.append(f"ANY of {len(failed_rule_ids)} rules fail (OR logic)")
+        if has_passed:
+            passed_rule_ids = [r.strip() for r in passed_conditions.split(',')]
+            desc_parts.append(f"ALL of {len(passed_rule_ids)} rules pass (AND logic)")
+        
+        st.info(f"This test triggers when: {' **AND** '.join(desc_parts)}")
+        
+        # Show failed rules section
+        if has_failed:
+            failed_rule_ids = [r.strip() for r in failed_conditions.split(',')]
+            st.markdown("**Failed Rules (OR - any must fail):**")
+            rules_table_data = self._get_rules_table_data(failed_rule_ids)
+            if rules_table_data:
                 rules_df = pd.DataFrame(rules_table_data)
-                st.dataframe(
-                    rules_df,
-                    width='stretch',
-                    hide_index=True
-                )
-                
-            elif conditions.startswith('failed_rules_contain:'):
-                # Extract rule IDs and show them in a table
-                condition_part = conditions.replace(
-                    'failed_rules_contain:', ''
-                )
-                rule_ids = [
-                    rule.strip() for rule in condition_part.split(',')
-                ]
-                
-                num_rules = len(rule_ids)
-                st.info(f"This test triggers when any of these "
-                        f"{num_rules} rules fail:")
-                
-                # Create table with matching rules
-                rules_table_data = []
-                for rule_id in rule_ids:
-                    matching_rules = self.qc_rules[
-                        self.qc_rules['rule_id'] == rule_id
-                    ]
-                    
-                    if not matching_rules.empty:
-                        rule = matching_rules.iloc[0]
-                        rules_table_data.append({
-                            'Rule ID': rule_id,
-                            'Species': rule.get('species', 'N/A'),
-                            'Assembly Type': rule.get('assembly_type', 'N/A'),
-                            'Software': rule.get('software', 'N/A'),
-                            'Field': rule.get('field', 'N/A'),
-                            'Operator': rule.get('operator', 'N/A'),
-                            'Value': rule.get('value', 'N/A'),
-                            'Special Field': rule.get('special_field', 'N/A')
-                        })
-                    else:
-                        rules_table_data.append({
-                            'Rule ID': rule_id,
-                            'Species': 'Rule not found',
-                            'Assembly Type': '-',
-                            'Software': '-',
-                            'Field': '-',
-                            'Operator': '-',
-                            'Value': '-',
-                            'Special Field': '-'
-                        })
-                
-                if rules_table_data:
-                    rules_df = pd.DataFrame(rules_table_data)
-                    st.dataframe(
-                        rules_df,
-                        width='stretch',
-                        hide_index=True
-                    )
-                else:
-                    st.warning("No matching rules found.")
-            elif conditions.startswith('passed_rules_contain:'):
-                # Extract rule IDs and show them in a table
-                condition_part = conditions.replace(
-                    'passed_rules_contain:', ''
-                )
-                rule_ids = [
-                    rule.strip() for rule in condition_part.split(',')
-                ]
-                
-                num_rules = len(rule_ids)
-                st.info(f"This test triggers when any of these "
-                        f"{num_rules} rules pass:")
-                
-                # Create table with matching rules
-                rules_table_data = []
-                for rule_id in rule_ids:
-                    matching_rules = self.qc_rules[
-                        self.qc_rules['rule_id'] == rule_id
-                    ]
-                    
-                    if not matching_rules.empty:
-                        rule = matching_rules.iloc[0]
-                        rules_table_data.append({
-                            'Rule ID': rule_id,
-                            'Species': rule.get('species', 'N/A'),
-                            'Assembly Type': rule.get('assembly_type', 'N/A'),
-                            'Software': rule.get('software', 'N/A'),
-                            'Field': rule.get('field', 'N/A'),
-                            'Operator': rule.get('operator', 'N/A'),
-                            'Value': rule.get('value', 'N/A'),
-                            'Special Field': rule.get('special_field', 'N/A')
-                        })
-                    else:
-                        rules_table_data.append({
-                            'Rule ID': rule_id,
-                            'Species': 'Rule not found',
-                            'Assembly Type': '-',
-                            'Software': '-',
-                            'Field': '-',
-                            'Operator': '-',
-                            'Value': '-',
-                            'Special Field': '-'
-                        })
-                
-                if rules_table_data:
-                    rules_df = pd.DataFrame(rules_table_data)
-                    st.dataframe(
-                        rules_df,
-                        width='stretch',
-                        hide_index=True
-                    )
-                else:
-                    st.warning("No matching rules found.")
+                st.dataframe(rules_df, width='stretch', hide_index=True)
+        
+        # Show passed rules section
+        if has_passed:
+            passed_rule_ids = [r.strip() for r in passed_conditions.split(',')]
+            st.markdown("**Passed Rules (AND - all must pass):**")
+            rules_table_data = self._get_rules_table_data(passed_rule_ids)
+            if rules_table_data:
+                rules_df = pd.DataFrame(rules_table_data)
+                st.dataframe(rules_df, width='stretch', hide_index=True)
+
+    def _get_rules_table_data(self, rule_ids: list) -> list:
+        """Get table data for a list of rule IDs."""
+        rules_table_data = []
+        for rule_id in rule_ids:
+            matching_rules = self.qc_rules[
+                self.qc_rules['rule_id'] == rule_id
+            ]
+            
+            if not matching_rules.empty:
+                rule = matching_rules.iloc[0]
+                rules_table_data.append({
+                    'Rule ID': rule_id,
+                    'Species': rule.get('species', 'N/A'),
+                    'Assembly Type': rule.get('assembly_type', 'N/A'),
+                    'Software': rule.get('software', 'N/A'),
+                    'Field': rule.get('field', 'N/A'),
+                    'Operator': rule.get('operator', 'N/A'),
+                    'Value': rule.get('value', 'N/A'),
+                    'Special Field': rule.get('special_field', 'N/A')
+                })
             else:
-                st.warning("Rule condition format not recognized.")
-                st.code(conditions)
-        else:
-            st.warning("No rule conditions specified for this test.")
+                rules_table_data.append({
+                    'Rule ID': rule_id,
+                    'Species': 'Rule not found',
+                    'Assembly Type': '-',
+                    'Software': '-',
+                    'Field': '-',
+                    'Operator': '-',
+                    'Value': '-',
+                    'Special Field': '-'
+                })
+        return rules_table_data
 
     def render_warnings_tab(self):
         """Render the warnings tab showing processing warnings and issues."""

@@ -9,7 +9,7 @@ description = "Microbial Quality Control Tool - CLI and Dashboard"
 readme = "README.md"
 requires-python = ">=3.8"
 authors = [
-  {name = "SSI-DK", email = "kimn@ssi.dk"},
+  {name = "Kim Ng", email = "kimn@ssi.dk"},
 ]
 urls = { "Repository" = "https://github.com/ssi-dk/uQCme" }
 classifiers = [
@@ -17,7 +17,7 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
-# Core dependencies for CLI (lightweight)
+# Core dependencies (shared logic)
 dependencies = [
     "pandas>=1.5.0",
     "PyYAML>=6.0",
@@ -26,16 +26,24 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Full installation with dashboard
-full = [
+# CLI - no additional dependencies beyond core
+cli = []
+# App/Dashboard dependencies
+app = [
+    "streamlit>=1.28.0",
+    "plotly>=5.15.0",
+    "openpyxl>=3.0.0",
+]
+# All dependencies (CLI + App)
+all = [
     "streamlit>=1.28.0",
     "plotly>=5.15.0",
     "openpyxl>=3.0.0",
 ]
 
 [project.scripts]
-uqcme = "uQCme.cli:main"
-uqcme-dashboard = "uQCme.app:main"
+uqcme = "uQCme.cli.main:main"
+uqcme-dashboard = "uQCme.app.main:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

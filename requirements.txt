@@ -1,11 +1,11 @@
-# Core dependencies (CLI)
+# Core dependencies (shared logic)
 pandas>=1.5.0
 PyYAML>=6.0
 pydantic>=2.0.0
 pandera>=0.18.0
 
-# Full install dependencies (dashboard)
-# Install with: pip install uqcme[full]
+# App/Dashboard dependencies
+# Install with: pip install uqcme[app] or uqcme[all]
 # streamlit>=1.28.0
 # plotly>=5.15.0
 # openpyxl>=3.0.0

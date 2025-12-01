@@ -57,14 +57,24 @@ The tool handles specific QC rules for the following species (as defined in the 
 
 ### From PyPI
 
-**CLI only (lightweight):**
+**Core only (shared logic):**
 ```bash
 pip install uqcme
 ```
 
+**CLI only:**
+```bash
+pip install uqcme[cli]
+```
+
+**Dashboard/App only:**
+```bash
+pip install uqcme[app]
+```
+
 **Full installation (CLI + Web Dashboard):**
 ```bash
-pip install uqcme[full]
+pip install uqcme[all]
 ```
 
 ### From Source
@@ -73,11 +83,11 @@ pip install uqcme[full]
 git clone https://github.com/ssi-dk/uQCme.git
 cd uQCme/uqcme
 
-# CLI only
+# Core only
 pip install .
 
 # Full installation
-pip install ".[full]"
+pip install ".[all]"
 ```
 
 ## Usage

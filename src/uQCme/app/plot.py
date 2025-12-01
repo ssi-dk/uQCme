@@ -5,8 +5,8 @@ uQCme Plotting Library
 Contains all plotting and visualization functions for the uQCme application.
 This module provides reusable plotting components for QC data visualization.
 
-Note: This module requires the 'full' extras to be installed:
-    pip install uqcme[full]
+Note: This module requires the 'app' or 'all' extras to be installed:
+    pip install uqcme[app]
 """
 
 import pandas as pd

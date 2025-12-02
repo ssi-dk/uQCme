@@ -383,7 +383,8 @@ class QCProcessor:
         
         Uses two separate columns:
         - failed_rule_conditions: comma-separated rules, OR logic (any failure triggers)
-        - passed_rule_conditions: comma-separated rules, AND logic (all must pass)
+        - passed_rule_conditions: comma-separated rules, NONE-FAILED logic 
+          (none of these rules can be in failed_rules)
         
         Both conditions must be satisfied if specified (AND between columns).
         
@@ -421,9 +422,15 @@ class QCProcessor:
             failed_match = True  # Default to True if not specified
             
             if has_passed_conditions:
-                # AND logic - ALL rules must be in passed_rules
+                # NONE-FAILED logic - NONE of these rules can be in failed_rules
+                # BUT at least one of these rules must have been evaluated (in passed_rules or failed_rules)
                 required_rules = [r.strip() for r in passed_conditions.split(',')]
-                passed_match = all(rule in passed_rules for rule in required_rules)
+                # Check if at least one rule was evaluated
+                any_evaluated = any(rule in passed_rules or rule in failed_rules for rule in required_rules)
+                if not any_evaluated:
+                    passed_match = False  # Skip this test if none of the rules were evaluated
+                else:
+                    passed_match = not any(rule in failed_rules for rule in required_rules)
             
             if has_failed_conditions:
                 # OR logic - ANY rule must be in failed_rules

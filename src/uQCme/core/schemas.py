@@ -51,7 +51,7 @@ class QCTestsSchema(pa.DataFrameModel):
     )
     passed_rule_conditions: Optional[Series[str]] = pa.Field(
         nullable=True,
-        description="Comma-separated list of rules that must ALL pass (AND logic)"
+        description="Comma-separated list of rules that must NOT fail (none-failed logic)"
     )
     failed_rule_conditions: Optional[Series[str]] = pa.Field(
         nullable=True,

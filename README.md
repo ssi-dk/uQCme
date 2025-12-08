@@ -55,12 +55,39 @@ The tool handles specific QC rules for the following species (as defined in the 
 
 ## Installation
 
-uQCme is a Python package. You can install it directly from the source:
+### From PyPI
+
+**Core only (shared logic):**
+```bash
+pip install uqcme
+```
+
+**CLI only:**
+```bash
+pip install uqcme[cli]
+```
+
+**Dashboard/App only:**
+```bash
+pip install uqcme[app]
+```
+
+**Full installation (CLI + Web Dashboard):**
+```bash
+pip install uqcme[all]
+```
+
+### From Source
 
 ```bash
 git clone https://github.com/ssi-dk/uQCme.git
 cd uQCme
+
+# Core only
 pip install .
+
+# Full installation
+pip install ".[all]"
 ```
 
 ## Usage

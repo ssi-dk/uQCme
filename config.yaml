@@ -15,7 +15,7 @@ qc:
 app:
   server:
     host: "127.0.0.1"
-    port: 3838
+    port: 8501
   input:
     data:
       file: "./output/example/uQCme_run_data.tsv" # can also load via an API, only 1 can be enabled

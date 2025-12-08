@@ -1,12 +1,12 @@
-outcome_id	outcome_name	description	priority	rule_conditions	action_required
-PASS	Pass	All QC criteria met	1	no_failed_rules	none
-WARN_COMPLETENESS	Warning - Completeness	Completeness below optimal but acceptable	2	failed_rules_contain:A1	review
-WARN_CONTAMINATION	Warning - Contamination	Contamination above optimal but acceptable	2	failed_rules_contain:A2	review
-WARN_GC_RANGE	Warning - GC Content	GC content outside acceptable range	2	failed_rules_contain:A14,A15	review
-WARN_ECOLI_QC	Warning - E. coli QC	E. coli specific quality warnings	2	failed_rules_contain:EC1,EC2	review
-FAIL_ASSEMBLY	Fail - Assembly Quality	Critical assembly quality issues	3	failed_rules_contain:A8,A9,A10,A11	reject
-FAIL_SPECIES	Fail - Species Detection	Species detection or matching issues	3	failed_rules_contain:A3,A17,A19	return_to_lab
-FAIL_SIZE	Fail - Genome Size	Genome size outside acceptable range	3	failed_rules_contain:A6,A7,A12,A13	reject
-FAIL_ECOLI_SIZE	Fail - E. coli Size	E. coli genome size outside expected range	3	failed_rules_contain:EC6,EC7,EC8,EC9	reject
-FAIL_ECOLI_SPECIES	Fail - E. coli Species	E. coli species identification failed	3	failed_rules_contain:EC5,EC13,EC14,EC15	return_to_lab
-FAIL_MAPPING_ISSUES	Fail - Data Quality	Critical data mapping issues	4	failed_rules_contain:A14,A15,A18,A20,A21	reject
+outcome_id	outcome_name	description	priority	passed_rule_conditions	failed_rule_conditions	action_required
+PASS	Pass	All QC criteria met	1			none
+WARN_COMPLETENESS	Warning - Completeness	Completeness below optimal but acceptable	2		A1	review
+WARN_CONTAMINATION	Warning - Contamination	Contamination above optimal but acceptable	2		A2	review
+WARN_GC_RANGE	Warning - GC Content	GC content outside acceptable range	2		A14,A15	review
+WARN_ECOLI_QC	Warning - E. coli QC	E. coli specific quality warnings	2		EC1,EC2	review
+FAIL_ASSEMBLY	Fail - Assembly Quality	Critical assembly quality issues	3		A8,A9,A10,A11	reject
+FAIL_SPECIES	Fail - Species Detection	Species detection or matching issues	3		A3,A17,A19	return_to_lab
+FAIL_SIZE	Fail - Genome Size	Genome size outside acceptable range	3		A6,A7,A12,A13	reject
+FAIL_ECOLI_SIZE	Fail - E. coli Size	E. coli genome size outside expected range	3		EC6,EC7,EC8,EC9	reject
+FAIL_ECOLI_SPECIES	Fail - E. coli Species	E. coli species identification failed	3		EC5,EC13,EC14,EC15	return_to_lab
+FAIL_MAPPING_ISSUES	Fail - Data Quality	Critical data mapping issues	4		A14,A15,A18,A20,A21	reject

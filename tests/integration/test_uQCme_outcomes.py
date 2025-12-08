@@ -210,7 +210,7 @@ class TestUQCmeOutcomes(unittest.TestCase):
     def test_warnings_generated(self):
         """Test that appropriate warnings are generated."""
         expected_warnings = {
-            "Field 'Ns per 100 kbp' not found in sample data"
+            "Field 'Ns per 100 kbp' not found in sample data (no mapping defined in config)"
         }
         
         actual_warnings = self.processor.warnings

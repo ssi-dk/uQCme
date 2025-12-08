@@ -49,8 +49,13 @@ class QCTestsSchema(pa.DataFrameModel):
     priority: Series[int] = pa.Field(
         ge=1, description="Priority level (higher number = higher priority)"
     )
-    rule_conditions: Series[str] = pa.Field(
-        description="Conditions for this outcome (e.g., failed_rules_contain:A1)"
+    passed_rule_conditions: Optional[Series[str]] = pa.Field(
+        nullable=True,
+        description="Comma-separated list of rules that must NOT fail (all-must-pass logic)"
+    )
+    failed_rule_conditions: Optional[Series[str]] = pa.Field(
+        nullable=True,
+        description="Comma-separated list of rules where ANY failure triggers (OR logic)"
     )
     action_required: Series[str] = pa.Field(
         description="Action required for this outcome"

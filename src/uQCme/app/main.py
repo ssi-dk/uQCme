@@ -54,7 +54,7 @@ class QCDashboard:
 
     def _get_default_config(self) -> UQCMeConfig:
         """Get default configuration using bundled files."""
-        defaults_dir = Path(__file__).parent / 'defaults'
+        defaults_dir = Path(__file__).parent.parent / 'defaults'
         config_path = defaults_dir / 'config.yaml'
         
         try:

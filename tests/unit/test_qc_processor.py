@@ -102,48 +102,51 @@ class TestQCProcessor(unittest.TestCase):
 
     def test_determine_qc_outcomes(self):
         """Test QC outcome determination logic."""
-        # Mock QC tests dataframe
+        # Mock QC tests dataframe with new two-column schema
         self.processor.qc_tests = pd.DataFrame([
             {
                 'outcome_id': 'PASS',
-                'rule_conditions': 'no_failed_rules',
+                'passed_rule_conditions': '',
+                'failed_rule_conditions': '',
                 'priority': 1,
                 'action_required': 'none'
             },
             {
                 'outcome_id': 'WARN_TEST',
-                'rule_conditions': 'failed_rules_contain:R1,R2',
+                'passed_rule_conditions': '',
+                'failed_rule_conditions': 'R1,R2',
                 'priority': 2,
                 'action_required': 'review'
             },
             {
                 'outcome_id': 'FAIL_TEST',
-                'rule_conditions': 'failed_rules_contain:R3',
+                'passed_rule_conditions': '',
+                'failed_rule_conditions': 'R3',
                 'priority': 3,
                 'action_required': 'reject'
             }
         ])
 
-        # Test no failed rules
-        outcomes = self.processor._determine_qc_outcomes([])
+        # Test no failed rules (both empty = PASS when no failures)
+        outcomes = self.processor._determine_qc_outcomes([], [])
         self.assertIn('PASS', outcomes)
 
         # Test warning condition (R1 failed)
-        outcomes = self.processor._determine_qc_outcomes(['R1'])
+        outcomes = self.processor._determine_qc_outcomes(['R1'], [])
         self.assertIn('WARN_TEST', outcomes)
         self.assertNotIn('PASS', outcomes)
 
         # Test fail condition (R3 failed)
-        outcomes = self.processor._determine_qc_outcomes(['R3'])
+        outcomes = self.processor._determine_qc_outcomes(['R3'], [])
         self.assertIn('FAIL_TEST', outcomes)
 
         # Test multiple failures
-        outcomes = self.processor._determine_qc_outcomes(['R1', 'R3'])
+        outcomes = self.processor._determine_qc_outcomes(['R1', 'R3'], [])
         self.assertIn('WARN_TEST', outcomes)
         self.assertIn('FAIL_TEST', outcomes)
 
         # Test unknown rule failure (should default to FAIL)
-        outcomes = self.processor._determine_qc_outcomes(['R99'])
+        outcomes = self.processor._determine_qc_outcomes(['R99'], [])
         self.assertIn('FAIL', outcomes)
 
     def test_determine_qc_action(self):

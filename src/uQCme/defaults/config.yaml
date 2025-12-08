@@ -1,5 +1,5 @@
 title: "uQCme - Microbial QC Reporter"
-version: "0.1.0"
+version: "0.2.0"
 
 qc:
   input:
@@ -15,7 +15,7 @@ qc:
 app:
   server:
     host: "127.0.0.1"
-    port: 3838
+    port: 8501
   input:
     data:
       file: "qc_results.tsv"

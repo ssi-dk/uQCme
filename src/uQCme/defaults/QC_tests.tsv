@@ -1,20 +1,20 @@
-outcome_id	outcome_name	description	priority	rule_conditions	action_required
-PASS	Pass	All QC criteria met	1	no_failed_rules	none
-FAIL_GENERAL	Fail - General QC	General quality control criteria failed	4	failed_rules_contain:A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16,A17,A18,A19,A20,A21	reject
-FAIL_ACINETOBACTER_BAUMANNII	Fail - Acinetobacter baumannii QC	Acinetobacter baumannii specific quality control failed	3	failed_rules_contain:AB1,AB2,AB3,AB4,AB5,AB6,AB7,AB8,AB9,AB10,AB11,AB12,AB13,AB14,AB15,AB16,AB17,AB18,AB19	reject
-FAIL_CAMPYLOBACTER_COLI	Fail - Campylobacter coli QC	Campylobacter coli specific quality control failed	3	failed_rules_contain:CC1,CC2,CC3,CC4,CC5,CC6,CC7,CC8,CC9,CC10,CC11,CC12,CC13,CC14,CC15,CC16,CC17,CC18,CC19	reject
-FAIL_CAMPYLOBACTER_JEJUNI	Fail - Campylobacter jejuni QC	Campylobacter jejuni specific quality control failed	3	failed_rules_contain:CJ1,CJ2,CJ3,CJ4,CJ5,CJ6,CJ7,CJ8,CJ9,CJ10,CJ11,CJ12,CJ13,CJ14,CJ15,CJ16,CJ17,CJ18,CJ19	reject
-FAIL_ESCHERICHIA_COLI	Fail - Escherichia coli QC	Escherichia coli specific quality control failed	3	failed_rules_contain:EC1,EC2,EC3,EC4,EC5,EC6,EC7,EC8,EC9,EC10,EC11,EC12,EC13,EC14,EC15,EC16,EC17,EC18,EC19	reject
-FAIL_ENTEROCOCCUS_FAECIUM	Fail - Enterococcus faecium QC	Enterococcus faecium specific quality control failed	3	failed_rules_contain:EF1,EF2,EF3,EF4,EF5,EF6,EF7,EF8,EF9,EF10,EF11,EF12,EF13,EF14,EF15,EF16,EF17,EF18,EF19	reject
-FAIL_ENTEROBACTER_SPP	Fail - Enterobacter spp. QC	Enterobacter spp. specific quality control failed	3	failed_rules_contain:EN1,EN2,EN3,EN4,EN5,EN6,EN7,EN8,EN9,EN10,EN11,EN12,EN13,EN14,EN15,EN16,EN17,EN18,EN19	reject
-FAIL_HAEMOPHILUS_INFLUENZAE	Fail - Haemophilus influenzae QC	Haemophilus influenzae specific quality control failed	3	failed_rules_contain:HI1,HI2,HI3,HI4,HI5,HI6,HI7,HI8,HI9,HI10,HI11,HI12,HI13,HI14,HI15,HI16,HI17,HI18,HI19	reject
-FAIL_HELICOBACTER_PYLORI	Fail - Helicobacter pylori QC	Helicobacter pylori specific quality control failed	3	failed_rules_contain:HP1,HP2,HP3,HP4,HP5,HP6,HP7,HP8,HP9,HP10,HP11,HP12,HP13,HP14,HP15,HP16,HP17,HP18,HP19	reject
-FAIL_KLEBSIELLA_PNEUMONIAE	Fail - Klebsiella pneumoniae QC	Klebsiella pneumoniae specific quality control failed	3	failed_rules_contain:KP1,KP2,KP3,KP4,KP5,KP6,KP7,KP8,KP9,KP10,KP11,KP12,KP13,KP14,KP15,KP16,KP17,KP18,KP19,KP20,KP21,KP22,KP23,KP24,KP25,KP26,KP27,KP28,KP29,KP30,KP31,KP32,KP33,KP34,KP35,KP36,KP37,KP38	reject
-FAIL_MYCOPLASMA_GENITALIUM	Fail - Mycoplasma genitalium QC	Mycoplasma genitalium specific quality control failed	3	failed_rules_contain:MG1,MG2,MG3,MG4,MG5,MG6,MG7,MG8,MG9,MG10,MG11,MG12,MG13,MG14,MG15,MG16,MG17,MG18,MG19	reject
-FAIL_NEISSERIA_GONORRHOEAE	Fail - Neisseria gonorrhoeae QC	Neisseria gonorrhoeae specific quality control failed	3	failed_rules_contain:NG1,NG2,NG3,NG4,NG5,NG6,NG7,NG8,NG9,NG10,NG11,NG12,NG13,NG14,NG15,NG16,NG17,NG18,NG19	reject
-FAIL_PSEUDOMONAS_AERUGINOSA	Fail - Pseudomonas aeruginosa QC	Pseudomonas aeruginosa specific quality control failed	3	failed_rules_contain:PA1,PA2,PA3,PA4,PA5,PA6,PA7,PA8,PA9,PA10,PA11,PA12,PA13,PA14,PA15,PA16,PA17,PA18,PA19	reject
-FAIL_STAPHYLOCOCCUS_AUREUS	Fail - Staphylococcus aureus QC	Staphylococcus aureus specific quality control failed	3	failed_rules_contain:SA1,SA2,SA3,SA4,SA5,SA6,SA7,SA8,SA9,SA10,SA11,SA12,SA13,SA14,SA15,SA16,SA17,SA18,SA19	reject
-FAIL_SALMONELLA_ENTERICA	Fail - Salmonella enterica QC	Salmonella enterica specific quality control failed	3	failed_rules_contain:SE1,SE2,SE3,SE4,SE5,SE6,SE7,SE8,SE9,SE10,SE11,SE12,SE13,SE14,SE15,SE16,SE17,SE18,SE19	reject
-FAIL_SHIGELLA_FLEXNERI	Fail - Shigella flexneri QC	Shigella flexneri specific quality control failed	3	failed_rules_contain:SF1,SF2,SF3,SF4,SF5,SF6,SF7,SF8,SF9,SF10,SF11,SF12,SF13,SF14,SF15,SF16,SF17,SF18,SF19	reject
-FAIL_STREPTOCOCCUS_PNEUMONIAE	Fail - Streptococcus pneumoniae QC	Streptococcus pneumoniae specific quality control failed	3	failed_rules_contain:SP1,SP2,SP3,SP4,SP5,SP6,SP7,SP8,SP9,SP10,SP11,SP12,SP13,SP14,SP15,SP16,SP17,SP18,SP19	reject
-FAIL_SHIGELLA_SONNEI	Fail - Shigella sonnei QC	Shigella sonnei specific quality control failed	3	failed_rules_contain:SS1,SS2,SS3,SS4,SS5,SS6,SS7,SS8,SS9,SS10,SS11,SS12,SS13,SS14,SS15,SS16,SS17,SS18,SS19	reject
+outcome_id	outcome_name	description	priority	passed_rule_conditions	failed_rule_conditions	action_required
+PASS	Pass	All QC criteria met	1			none
+FAIL_GENERAL	Fail - General QC	General quality control criteria failed	4		A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16,A17,A18,A19,A20,A21	reject
+FAIL_ACINETOBACTER_BAUMANNII	Fail - Acinetobacter baumannii QC	Acinetobacter baumannii specific quality control failed	3		AB1,AB2,AB3,AB4,AB5,AB6,AB7,AB8,AB9,AB10,AB11,AB12,AB13,AB14,AB15,AB16,AB17,AB18,AB19	reject
+FAIL_CAMPYLOBACTER_COLI	Fail - Campylobacter coli QC	Campylobacter coli specific quality control failed	3		CC1,CC2,CC3,CC4,CC5,CC6,CC7,CC8,CC9,CC10,CC11,CC12,CC13,CC14,CC15,CC16,CC17,CC18,CC19	reject
+FAIL_CAMPYLOBACTER_JEJUNI	Fail - Campylobacter jejuni QC	Campylobacter jejuni specific quality control failed	3		CJ1,CJ2,CJ3,CJ4,CJ5,CJ6,CJ7,CJ8,CJ9,CJ10,CJ11,CJ12,CJ13,CJ14,CJ15,CJ16,CJ17,CJ18,CJ19	reject
+FAIL_ESCHERICHIA_COLI	Fail - Escherichia coli QC	Escherichia coli specific quality control failed	3		EC1,EC2,EC3,EC4,EC5,EC6,EC7,EC8,EC9,EC10,EC11,EC12,EC13,EC14,EC15,EC16,EC17,EC18,EC19	reject
+FAIL_ENTEROCOCCUS_FAECIUM	Fail - Enterococcus faecium QC	Enterococcus faecium specific quality control failed	3		EF1,EF2,EF3,EF4,EF5,EF6,EF7,EF8,EF9,EF10,EF11,EF12,EF13,EF14,EF15,EF16,EF17,EF18,EF19	reject
+FAIL_ENTEROBACTER_SPP	Fail - Enterobacter spp. QC	Enterobacter spp. specific quality control failed	3		EN1,EN2,EN3,EN4,EN5,EN6,EN7,EN8,EN9,EN10,EN11,EN12,EN13,EN14,EN15,EN16,EN17,EN18,EN19	reject
+FAIL_HAEMOPHILUS_INFLUENZAE	Fail - Haemophilus influenzae QC	Haemophilus influenzae specific quality control failed	3		HI1,HI2,HI3,HI4,HI5,HI6,HI7,HI8,HI9,HI10,HI11,HI12,HI13,HI14,HI15,HI16,HI17,HI18,HI19	reject
+FAIL_HELICOBACTER_PYLORI	Fail - Helicobacter pylori QC	Helicobacter pylori specific quality control failed	3		HP1,HP2,HP3,HP4,HP5,HP6,HP7,HP8,HP9,HP10,HP11,HP12,HP13,HP14,HP15,HP16,HP17,HP18,HP19	reject
+FAIL_KLEBSIELLA_PNEUMONIAE	Fail - Klebsiella pneumoniae QC	Klebsiella pneumoniae specific quality control failed	3		KP1,KP2,KP3,KP4,KP5,KP6,KP7,KP8,KP9,KP10,KP11,KP12,KP13,KP14,KP15,KP16,KP17,KP18,KP19,KP20,KP21,KP22,KP23,KP24,KP25,KP26,KP27,KP28,KP29,KP30,KP31,KP32,KP33,KP34,KP35,KP36,KP37,KP38	reject
+FAIL_MYCOPLASMA_GENITALIUM	Fail - Mycoplasma genitalium QC	Mycoplasma genitalium specific quality control failed	3		MG1,MG2,MG3,MG4,MG5,MG6,MG7,MG8,MG9,MG10,MG11,MG12,MG13,MG14,MG15,MG16,MG17,MG18,MG19	reject
+FAIL_NEISSERIA_GONORRHOEAE	Fail - Neisseria gonorrhoeae QC	Neisseria gonorrhoeae specific quality control failed	3		NG1,NG2,NG3,NG4,NG5,NG6,NG7,NG8,NG9,NG10,NG11,NG12,NG13,NG14,NG15,NG16,NG17,NG18,NG19	reject
+FAIL_PSEUDOMONAS_AERUGINOSA	Fail - Pseudomonas aeruginosa QC	Pseudomonas aeruginosa specific quality control failed	3		PA1,PA2,PA3,PA4,PA5,PA6,PA7,PA8,PA9,PA10,PA11,PA12,PA13,PA14,PA15,PA16,PA17,PA18,PA19	reject
+FAIL_STAPHYLOCOCCUS_AUREUS	Fail - Staphylococcus aureus QC	Staphylococcus aureus specific quality control failed	3		SA1,SA2,SA3,SA4,SA5,SA6,SA7,SA8,SA9,SA10,SA11,SA12,SA13,SA14,SA15,SA16,SA17,SA18,SA19	reject
+FAIL_SALMONELLA_ENTERICA	Fail - Salmonella enterica QC	Salmonella enterica specific quality control failed	3		SE1,SE2,SE3,SE4,SE5,SE6,SE7,SE8,SE9,SE10,SE11,SE12,SE13,SE14,SE15,SE16,SE17,SE18,SE19	reject
+FAIL_SHIGELLA_FLEXNERI	Fail - Shigella flexneri QC	Shigella flexneri specific quality control failed	3		SF1,SF2,SF3,SF4,SF5,SF6,SF7,SF8,SF9,SF10,SF11,SF12,SF13,SF14,SF15,SF16,SF17,SF18,SF19	reject
+FAIL_STREPTOCOCCUS_PNEUMONIAE	Fail - Streptococcus pneumoniae QC	Streptococcus pneumoniae specific quality control failed	3		SP1,SP2,SP3,SP4,SP5,SP6,SP7,SP8,SP9,SP10,SP11,SP12,SP13,SP14,SP15,SP16,SP17,SP18,SP19	reject
+FAIL_SHIGELLA_SONNEI	Fail - Shigella sonnei QC	Shigella sonnei specific quality control failed	3		SS1,SS2,SS3,SS4,SS5,SS6,SS7,SS8,SS9,SS10,SS11,SS12,SS13,SS14,SS15,SS16,SS17,SS18,SS19	reject

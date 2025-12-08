@@ -9,8 +9,8 @@ configurable quality control rules and tests.
 import argparse
 import sys
 from typing import Dict, Any, Optional
-from .core.engine import QCProcessor
-from .core.exceptions import UQCMeError
+from uQCme.core.engine import QCProcessor
+from uQCme.core.exceptions import UQCMeError
 
 
 def main():

@@ -93,8 +93,8 @@ class QCProcessor:
     def load_input_files(self):
         """Load all input files specified in configuration."""
         try:
-            self.load_run_data()
             self.load_reference_data()
+            self.load_run_data()
         except Exception as e:
             self.logger.error(f"✗ Error loading files: {e}")
             raise
@@ -102,7 +102,8 @@ class QCProcessor:
     def load_run_data(self):
         """Load run data from configuration."""
         data_config = self.qc_config.input.data
-        self.run_data = load_data_from_config(data_config)
+        # Pass mapping config for column name normalization
+        self.run_data = load_data_from_config(data_config, self.mapping)
         self.logger.info("✓ Run data loaded: %d samples",
                          len(self.run_data))
 
@@ -189,9 +190,17 @@ class QCProcessor:
         self.logger.info(f"✓ QC overrides loaded: {self.qc_overrides}")
 
     def _apply_operator(self, value: Any, operator: str,
-                        threshold: Any) -> bool:
+                        threshold: Any, field_name: str = "unknown") -> bool:
         """Apply comparison operator between value and threshold."""
         try:
+            # Handle null/None/NaN values - treat as missing data, rule fails
+            if value is None or pd.isna(value) or str(value).lower() in ('null', 'none', 'nan', ''):
+                self.logger.debug(
+                    f"Null/missing value for field '{field_name}', "
+                    f"skipping comparison"
+                )
+                return False
+            
             # Handle numeric comparisons
             if operator == '>=':
                 return float(value) >= float(threshold)
@@ -212,7 +221,10 @@ class QCProcessor:
                 self.logger.warning(f"Unknown operator {operator}")
                 return False
         except (ValueError, TypeError) as e:
-            self.logger.warning(f"Error applying operator {operator}: {e}")
+            self.logger.warning(
+                f"Error applying operator {operator} on field '{field_name}': "
+                f"value='{value}', threshold='{threshold}' - {e}"
+            )
             return False
 
     def _evaluate_rule(self, sample_data: pd.Series, rule: pd.Series) -> str:
@@ -230,12 +242,24 @@ class QCProcessor:
         # Build dynamic field mapping from configuration
         field_mapping = self._build_field_mapping()
 
-        # Get the actual column name
+        # Get the actual column name from mapping
         actual_field = field_mapping.get(field_name, field_name)
 
         # Check if field exists in sample data
         if actual_field not in sample_data.index:
-            warning_msg = f"Field '{actual_field}' not found in sample data"
+            # Generate helpful warning message
+            if field_name in field_mapping:
+                # Field was mapped but target column doesn't exist
+                warning_msg = (
+                    f"Field '{field_name}' (mapped to '{actual_field}') "
+                    f"not found in sample data"
+                )
+            else:
+                # Field has no mapping defined
+                warning_msg = (
+                    f"Field '{field_name}' not found in sample data "
+                    f"(no mapping defined in config)"
+                )
             self.warnings.add(warning_msg)
             self.skipped_rules.add(rule_id)
             return 'SKIP'
@@ -246,7 +270,7 @@ class QCProcessor:
             threshold = rule['value']
 
             # Apply the rule
-            if self._apply_operator(value, operator, threshold):
+            if self._apply_operator(value, operator, threshold, actual_field):
                 return 'PASS'
             else:
                 return 'FAIL'
@@ -258,8 +282,11 @@ class QCProcessor:
         """Get sample attributes with defaults from QC overrides."""
         attributes = {}
 
-        # Get species from sample data
-        attributes['species'] = sample.get('species', '')
+        # Get species from sample data (strip whitespace)
+        species_val = sample.get('species', '')
+        if isinstance(species_val, str):
+            species_val = species_val.strip()
+        attributes['species'] = species_val
 
         # Get assembly_type with override default
         default_assembly = self.qc_overrides.get('assembly_type', 'short')
@@ -274,10 +301,14 @@ class QCProcessor:
     def _rule_matches_criteria(self, rule: pd.Series,
                                sample_attributes: Dict[str, str]) -> bool:
         """Check if a rule matches the sample criteria."""
-        # Species filtering
-        rule_species = rule['species']
-        sample_species = sample_attributes['species']
-        if rule_species != 'all' and rule_species != sample_species:
+        # Species filtering (strip whitespace for comparison)
+        rule_species = str(rule['species']).strip() if pd.notna(rule['species']) else ''
+        sample_species = str(sample_attributes['species']).strip() if sample_attributes.get('species') else ''
+        # Explicitly handle empty species values: if either is empty, do not match unless rule_species is 'all'
+        if rule_species == '' or sample_species == '':
+            if rule_species != 'all':
+                return False
+        elif rule_species != 'all' and rule_species.lower() != sample_species.lower():
             return False
 
         # Assembly type filtering
@@ -337,7 +368,7 @@ class QCProcessor:
             sample_results['passed_rules'] = passed_str
 
             # Determine QC outcomes
-            qc_outcomes = self._determine_qc_outcomes(failed_rules)
+            qc_outcomes = self._determine_qc_outcomes(failed_rules, passed_rules)
             outcome_str = ','.join(qc_outcomes) if qc_outcomes else 'PASS'
             sample_results['qc_outcome'] = outcome_str
             
@@ -350,30 +381,69 @@ class QCProcessor:
         self.results = pd.DataFrame(results_list)
         self.logger.info(f"✓ Processed {len(self.results)} samples")
 
-    def _determine_qc_outcomes(self, failed_rules: List[str]) -> List[str]:
-        """Determine QC test outcomes based on failed rules."""
+    def _determine_qc_outcomes(self, failed_rules: List[str],
+                                passed_rules: List[str]) -> List[str]:
+        """Determine QC test outcomes based on failed and passed rules.
+        
+        Uses two separate columns:
+        - failed_rule_conditions: comma-separated rules, OR logic (any failure triggers)
+        - passed_rule_conditions: comma-separated rules, none-failed logic 
+          (none of these rules can be in failed_rules)
+        
+        Both conditions must be satisfied if specified (AND between columns).
+        
+        Special case: If both columns are empty/NaN, the test matches only when
+        there are no failed rules (equivalent to old 'no_failed_rules').
+        """
         outcomes = []
 
         for _, test in self.qc_tests.iterrows():
-            condition = test['rule_conditions']
-
-            # Skip if condition is NaN or not a string
-            if pd.isna(condition) or not isinstance(condition, str):
+            passed_conditions = test.get('passed_rule_conditions')
+            failed_conditions = test.get('failed_rule_conditions')
+            
+            # Check if passed_rule_conditions is specified
+            has_passed_conditions = (
+                pd.notna(passed_conditions) and 
+                isinstance(passed_conditions, str) and 
+                passed_conditions.strip()
+            )
+            
+            # Check if failed_rule_conditions is specified
+            has_failed_conditions = (
+                pd.notna(failed_conditions) and 
+                isinstance(failed_conditions, str) and 
+                failed_conditions.strip()
+            )
+            
+            # Special case: both columns empty = match when no failed rules
+            if not has_passed_conditions and not has_failed_conditions:
+                if not failed_rules:  # No failed rules = this test matches
+                    outcomes.append(test['outcome_id'])
                 continue
-
-            if condition == 'no_failed_rules':
-                if not failed_rules:
-                    outcomes.append(test['outcome_id'])
-            elif condition.startswith('failed_rules_contain:'):
-                # Extract rule IDs from condition
-                condition_part = condition.replace('failed_rules_contain:', '')
-                required_rules = condition_part.split(',')
-                # Check if any of the required rules failed
-                rule_found = any(
-                    rule.strip() in failed_rules for rule in required_rules
-                )
-                if rule_found:
-                    outcomes.append(test['outcome_id'])
+            
+            # Evaluate conditions
+            passed_match = True  # Default to True if not specified
+            failed_match = True  # Default to True if not specified
+            
+            if has_passed_conditions:
+                # NONE-FAILED logic - NONE of these rules can be in failed_rules
+                # BUT at least one of these rules must have been evaluated (in passed_rules or failed_rules)
+                required_rules = [r.strip() for r in passed_conditions.split(',')]
+                # Check if at least one rule was evaluated
+                any_evaluated = any(rule in passed_rules or rule in failed_rules for rule in required_rules)
+                if not any_evaluated:
+                    passed_match = False  # Skip this test if none of the rules were evaluated
+                else:
+                    passed_match = not any(rule in failed_rules for rule in required_rules)
+            
+            if has_failed_conditions:
+                # OR logic - ANY rule must be in failed_rules
+                required_rules = [r.strip() for r in failed_conditions.split(',')]
+                failed_match = any(rule in failed_rules for rule in required_rules)
+            
+            # Both conditions must be satisfied (AND between columns)
+            if passed_match and failed_match:
+                outcomes.append(test['outcome_id'])
 
         # If no specific outcomes, but there are failed rules, mark as
         # general failure

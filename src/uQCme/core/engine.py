@@ -304,7 +304,11 @@ class QCProcessor:
         # Species filtering (strip whitespace for comparison)
         rule_species = str(rule['species']).strip() if pd.notna(rule['species']) else ''
         sample_species = str(sample_attributes['species']).strip() if sample_attributes.get('species') else ''
-        if rule_species != 'all' and rule_species.lower() != sample_species.lower():
+        # Explicitly handle empty species values: if either is empty, do not match unless rule_species is 'all'
+        if rule_species == '' or sample_species == '':
+            if rule_species != 'all':
+                return False
+        elif rule_species != 'all' and rule_species.lower() != sample_species.lower():
             return False
 
         # Assembly type filtering

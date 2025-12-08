@@ -81,7 +81,7 @@ pip install uqcme[all]
 
 ```bash
 git clone https://github.com/ssi-dk/uQCme.git
-cd uQCme/uqcme
+cd uQCme
 
 # Core only
 pip install .

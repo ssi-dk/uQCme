@@ -387,7 +387,7 @@ class QCProcessor:
         
         Uses two separate columns:
         - failed_rule_conditions: comma-separated rules, OR logic (any failure triggers)
-        - passed_rule_conditions: comma-separated rules, NONE-FAILED logic 
+        - passed_rule_conditions: comma-separated rules, none-failed logic 
           (none of these rules can be in failed_rules)
         
         Both conditions must be satisfied if specified (AND between columns).

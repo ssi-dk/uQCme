@@ -45,8 +45,6 @@ all = [
 [project.scripts]
 uqcme = "uQCme.cli.main:main"
 uqcme-dashboard = "uQCme.app.main:main"
-uqcme = "uQCme.cli.main:main"
-uqcme-dashboard = "uQCme.app.main:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

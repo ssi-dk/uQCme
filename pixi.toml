@@ -3,7 +3,7 @@ authors = ["Kim Ng <kimleeng@gmail.com>"]
 channels = ["conda-forge", "bioconda", "bioconda"]
 name = "uQCme"
 platforms = ["osx-arm64"]
-version = "0.2.0"
+version = "0.5.0"
 
 [tasks]
 

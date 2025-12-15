@@ -7,7 +7,9 @@ name = "uQCme"
 dynamic = ["version"]
 description = "Microbial Quality Control Dashboard"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12,<3.13"
+keywords = ["qc", "quality-control", "microbial", "sequencing", "dashboard"]
 authors = [
   {name = "Kim Ng", email = "kimn@ssi.dk"},
 ]

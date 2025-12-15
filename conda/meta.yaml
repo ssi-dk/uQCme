@@ -7,31 +7,20 @@ package:
   name: uqcme
   version: {{ version }}
 
-source:
-  path: ..
-
 build:
   noarch: python
   number: 0
-  script: python -m pip install . -vv --no-deps --no-build-isolation
-  entry_points:
-    - uqcme = uQCme.cli.main:main
-    - uqcme-dashboard = uQCme.app.main:main
+  script: pip install uqcme[all]=={{ version }} --no-deps
 
 requirements:
   host:
     - python >=3.12,<3.13
     - pip
-    - setuptools >=61.0
   run:
     - python >=3.12,<3.13
-    - streamlit >=1.28.0
-    - pandas >=1.5.0
-    - plotly >=5.15.0
-    - pyyaml >=6.0
-    - openpyxl >=3.0.0
-    - pydantic >=2.0.0
-    - pandera >=0.18.0
+    - pip
+    # Core dependencies (installed via pip from PyPI)
+    # The package and its Python dependencies come from PyPI
 
 test:
   imports:
@@ -49,6 +38,8 @@ about:
     A comprehensive quality control (QC) tool for microbial sequencing data
     that provides both command-line processing and interactive web-based
     visualization capabilities.
+    
+    This conda package installs uqcme from PyPI.
   dev_url: https://github.com/ssi-dk/uQCme
 
 extra:

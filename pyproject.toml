@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "uQCme"
-version = "0.5.0"
+dynamic = ["version"]
 description = "Microbial Quality Control Dashboard"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
@@ -46,8 +46,20 @@ all = [
 uqcme = "uQCme.cli.main:main"
 uqcme-dashboard = "uQCme.app.main:main"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.hatch.version]
+path = "src/uQCme/__init__.py"
 
-[tool.setuptools.package-data]
-uQCme = ["defaults/*"]
+[tool.hatch.build.targets.wheel]
+packages = ["src/uQCme"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/README.md",
+]
+
+[tool.hatch.build]
+include = [
+    "src/uQCme/**/*.py",
+    "src/uQCme/defaults/*",
+]

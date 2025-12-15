@@ -1,5 +1,5 @@
 {% set name = "uqcme" %}
-{% set data = load_file_regex(load_file=RECIPE_DIR + "/../src/uqcme/__init__.py", regex_pattern="__version__\\s*=\\s*['\"]([^'\"]+)['\"]") %}
+{% set data = load_file_regex(load_file=RECIPE_DIR + "/../src/uQCme/__init__.py", regex_pattern="__version__\\s*=\\s*['\"]([^'\"]+)['\"]") %}
 {% set version = data.group(1) %}
 
 

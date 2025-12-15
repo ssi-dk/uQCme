@@ -4,13 +4,13 @@
 
 
 package:
-  name: uqcme
+  name: {{ name }}
   version: {{ version }}
 
 build:
   noarch: python
   number: 0
-  script: pip install uqcme[all]=={{ version }} --no-deps
+  script: pip install {{ name }}[all]=={{ version }} --no-deps
 
 requirements:
   host:

@@ -1,10 +1,11 @@
-from typing import Dict, Optional, Union, Any
+from typing import Dict, List, Optional, Union, Any
 from pydantic import BaseModel, Field, field_validator
 
 
 class DataInput(BaseModel):
     file: Optional[str] = None
     api_call: Optional[str] = None
+    api_query_params: Optional[Union[List[str], Dict[str, str]]] = None
 
 
 class QCInput(BaseModel):

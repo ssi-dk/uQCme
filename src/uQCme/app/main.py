@@ -17,7 +17,8 @@ from streamlit.web import cli as stcli
 import pandas as pd
 import yaml
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional, Union
+from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
 from uQCme.app.plot import QCPlotter, get_available_metrics
 from uQCme.core.loader import load_data_from_config, load_config_from_file
 from uQCme.core.engine import QCProcessor
@@ -92,6 +93,72 @@ class QCDashboard:
             return getattr(self.config.app.dashboard, key, default_value)
         return default_value
 
+    def _build_api_url_with_query_params(
+        self,
+        base_url: str,
+        api_query_params: Optional[Union[List[str], Dict[str, str]]]
+    ) -> str:
+        """
+        Build API URL by appending query parameters from browser URL.
+        
+        Args:
+            base_url: The base API URL from config.
+            api_query_params: Configuration for which URL params to pass through.
+                - If a list: pass through those exact parameter names from browser URL
+                - If a dict: map browser URL param names to API param names
+                
+        Returns:
+            The complete API URL with query parameters appended.
+        """
+        if not api_query_params:
+            return base_url
+        
+        # Get query params from browser URL
+        browser_params = st.query_params.to_dict()
+        
+        if not browser_params:
+            return base_url
+        
+        # Build the params to add to API URL
+        api_params = {}
+        
+        if isinstance(api_query_params, list):
+            # Simple list: pass through params with same name
+            for param_name in api_query_params:
+                if param_name in browser_params:
+                    api_params[param_name] = browser_params[param_name]
+        elif isinstance(api_query_params, dict):
+            # Dict: map browser param name -> API param name
+            for browser_param, api_param in api_query_params.items():
+                if browser_param in browser_params:
+                    api_params[api_param] = browser_params[browser_param]
+        
+        if not api_params:
+            return base_url
+        
+        # Parse the base URL and append query params
+        parsed = urlparse(base_url)
+        existing_params = parse_qs(parsed.query)
+        
+        # Merge existing params with new params (new params take precedence)
+        for key, value in existing_params.items():
+            if key not in api_params:
+                # parse_qs returns lists, take first value
+                api_params[key] = value[0] if value else ''
+        
+        # Rebuild URL with merged params
+        new_query = urlencode(api_params)
+        new_url = urlunparse((
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path,
+            parsed.params,
+            new_query,
+            parsed.fragment
+        ))
+        
+        return new_url
+
     def load_data(self):
         """Load all required data files or from API."""
         if not self.config.app:
@@ -117,6 +184,27 @@ class QCDashboard:
                     has_configured_source = True
             elif isinstance(data_config, str) and data_config:
                 has_configured_source = True
+
+            # Build dynamic API URL with browser query params if configured
+            if isinstance(data_config, DataInput) and data_config.api_call:
+                api_query_params = data_config.api_query_params
+                if api_query_params:
+                    dynamic_url = self._build_api_url_with_query_params(
+                        data_config.api_call, api_query_params
+                    )
+                    # Create a new DataInput with the dynamic URL
+                    data_config = DataInput(
+                        file=data_config.file,
+                        api_call=dynamic_url,
+                        api_query_params=api_query_params
+                    )
+            elif isinstance(data_config, dict) and data_config.get('api_call'):
+                api_query_params = data_config.get('api_query_params')
+                if api_query_params:
+                    dynamic_url = self._build_api_url_with_query_params(
+                        data_config['api_call'], api_query_params
+                    )
+                    data_config = {**data_config, 'api_call': dynamic_url}
 
             # Only attempt to load if a source is configured
             if has_configured_source:

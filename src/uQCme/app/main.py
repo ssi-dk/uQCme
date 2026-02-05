@@ -1882,23 +1882,9 @@ class QCDashboard:
 
 def _run_dashboard():
     """Internal function to run the dashboard logic."""
-    import argparse
+    # Get config path from environment variable (set in main())
+    config_path = os.environ.get('UQCME_CONFIG_PATH')
     
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description='uQCme Dashboard')
-    parser.add_argument(
-        '--config',
-        default=None,
-        help='Path to configuration file'
-    )
-    
-    try:
-        args = parser.parse_args()
-        config_path = args.config
-    except SystemExit:
-        # Streamlit might trigger this if --help is passed
-        return
-
     # Logic to find config file
     if config_path:
         # User explicitly provided a path
@@ -1933,7 +1919,24 @@ def main():
     if st.runtime.exists():
         _run_dashboard()
     else:
-        sys.argv = ["streamlit", "run", __file__] + sys.argv[1:]
+        # Extract custom arguments before passing to Streamlit
+        import argparse
+        parser = argparse.ArgumentParser(description='uQCme Dashboard', add_help=False)
+        parser.add_argument(
+            '--config',
+            default=None,
+            help='Path to configuration file'
+        )
+        
+        # Parse known args to extract --config without failing on Streamlit args
+        args, remaining_args = parser.parse_known_args()
+        
+        # Store config path in environment variable for _run_dashboard to access
+        if args.config:
+            os.environ['UQCME_CONFIG_PATH'] = args.config
+        
+        # Pass remaining args to Streamlit (without --config)
+        sys.argv = ["streamlit", "run", __file__] + remaining_args
         sys.exit(stcli.main())
 
 

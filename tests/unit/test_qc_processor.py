@@ -149,6 +149,101 @@ class TestQCProcessor(unittest.TestCase):
         outcomes = self.processor._determine_qc_outcomes(['R99'], [])
         self.assertIn('FAIL', outcomes)
 
+    def test_passed_rule_conditions_not_applicable(self):
+        """Test that tests with passed_rule_conditions are skipped when rules are not evaluated."""
+        # Mock QC tests with passed_rule_conditions
+        self.processor.qc_tests = pd.DataFrame([
+            {
+                'outcome_id': 'PASS',
+                'passed_rule_conditions': '',
+                'failed_rule_conditions': '',
+                'priority': 1,
+                'action_required': 'none'
+            },
+            {
+                'outcome_id': 'TEST_WITH_PASSED_CONDITIONS',
+                'passed_rule_conditions': 'R10,R11',  # Rules that won't be evaluated
+                'failed_rule_conditions': '',
+                'priority': 2,
+                'action_required': 'review'
+            },
+            {
+                'outcome_id': 'FAIL_TEST',
+                'passed_rule_conditions': '',
+                'failed_rule_conditions': 'R3',
+                'priority': 3,
+                'action_required': 'reject'
+            }
+        ])
+
+        # Test: When R10 and R11 are not evaluated (not in passed_rules or failed_rules),
+        # the test should be skipped (not applicable), not treated as failed
+        outcomes = self.processor._determine_qc_outcomes(['R3'], ['R1', 'R2'])
+        # TEST_WITH_PASSED_CONDITIONS should NOT appear in outcomes (skipped, not applicable)
+        self.assertNotIn('TEST_WITH_PASSED_CONDITIONS', outcomes)
+        # FAIL_TEST should appear because R3 is in failed_rules
+        self.assertIn('FAIL_TEST', outcomes)
+        # PASS should NOT appear because there are failed rules
+        self.assertNotIn('PASS', outcomes)
+
+    def test_passed_rule_conditions_evaluated_and_passed(self):
+        """Test that tests with passed_rule_conditions pass when all required rules pass."""
+        # Mock QC tests with passed_rule_conditions
+        self.processor.qc_tests = pd.DataFrame([
+            {
+                'outcome_id': 'PASS',
+                'passed_rule_conditions': '',
+                'failed_rule_conditions': '',
+                'priority': 1,
+                'action_required': 'none'
+            },
+            {
+                'outcome_id': 'TEST_WITH_PASSED_CONDITIONS',
+                'passed_rule_conditions': 'R10,R11',
+                'failed_rule_conditions': '',
+                'priority': 2,
+                'action_required': 'review'
+            }
+        ])
+
+        # Test: When R10 and R11 are evaluated and passed (in passed_rules),
+        # the test should pass
+        outcomes = self.processor._determine_qc_outcomes([], ['R10', 'R11', 'R1'])
+        # TEST_WITH_PASSED_CONDITIONS should appear (all rules passed)
+        self.assertIn('TEST_WITH_PASSED_CONDITIONS', outcomes)
+        # PASS should also appear (no failed rules)
+        self.assertIn('PASS', outcomes)
+
+    def test_passed_rule_conditions_evaluated_and_failed(self):
+        """Test that tests with passed_rule_conditions fail when any required rule fails."""
+        # Mock QC tests with passed_rule_conditions
+        self.processor.qc_tests = pd.DataFrame([
+            {
+                'outcome_id': 'PASS',
+                'passed_rule_conditions': '',
+                'failed_rule_conditions': '',
+                'priority': 1,
+                'action_required': 'none'
+            },
+            {
+                'outcome_id': 'TEST_WITH_PASSED_CONDITIONS',
+                'passed_rule_conditions': 'R10,R11',
+                'failed_rule_conditions': '',
+                'priority': 2,
+                'action_required': 'review'
+            }
+        ])
+
+        # Test: When R10 passed but R11 failed (in failed_rules),
+        # the test should NOT pass (failed)
+        outcomes = self.processor._determine_qc_outcomes(['R11'], ['R10', 'R1'])
+        # TEST_WITH_PASSED_CONDITIONS should NOT appear (R11 failed)
+        self.assertNotIn('TEST_WITH_PASSED_CONDITIONS', outcomes)
+        # PASS should NOT appear (there are failed rules)
+        self.assertNotIn('PASS', outcomes)
+        # Should have generic FAIL
+        self.assertIn('FAIL', outcomes)
+
     def test_determine_qc_action(self):
         """Test QC action determination logic."""
         # Mock QC tests dataframe

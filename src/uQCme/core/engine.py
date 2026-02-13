@@ -432,9 +432,10 @@ class QCProcessor:
                 # Check if at least one rule was evaluated
                 any_evaluated = any(rule in passed_rules or rule in failed_rules for rule in required_rules)
                 if not any_evaluated:
-                    passed_match = False  # Skip this test if none of the rules were evaluated
-                else:
-                    passed_match = not any(rule in failed_rules for rule in required_rules)
+                    # Skip this test if none of the rules were evaluated (not applicable)
+                    continue
+                # Rules were evaluated, check if any failed
+                passed_match = not any(rule in failed_rules for rule in required_rules)
             
             if has_failed_conditions:
                 # OR logic - ANY rule must be in failed_rules

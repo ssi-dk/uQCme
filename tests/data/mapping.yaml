@@ -5,12 +5,8 @@
 # Headers Configuration - Enhanced with Display Names
 # Defines the sections and their corresponding columns for the QC report
 # Each column can have both the actual column name and a user-friendly display name
-
-qc_rules_file: ./input/QC_rules.csv
-qc_judgement_file: ./input/qc_judgment.tsv
-
 QC_overrides:
-  software: ["checkm", "quast"]
+  software: ["checkm", "quast", "sylph", "fastp", "speciator"]
   assembly_type: "short"  # Default assembly type for QC metrics
 
 Sections:
@@ -21,33 +17,39 @@ Sections:
       report:
         id: true # represents the unique identifier for the sample which can be passed to other systems
   QC_metrics:
+    QC action: # generated from qc
+      data:
+        mapping: qc_action
+      report:
+        filter: true
+        priority_coloring: true
     QC outcome: # generated from qc
       data:
         mapping: qc_outcome
+      report:
+        filter: true
+        priority_coloring: true
     Failed Rules: # generated from qc
       data:
         mapping: failed_rules
     Passed Rules: # generated from qc
       data:
         mapping: passed_rules
-      report:
-        hidden: true
     Expected species:
       data:
-        mapping: provided_species
+        mapping: rMLST_match
       QC:
         mapping: ["speciesName", "genusName", "Marker lineage"]
+      report:
+        filter: true
     Provided Species:
       data:
         mapping: species
     Species:
       QC:
         mapping: ["speciesName", "genusName", "Marker lineage"]
-    Marker lineage:
-      data:
-        mapping: name_classified_species_1_whats_my_species
-      QC:
-        mapping: ["Marker lineage"]
+      report:
+        filter: true
     Genome size (bp):
       data:
         mapping: bin_length_at_1x
@@ -55,11 +57,16 @@ Sections:
         software: "checkm"
         assembly_type: "short"
         mapping: ["Genome size (bp)", "Total length (>= 0 bp)"]
+      report:
+        filter: true
     GC:
       data:
         mapping: GC
       QC:
         mapping: ["GC", "GC (%)"]
+      report:
+        filter: true
+        description: GC content
     N50:
       data:
         mapping: N50
@@ -87,6 +94,72 @@ Sections:
         mapping: bin_coverage_at_1x
       QC:
         mapping: ["Depth"]
+  Read_QC:
+    Coverage:
+      data:
+        mapping: coverage_x
+      QC:
+        mapping: ["coverage_x"]
+      report:
+        filter: true
+        description: Estimated sequencing coverage (Sylph)
+    Contamination percent:
+      data:
+        mapping: contamination_percent
+      QC:
+        mapping: ["contamination_percent"]
+      report:
+        filter: true
+        description: Estimated contamination percentage (Sylph)
+    Q30 fraction:
+      data:
+        mapping: q30_fraction
+      QC:
+        mapping: ["q30_fraction"]
+      report:
+        description: Fraction of bases with Q>=30 (fastp)
+    Mean read length:
+      data:
+        mapping: mean_read_length_bp
+      QC:
+        mapping: ["mean_read_length_bp"]
+      report:
+        description: Mean read length in bp (fastp)
+    Duplication rate:
+      data:
+        mapping: duplication_rate
+      QC:
+        mapping: ["duplication_rate"]
+      report:
+        description: Read duplication rate (fastp)
+    Unexpected GC percent:
+      data:
+        mapping: unexpected_gc_percent
+      QC:
+        mapping: ["unexpected_gc_percent"]
+      report:
+        description: Unexpected GC content percentage (fastp)
+    N content fraction:
+      data:
+        mapping: n_content_fraction
+      QC:
+        mapping: ["n_content_fraction"]
+      report:
+        description: Fraction of N bases (fastp)
+    Adapter overrepresentation:
+      data:
+        mapping: adapter_overrep_count
+      QC:
+        mapping: ["adapter_overrep_count"]
+      report:
+        description: Count of overrepresented adapter sequences (fastp)
+    Number of genomes:
+      data:
+        mapping: number_of_genomes
+      QC:
+        mapping: ["number_of_genomes"]
+      report:
+        description: Number of genomes detected (Sylph)
   Experimental:
     Depth 10x:
       data:

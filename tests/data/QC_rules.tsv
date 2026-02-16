@@ -1,4 +1,20 @@
 rule_id	species	assembly_type	software	field	operator	value	special_field
+PASS1	all	short	Sylph	coverage_x	>=	30
+PASS2	all	short	Sylph	contamination_percent	<=	10
+PASS3	all	short	fastp	q30_fraction	>=	0.80
+PASS4	all	short	fastp	mean_read_length_bp	>=	100
+PASS5	all	short	fastp	duplication_rate	<=	0.20
+PASS6	all	short	fastp	unexpected_gc_percent	<=	5
+PASS7	all	short	fastp	n_content_fraction	<=	0.001
+PASS8	all	short	fastp	adapter_overrep_count	<=	5
+WARN1	all	short	Sylph	coverage_x	>=	20
+WARN2	all	short	Sylph	contamination_percent	<=	20
+WARN3	all	short	fastp	q30_fraction	>=	0.70
+WARN4	all	short	fastp	mean_read_length_bp	>=	80
+WARN5	all	short	fastp	duplication_rate	<=	0.30
+WARN6	all	short	fastp	unexpected_gc_percent	<=	5
+WARN7	all	short	fastp	n_content_fraction	<=	0.001
+WARN8	all	short	fastp	adapter_overrep_count	<=	5
 A1	all	all	Checkm	Completeness	>=	80
 A2	all	all	Checkm	Contamination	<=	10
 A3	all	all	Checkm	Marker lineage	regex	^.*	species_field

@@ -1,7 +1,8 @@
 outcome_id	outcome_name	description	priority	passed_rule_conditions	failed_rule_conditions	action_required
 PASS	Pass	All read QC criteria met	1	PASS1,PASS2,PASS3,PASS4,PASS5,PASS6,PASS7,PASS8		none
-WARN	Warn	Read QC criteria partially met	2	WARN1,WARN2,WARN3,WARN4,WARN5,WARN6,WARN7,WARN8,WARN9,WARN10,WARN11,WARN12,WARN13		review
-FAIL_GENERAL	Fail - General QC	General quality control criteria failed	4		A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16,A17,A18,A19,A20,A21,WARN1,WARN2,WARN3,WARN4,WARN5,WARN6,WARN7,WARN8,WARN9,WARN10,WARN11,WARN12,WARN13	reject
+WARN	Warn	Read QC criteria in warning range	2	WARN1,WARN2,WARN3,WARN4,WARN5,WARN6,WARN7,WARN8	PASS1,PASS2,PASS3,PASS4,PASS5,PASS6,PASS7,PASS8	review
+FAIL	Fail	Read QC criteria failed	3		WARN1,WARN2,WARN3,WARN4,WARN5,WARN6,WARN7,WARN8	reject
+FAIL_GENERAL	Fail - General QC	General quality control criteria failed	4		A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16,A17,A18,A19,A20,A21	reject
 PASS_GENERAL	PASS - General QC	General quality control criteria met	1	A1,A2,A3,A4,A5,A6,A7,A8,A9,A10,A11,A12,A13,A14,A15,A16,A17,A18,A19,A20,A21,PASS1,PASS2,PASS3,PASS4,PASS5,PASS6,PASS7,PASS8		none
 FAIL_ACINETOBACTER_BAUMANNII	Fail - Acinetobacter baumannii QC	Acinetobacter baumannii specific quality control failed	3		AB1,AB2,AB3,AB4,AB5,AB6,AB7,AB8,AB9,AB10,AB11,AB12,AB13,AB14,AB15,AB16,AB17,AB18,AB19	reject
 FAIL_CAMPYLOBACTER_COLI	Fail - Campylobacter coli QC	Campylobacter coli specific quality control failed	3		CC1,CC2,CC3,CC4,CC5,CC6,CC7,CC8,CC9,CC10,CC11,CC12,CC13,CC14,CC15,CC16,CC17,CC18,CC19	reject

@@ -1,7 +1,7 @@
 # uQCme - Microbial Quality Control Tool
 
-![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)
-![Python](https://img.shields.io/badge/python-3.8+-green.svg)
+![Version](https://img.shields.io/badge/version-0.8.2-blue.svg)
+![Python](https://img.shields.io/badge/python-3.12+-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
 A comprehensive quality control (QC) tool for microbial sequencing data that provides both command-line processing and interactive web-based visualization capabilities.
@@ -126,7 +126,7 @@ uqcme --config my_config.yaml
     *   *Note: If local rule files are missing, it falls back to bundled defaults.*
 3.  Evaluates each sample against the rules for its species.
 4.  Determines the final QC outcome (e.g., PASS, FAIL).
-5.  Outputs a new TSV file containing the original data plus the QC results (e.g., `uQCme_run_data.tsv`).
+5.  Outputs a new TSV file containing the original data plus the QC results (e.g., `qc_results.tsv`).
 
 ### 2. Web Dashboard (`uqcme-dashboard`)
 
@@ -162,18 +162,39 @@ The tool is driven by a `config.yaml` file. This file defines:
 *   `QC_rules.tsv`: Defines the specific thresholds and checks for each species. (default values originally from https://www.pathogensurveillance.net/resources/quality/ and https://happykhan.github.io/qualibact/)
 *   `QC_tests.tsv`: Defines how rule failures translate into overall QC outcomes.
 
+**Config-driven sample API action buttons**
+
+You can configure one or more action buttons in the dashboard that send values
+from selected samples to an API endpoint:
+
+```yaml
+app:
+  dashboard:
+    sample_api_actions:
+      - label: "Notify LIMS"
+        api_call: "https://example.org/api/notify"
+        value_field: "sample_name"
+        method: "POST"
+        payload_field: "sample_ids"
+        send_as_list: true
+        include_sample_ids: false
+```
+
+When users select samples in the Data Preview table and click the configured
+button, uQCme sends the selected `value_field` values to `api_call`.
+
 See the `input/example/` directory for template files.
 
 ## Output Files
 
-### 1. QC Results (`uQCme_run_data.tsv`)
+### 1. QC Results (`qc_results.tsv`)
 Enhanced run data with QC outcomes:
 - Original sample data
 - Failed rules per sample
 - Assigned QC outcome with priority
 - Color coding for visualization
 
-### 2. Rule Warnings (`uQCme_rule_warnings.tsv`)
+### 2. Rule Warnings (`qc_warnings.tsv`)
 Detailed log of rule evaluation issues:
 - Skipped rules and reasons
 - Data validation warnings
@@ -218,8 +239,8 @@ CUSTOM2	all	CheckM	Completeness	threshold	>=90	completeness
 Define new QC tests in `QC_tests.tsv`:
 
 ```tsv
-outcome_id	outcome_name	description	priority	rule_conditions	action_required
-FAIL_CUSTOM	Fail - Custom QC	Custom quality control failed	3	failed_rules_contain:CUSTOM1,CUSTOM2	reject
+outcome_id	outcome_name	description	priority	passed_rule_conditions	failed_rule_conditions	action_required
+FAIL_CUSTOM	Fail - Custom QC	Custom quality control failed	3		CUSTOM1,CUSTOM2	reject
 ```
 
 ## Development
@@ -245,10 +266,15 @@ uQCme/
 ├── src/
 │   └── uQCme/
 │       ├── __init__.py
-│       ├── app.py          # Streamlit web dashboard
-│       ├── cli.py          # CLI processing tool
-│       ├── plot.py         # Plotting utilities
-│       └── utils.py        # Shared utilities
+│       ├── app/
+│       │   ├── main.py     # Streamlit web dashboard entry
+│       │   └── plot.py     # Dashboard plotting utilities
+│       ├── cli/
+│       │   └── main.py     # CLI entry
+│       └── core/
+│           ├── engine.py   # QC processing engine
+│           ├── loader.py   # Config and data loading
+│           └── config.py   # Pydantic config models
 ├── config.yaml             # Configuration file
 ├── input/
 │   └── example/            # Example input files

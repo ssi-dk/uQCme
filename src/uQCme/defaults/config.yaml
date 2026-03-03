@@ -1,5 +1,5 @@
 title: "uQCme - Microbial QC Reporter"
-version: "0.5.0"
+version: "0.8.2"
 
 qc:
   input:
@@ -28,6 +28,16 @@ app:
     categorical_filter_threshold: 20
     section_toggle_columns: 3
     max_displayed_rules: 10
+    sample_api_actions: []
+    # Example:
+    # sample_api_actions:
+    #   - label: "Send Selected Samples"
+    #     api_call: "https://example.org/api/samples"
+    #     value_field: "sample_name"
+    #     method: "POST"
+    #     payload_field: "samples"
+    #     send_as_list: true
+    #     include_sample_ids: false
   ui_styling:
   priority_colors:
     1: "#90EE90"

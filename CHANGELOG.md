@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Config-driven dashboard sample API actions via `app.dashboard.sample_api_actions`:
+  - Configurable button label, endpoint, HTTP method, payload field, headers, and timeout.
+  - Sends values from selected rows (for a configured `value_field`) to external APIs.
+  - Optional inclusion of selected sample IDs in the payload.
+- Local test action example in deployment config using an echo endpoint (`https://httpbin.org/post`) for integration testing.
+- Unit tests for sample API action config validation (`tests/unit/test_config.py`).
+
+### Changed
+
+- Bumped application version to `0.8.2` (`src/uQCme/__init__.py`) and aligned config version defaults to `0.8.2`.
+- Updated README for current behavior and layout:
+  - Version badge now reflects `0.8.2`.
+  - Output filename examples now use `qc_results.tsv` and `qc_warnings.tsv`.
+  - QC tests example updated to `passed_rule_conditions`/`failed_rule_conditions` schema.
+  - Project structure section updated to reflect `app/main.py`, `cli/main.py`, and `core/*`.
+
+### Fixed
+
+- Fixed malformed `deploy/local/input/QC_tests.tsv` rows (extra tab delimiters on lines 3 and 4) that caused local startup failure with:
+  `Error tokenizing data. C error: Expected 7 fields in line 3, saw 8`.
+
+### Added (Historical)
+
 - Initial project structure for uQCme - Microbial QC Reporter v0.1.0
 - Configuration system using `config.yaml` for app settings and file paths
 - Input data structure with example files:

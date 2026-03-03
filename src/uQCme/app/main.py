@@ -15,6 +15,7 @@ import sys
 import streamlit as st
 from streamlit.web import cli as stcli
 import pandas as pd
+import requests
 import yaml
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
@@ -22,7 +23,7 @@ from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
 from uQCme.app.plot import QCPlotter, get_available_metrics
 from uQCme.core.loader import load_data_from_config, load_config_from_file
 from uQCme.core.engine import QCProcessor
-from uQCme.core.config import UQCMeConfig, DataInput
+from uQCme.core.config import UQCMeConfig, DataInput, SampleApiAction
 from uQCme.core.exceptions import ConfigError, DataLoadError
 
 
@@ -991,6 +992,114 @@ class QCDashboard:
                 st.session_state.selected_samples.clear()
                 st.rerun()
 
+    def _get_selected_sample_rows(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Get rows corresponding to currently selected samples."""
+        if data.empty:
+            return data.head(0)
+
+        selected_samples = st.session_state.get('selected_samples', set())
+        if not selected_samples:
+            return data.head(0)
+
+        id_column = self._get_id_column(data)
+        if not id_column or id_column not in data.columns:
+            return data.head(0)
+
+        selected_ids = {str(sample_id) for sample_id in selected_samples}
+        row_filter = data[id_column].astype(str).isin(selected_ids)
+        return data[row_filter]
+
+    def _trigger_sample_api_action(
+        self,
+        action: SampleApiAction,
+        selected_rows: pd.DataFrame,
+        id_column: str
+    ) -> requests.Response:
+        """Call the configured API action for the selected rows."""
+        if action.value_field not in selected_rows.columns:
+            raise ValueError(
+                f"Configured value_field '{action.value_field}' "
+                "was not found in the selected sample data."
+            )
+
+        values = selected_rows[action.value_field].dropna().tolist()
+        if not values:
+            raise ValueError(
+                f"No values found for '{action.value_field}' in selected rows."
+            )
+
+        # Preserve order while de-duplicating values.
+        unique_values = list(dict.fromkeys(values))
+        payload_key = action.payload_field or action.value_field
+        payload_value = (
+            unique_values
+            if action.send_as_list or len(unique_values) > 1
+            else unique_values[0]
+        )
+        payload = {payload_key: payload_value}
+
+        if action.include_sample_ids and id_column in selected_rows.columns:
+            payload[action.sample_ids_field] = (
+                selected_rows[id_column].astype(str).tolist()
+            )
+
+        request_kwargs: Dict[str, Any] = {
+            'method': action.method,
+            'url': action.api_call,
+            'timeout': action.timeout_seconds
+        }
+        if action.headers:
+            request_kwargs['headers'] = action.headers
+
+        if action.method == 'GET':
+            request_kwargs['params'] = payload
+        else:
+            request_kwargs['json'] = payload
+
+        response = requests.request(**request_kwargs)
+        response.raise_for_status()
+        return response
+
+    def render_sample_api_actions(self, filtered_data: pd.DataFrame):
+        """Render config-driven API action buttons for selected samples."""
+        app_cfg = self.config.app
+        if not app_cfg or not app_cfg.dashboard:
+            return
+
+        actions = app_cfg.dashboard.sample_api_actions or []
+        if not actions:
+            return
+
+        st.subheader("🚀 Sample Actions")
+
+        id_column = self._get_id_column(filtered_data)
+        if not id_column:
+            st.warning("Cannot run sample actions: no ID field is configured.")
+            return
+
+        selected_rows = self._get_selected_sample_rows(filtered_data)
+        if selected_rows.empty:
+            st.info("Select one or more samples to enable API actions.")
+            return
+
+        st.write(f"Selected samples: {len(selected_rows)}")
+        button_columns = st.columns(min(3, len(actions)))
+
+        for idx, action in enumerate(actions):
+            with button_columns[idx % len(button_columns)]:
+                if st.button(action.label, key=f"sample_api_action_{idx}"):
+                    with st.spinner(f"Calling API action '{action.label}'..."):
+                        try:
+                            response = self._trigger_sample_api_action(
+                                action, selected_rows, id_column
+                            )
+                            st.success(
+                                f"'{action.label}' succeeded "
+                                f"(HTTP {response.status_code})."
+                            )
+                        except Exception as e:
+                            st.error(f"'{action.label}' failed: {e}")
+
     def render_data_tab(self, filtered_data: pd.DataFrame):
         """Render the data tab with section toggles."""
         st.header("📊 Data")
@@ -1074,6 +1183,9 @@ class QCDashboard:
         self._render_styled_dataframe(
             display_data, column_order, "data_preview_table"
         )
+
+        # Optional config-driven API actions for selected samples.
+        self.render_sample_api_actions(filtered_data)
         
         # Show column information organized by visible sections
         with st.expander("📋 Column Information"):

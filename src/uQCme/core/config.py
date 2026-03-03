@@ -42,10 +42,36 @@ class AppInput(BaseModel):
     warnings: Optional[str] = None
 
 
+class SampleApiAction(BaseModel):
+    label: str
+    api_call: str
+    value_field: str
+    method: str = "POST"
+    payload_field: Optional[str] = None
+    timeout_seconds: int = 30
+    send_as_list: bool = True
+    include_sample_ids: bool = False
+    sample_ids_field: str = "sample_ids"
+    headers: Optional[Dict[str, str]] = None
+
+    @field_validator('method', mode='before')
+    @classmethod
+    def normalize_method(cls, value):
+        method = str(value or "POST").upper()
+        allowed_methods = {"GET", "POST", "PUT", "PATCH", "DELETE"}
+        if method not in allowed_methods:
+            raise ValueError(
+                f"Unsupported method '{method}'. "
+                f"Allowed methods: {sorted(allowed_methods)}"
+            )
+        return method
+
+
 class DashboardConfig(BaseModel):
     categorical_filter_threshold: int = 20
     section_toggle_columns: int = 3
     max_displayed_rules: int = 10
+    sample_api_actions: List[SampleApiAction] = Field(default_factory=list)
 
 
 class AppConfig(BaseModel):
@@ -62,7 +88,7 @@ class LogConfig(BaseModel):
 
 class UQCMeConfig(BaseModel):
     title: str = "uQCme - Microbial QC Reporter"
-    version: str = "0.1.0"
+    version: str = "0.8.2"
     qc: Optional[QCConfig] = None
     app: Optional[AppConfig] = None
     log: LogConfig = Field(default_factory=LogConfig)

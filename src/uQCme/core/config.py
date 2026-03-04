@@ -67,10 +67,17 @@ class SampleApiAction(BaseModel):
         return method
 
 
+class ReportModeConfig(BaseModel):
+    enabled: bool = False
+    default_visible_sections: Dict[str, bool] = Field(default_factory=dict)
+    default_filters: Dict[str, Any] = Field(default_factory=dict)
+
+
 class DashboardConfig(BaseModel):
     categorical_filter_threshold: int = 20
     section_toggle_columns: int = 3
     max_displayed_rules: int = 10
+    report_mode: ReportModeConfig = Field(default_factory=ReportModeConfig)
     sample_api_actions: List[SampleApiAction] = Field(default_factory=list)
 
 

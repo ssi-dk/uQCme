@@ -66,6 +66,39 @@ class TestConfigModels(unittest.TestCase):
                 }
             )
 
+    def test_report_mode_config_defaults_and_overrides(self):
+        """Report mode config should parse default and custom values."""
+        config = UQCMeConfig(
+            app={
+                "input": {
+                    "data": {"file": "output/qc_results.tsv"},
+                    "mapping": "config/mapping.yaml",
+                    "qc_rules": "config/QC_rules.tsv",
+                    "qc_tests": "config/QC_tests.tsv",
+                },
+                "dashboard": {
+                    "report_mode": {
+                        "enabled": True,
+                        "default_visible_sections": {
+                            "Basic": True,
+                            "Experimental": False
+                        },
+                        "default_filters": {
+                            "species": "Escherichia coli",
+                            "completeness": {"min": 90}
+                        }
+                    }
+                },
+            }
+        )
+
+        report_mode = config.app.dashboard.report_mode
+        self.assertTrue(report_mode.enabled)
+        self.assertFalse(report_mode.default_visible_sections["Experimental"])
+        self.assertEqual(
+            report_mode.default_filters["species"], "Escherichia coli"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

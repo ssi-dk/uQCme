@@ -39,6 +39,66 @@ class QCDashboard:
         self.qc_rules: pd.DataFrame = pd.DataFrame()
         self.qc_tests: pd.DataFrame = pd.DataFrame()
         self.plotter: QCPlotter = QCPlotter(self.config)
+        self.report_mode = self._is_report_mode()
+
+    def _is_report_mode(self) -> bool:
+        """Detect report mode from env var, query param, or config."""
+        env_mode = os.environ.get("UQCME_REPORT_MODE", "").strip().lower()
+        if env_mode in {"1", "true", "yes"}:
+            return True
+
+        query_params = getattr(st, "query_params", None)
+        if query_params is not None:
+            query_mode = str(query_params.get("report_mode", "")).strip().lower()
+            if query_mode in {"1", "true", "yes"}:
+                return True
+
+        if self.config.app and self.config.app.dashboard:
+            return bool(self.config.app.dashboard.report_mode.enabled)
+        return False
+
+    def _get_report_mode_config(self) -> Dict[str, Any]:
+        """Get report-mode defaults from dashboard config."""
+        if not self.config.app or not self.config.app.dashboard:
+            return {"default_visible_sections": {}, "default_filters": {}}
+        report_cfg = self.config.app.dashboard.report_mode
+        return {
+            "default_visible_sections": report_cfg.default_visible_sections or {},
+            "default_filters": report_cfg.default_filters or {},
+        }
+
+    def _apply_report_filters(self, data: pd.DataFrame) -> pd.DataFrame:
+        """Apply config-defined report filters without UI input."""
+        if data.empty:
+            return data
+
+        report_cfg = self._get_report_mode_config()
+        filters = report_cfg.get("default_filters", {})
+        filtered_data = data.copy()
+
+        for column, filter_value in filters.items():
+            if column not in filtered_data.columns:
+                continue
+
+            if isinstance(filter_value, dict):
+                col_data = filtered_data[column]
+                range_filter = True
+                if "min" in filter_value:
+                    range_filter = range_filter & (col_data >= filter_value["min"])
+                if "max" in filter_value:
+                    range_filter = range_filter & (col_data <= filter_value["max"])
+                if "contains" in filter_value:
+                    contains = col_data.astype(str).str.contains(
+                        str(filter_value["contains"]), case=False, na=False
+                    )
+                    range_filter = range_filter & contains
+                filtered_data = filtered_data[range_filter]
+            elif isinstance(filter_value, list):
+                filtered_data = filtered_data[filtered_data[column].isin(filter_value)]
+            else:
+                filtered_data = filtered_data[filtered_data[column] == filter_value]
+
+        return filtered_data
         
     def _load_config(self, config_path: Optional[str]) -> UQCMeConfig:
         """Load configuration from YAML file or use defaults."""
@@ -635,6 +695,9 @@ class QCDashboard:
 
     def render_sidebar_filters(self):
         """Render sidebar filters for data exploration."""
+        if self.report_mode:
+            return self._apply_report_filters(self.data)
+
         # Get filterable fields from mapping configuration
         filterable_fields = self._get_filterable_fields(self.data)
         
@@ -1062,6 +1125,9 @@ class QCDashboard:
 
     def render_sample_api_actions(self, filtered_data: pd.DataFrame):
         """Render config-driven API action buttons for selected samples."""
+        if self.report_mode:
+            return
+
         app_cfg = self.config.app
         if not app_cfg or not app_cfg.dashboard:
             return
@@ -1103,41 +1169,44 @@ class QCDashboard:
     def render_data_tab(self, filtered_data: pd.DataFrame):
         """Render the data tab with section toggles."""
         st.header("📊 Data")
-        
-        # Section toggles
-        st.subheader("Section Visibility")
+
         sections_columns = self._get_columns_by_section(filtered_data)
-        
-        # Create columns for section toggles
-        num_columns = self._get_dashboard_config('section_toggle_columns', 3)
-        toggle_columns = st.columns(num_columns)
-        
         visible_sections = {}
         section_names = list(sections_columns.keys())
-        
-        # Distribute toggles across columns
-        for i, section_name in enumerate(section_names):
-            col_idx = i % num_columns
-            
-            with toggle_columns[col_idx]:
-                # Count visible columns in section
+
+        if self.report_mode:
+            report_cfg = self._get_report_mode_config()
+            default_sections = report_cfg.get("default_visible_sections", {})
+            for section_name in section_names:
                 section_cols = sections_columns[section_name]
                 visible_col_count = len([
-                    col for col in section_cols
-                    if not col['hidden']
+                    col for col in section_cols if not col['hidden']
                 ])
-                
-                # Default visibility based on content
-                # Hide sections that are mostly hidden fields or experimental
-                default_visible = True
-                if visible_col_count == 0:
-                    default_visible = False
-                
-                visible_sections[section_name] = st.checkbox(
-                    f"{section_name} ({visible_col_count} columns)",
-                    value=default_visible,
-                    key=f"data_preview_toggle_{section_name}"
+                default_visible = visible_col_count > 0
+                visible_sections[section_name] = bool(
+                    default_sections.get(section_name, default_visible)
                 )
+        else:
+            # Section toggles
+            st.subheader("Section Visibility")
+            num_columns = self._get_dashboard_config('section_toggle_columns', 3)
+            toggle_columns = st.columns(num_columns)
+
+            # Distribute toggles across columns
+            for i, section_name in enumerate(section_names):
+                col_idx = i % num_columns
+
+                with toggle_columns[col_idx]:
+                    section_cols = sections_columns[section_name]
+                    visible_col_count = len([
+                        col for col in section_cols if not col['hidden']
+                    ])
+                    default_visible = visible_col_count > 0
+                    visible_sections[section_name] = st.checkbox(
+                        f"{section_name} ({visible_col_count} columns)",
+                        value=default_visible,
+                        key=f"data_preview_toggle_{section_name}"
+                    )
         
         # Get ordered columns based on visible sections for reference
         ordered_columns = self._get_ordered_columns_with_sections(
@@ -1152,7 +1221,7 @@ class QCDashboard:
         ]
         
         # Display helpful info about column organization
-        if ordered_columns:
+        if ordered_columns and not self.report_mode:
             tip_msg = (
                 f"💡 **Tip:** Use the column visibility controls (👁️) in the "
                 f"table to show/hide specific columns. Currently showing "
@@ -1180,9 +1249,16 @@ class QCDashboard:
         
         # Display the dataframe with built-in controls and QC action styling
         # Only show columns from visible sections
-        self._render_styled_dataframe(
-            display_data, column_order, "data_preview_table"
-        )
+        if self.report_mode:
+            st.dataframe(
+                display_data,
+                width='stretch',
+                hide_index=True
+            )
+        else:
+            self._render_styled_dataframe(
+                display_data, column_order, "data_preview_table"
+            )
 
         # Optional config-driven API actions for selected samples.
         self.render_sample_api_actions(filtered_data)
@@ -1236,6 +1312,62 @@ class QCDashboard:
                                     f"{extra_info}"
                                 )
                             st.write(field_display)
+
+    def render_report_tab(self, filtered_data: pd.DataFrame):
+        """Render config-driven table-only report view."""
+        report_cfg = self._get_report_mode_config()
+        default_sections = report_cfg.get("default_visible_sections", {})
+
+        sections_columns = self._get_columns_by_section(filtered_data)
+        visible_sections = {}
+        for section_name, section_cols in sections_columns.items():
+            visible_col_count = len([
+                col for col in section_cols if not col['hidden']
+            ])
+            default_visible = visible_col_count > 0
+            visible_sections[section_name] = bool(
+                default_sections.get(section_name, default_visible)
+            )
+
+        ordered_columns = self._get_ordered_columns_with_sections(
+            filtered_data,
+            visible_sections
+        )
+        display_data = filtered_data[
+            [col for col in ordered_columns if col in filtered_data.columns]
+        ] if ordered_columns else filtered_data
+
+        # Use static HTML table in report mode so all rows are rendered
+        # in the DOM (st.dataframe virtualizes and truncates to viewport).
+        report_table_html = display_data.to_html(
+            index=False,
+            escape=False,
+            border=0,
+            classes=["uqcme-report-table"]
+        )
+        st.markdown(
+            """
+            <style>
+            .uqcme-report-table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 12px;
+            }
+            .uqcme-report-table th, .uqcme-report-table td {
+                border: 1px solid #d9d9d9;
+                padding: 4px 6px;
+                text-align: left;
+                vertical-align: top;
+            }
+            .uqcme-report-table th {
+                background: #f5f5f5;
+                font-weight: 600;
+            }
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+        st.markdown(report_table_html, unsafe_allow_html=True)
 
     def render_overview_tab(self, filtered_data: pd.DataFrame):
         """Render the overview tab with summary statistics."""
@@ -1871,56 +2003,58 @@ class QCDashboard:
         self.load_data()
         
         # Render header
-        self.render_header()
+        if not self.report_mode:
+            self.render_header()
         
         # Data Source Info & Override in Sidebar
-        with st.sidebar:
-            st.subheader("📁 Data Source")
-            
-            # Get source description
-            source_desc = "Unknown"
-            if (self.config.app and self.config.app.input and
-                    self.config.app.input.data):
-                data_config = self.config.app.input.data
-                if isinstance(data_config, DataInput):
-                    if data_config.api_call:
-                        source_desc = f"API: {data_config.api_call}"
-                    elif data_config.file:
-                        source_desc = f"File: {data_config.file}"
-                elif isinstance(data_config, dict):
-                    if data_config.get('api_call'):
-                        source_desc = f"API: {data_config['api_call']}"
-                    elif data_config.get('file'):
-                        source_desc = f"File: {data_config['file']}"
-                elif isinstance(data_config, str):
-                    source_desc = f"File: {data_config}"
+        if not self.report_mode:
+            with st.sidebar:
+                st.subheader("📁 Data Source")
 
-            if not self.data.empty:
-                source_info_placeholder = st.empty()
-                
-                with st.expander("Upload New Raw Data"):
-                    st.write("Upload a raw run data file to process and "
-                             "replace the current data.")
-                    uploaded_file = st.file_uploader(
-                        "Upload Run Data (TSV)",
-                        type=['tsv', 'txt', 'csv'],
-                        key="sidebar_uploader"
-                    )
-                    
-                    if uploaded_file:
-                        if self._process_uploaded_file(uploaded_file):
-                            source_desc = f"User Upload: {uploaded_file.name}"
-                        else:
-                            # If processing failed, clear the data so we don't
-                            # show stale data with a confusing error state
-                            self.data = pd.DataFrame()
-                
+                # Get source description
+                source_desc = "Unknown"
+                if (self.config.app and self.config.app.input and
+                        self.config.app.input.data):
+                    data_config = self.config.app.input.data
+                    if isinstance(data_config, DataInput):
+                        if data_config.api_call:
+                            source_desc = f"API: {data_config.api_call}"
+                        elif data_config.file:
+                            source_desc = f"File: {data_config.file}"
+                    elif isinstance(data_config, dict):
+                        if data_config.get('api_call'):
+                            source_desc = f"API: {data_config['api_call']}"
+                        elif data_config.get('file'):
+                            source_desc = f"File: {data_config['file']}"
+                    elif isinstance(data_config, str):
+                        source_desc = f"File: {data_config}"
+
                 if not self.data.empty:
-                    source_info_placeholder.info(
-                        f"**Current Source:**\n{source_desc}"
-                    )
-            
-            st.markdown("---")
+                    source_info_placeholder = st.empty()
+
+                    with st.expander("Upload New Raw Data"):
+                        st.write("Upload a raw run data file to process and "
+                                 "replace the current data.")
+                        uploaded_file = st.file_uploader(
+                            "Upload Run Data (TSV)",
+                            type=['tsv', 'txt', 'csv'],
+                            key="sidebar_uploader"
+                        )
+
+                        if uploaded_file:
+                            if self._process_uploaded_file(uploaded_file):
+                                source_desc = f"User Upload: {uploaded_file.name}"
+                            else:
+                                # If processing failed, clear the data so we don't
+                                # show stale data with a confusing error state
+                                self.data = pd.DataFrame()
+
+                    if not self.data.empty:
+                        source_info_placeholder.info(
+                            f"**Current Source:**\n{source_desc}"
+                        )
+
+                st.markdown("---")
         
         # Check if data is loaded (if empty and no upload in sidebar)
         if self.data.empty:
@@ -1949,11 +2083,13 @@ class QCDashboard:
             else:
                 st.info("No processed QC data found. Please upload a raw run "
                         "data file to process.")
+            if self.report_mode:
+                st.stop()
             uploaded_file = st.file_uploader(
                 "Upload Run Data (TSV)", type=['tsv', 'txt', 'csv'],
                 key="main_uploader"
             )
-            
+
             if uploaded_file:
                 if not self._process_uploaded_file(uploaded_file):
                     st.stop()
@@ -1964,32 +2100,40 @@ class QCDashboard:
         filtered_data = self.render_sidebar_filters()
         
         # Main content tabs
-        tabs = st.tabs([
-            "📊 Data Preview",
-            "📈 Overview",
-            "🔍 Quality Metrics",
-            "🔬 Sample Details",
-            "⚙️ QC Tests",
-            "⚠️ Warnings"
-        ])
-        
-        with tabs[0]:
-            self.render_data_tab(filtered_data)
-        
-        with tabs[1]:
-            self.render_overview_tab(filtered_data)
-        
-        with tabs[2]:
-            self.render_quality_metrics_tab(filtered_data)
-        
-        with tabs[3]:
-            self.render_sample_details_tab(filtered_data)
-        
-        with tabs[4]:
-            self.render_qc_tests_tab()
-        
-        with tabs[5]:
-            self.render_warnings_tab()
+        if self.report_mode:
+            self.render_report_tab(filtered_data)
+            # Marker used by the export function to detect complete render.
+            st.markdown(
+                "<div data-testid='uqcme-report-ready' style='display:none'></div>",
+                unsafe_allow_html=True
+            )
+        else:
+            tabs = st.tabs([
+                "📊 Data Preview",
+                "📈 Overview",
+                "🔍 Quality Metrics",
+                "🔬 Sample Details",
+                "⚙️ QC Tests",
+                "⚠️ Warnings"
+            ])
+
+            with tabs[0]:
+                self.render_data_tab(filtered_data)
+
+            with tabs[1]:
+                self.render_overview_tab(filtered_data)
+
+            with tabs[2]:
+                self.render_quality_metrics_tab(filtered_data)
+
+            with tabs[3]:
+                self.render_sample_details_tab(filtered_data)
+
+            with tabs[4]:
+                self.render_qc_tests_tab()
+
+            with tabs[5]:
+                self.render_warnings_tab()
 
 
 def _run_dashboard():
@@ -2039,9 +2183,28 @@ def main():
             default=None,
             help='Path to configuration file'
         )
+        parser.add_argument(
+            '--export-pdf',
+            default=None,
+            help='Export dashboard report view to a PDF file path'
+        )
         
         # Parse known args to extract --config without failing on Streamlit args
         args, remaining_args = parser.parse_known_args()
+
+        if args.export_pdf:
+            from uQCme.app.report_export import (
+                DashboardPdfExportOptions,
+                export_dashboard_pdf,
+            )
+            output_file = export_dashboard_pdf(
+                DashboardPdfExportOptions(
+                    output_path=args.export_pdf,
+                    config_path=args.config
+                )
+            )
+            print(f"PDF report generated: {output_file}")
+            return
         
         # Store config path in environment variable for _run_dashboard to access
         if args.config:

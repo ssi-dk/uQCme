@@ -28,6 +28,10 @@ app:
     categorical_filter_threshold: 20
     section_toggle_columns: 3
     max_displayed_rules: 10
+    report_mode:
+      enabled: false
+      default_visible_sections: {}
+      default_filters: {}
     sample_api_actions: []
     # Example:
     # sample_api_actions:

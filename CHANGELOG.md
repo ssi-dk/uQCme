@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Optional inclusion of selected sample IDs in the payload.
 - Local test action example in deployment config using an echo endpoint (`https://httpbin.org/post`) for integration testing.
 - Unit tests for sample API action config validation (`tests/unit/test_config.py`).
+- Config-driven dashboard report mode (`app.dashboard.report_mode`) with:
+  - `enabled` flag
+  - `default_visible_sections`
+  - `default_filters` for deterministic non-interactive filtering.
+- New PDF export module: `src/uQCme/app/report_export.py`.
+- New dashboard CLI export option: `uqcme-dashboard --config <config.yaml> --export-pdf <report.pdf>`.
 
 ### Changed
 
@@ -24,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Output filename examples now use `qc_results.tsv` and `qc_warnings.tsv`.
   - QC tests example updated to `passed_rule_conditions`/`failed_rule_conditions` schema.
   - Project structure section updated to reflect `app/main.py`, `cli/main.py`, and `core/*`.
+- Dashboard report mode now renders a table-only report view (filtered dataframe) and emits a ready marker for deterministic PDF capture.
 
 ### Fixed
 

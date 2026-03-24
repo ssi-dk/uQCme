@@ -63,4 +63,4 @@ jobs:
             exit 1
           fi
           echo "Uploading: $PACKAGE"
-          anaconda upload --user kimleeng --force "$PACKAGE"
+          anaconda upload --user ssi-dk --force "$PACKAGE"

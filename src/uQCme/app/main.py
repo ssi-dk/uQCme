@@ -257,7 +257,10 @@ class QCDashboard:
                     data_config = DataInput(
                         file=data_config.file,
                         api_call=dynamic_url,
-                        api_query_params=api_query_params
+                        api_query_params=api_query_params,
+                        api_bearer_token=data_config.api_bearer_token,
+                        api_bearer_token_env=data_config.api_bearer_token_env,
+                        api_headers=data_config.api_headers
                     )
             elif isinstance(data_config, dict) and data_config.get('api_call'):
                 api_query_params = data_config.get('api_query_params')

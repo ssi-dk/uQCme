@@ -5,6 +5,10 @@ qc:
   input:
     data:
       file: ""
+      api_call: ""
+      api_bearer_token: ""
+      api_bearer_token_env: ""
+      api_headers: {}
     mapping: "mapping.yaml"
     qc_rules: "QC_rules.tsv"
     qc_tests: "QC_tests.tsv"
@@ -20,6 +24,9 @@ app:
     data:
       file: "qc_results.tsv"
       api_call: ""
+      api_bearer_token: ""
+      api_bearer_token_env: ""
+      api_headers: {}
     mapping: "mapping.yaml"
     qc_rules: "QC_rules.tsv"
     qc_tests: "QC_tests.tsv"

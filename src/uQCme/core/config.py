@@ -6,6 +6,9 @@ class DataInput(BaseModel):
     file: Optional[str] = None
     api_call: Optional[str] = None
     api_query_params: Optional[Union[List[str], Dict[str, str]]] = None
+    api_bearer_token: Optional[str] = None
+    api_bearer_token_env: Optional[str] = None
+    api_headers: Optional[Dict[str, str]] = None
 
 
 class QCInput(BaseModel):

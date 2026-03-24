@@ -1,16 +1,16 @@
-name: Publish to GitHub Packages
+name: Build and Validate Python Package
 
 on:
   release:
     types: [published]
+  workflow_dispatch:
 
 jobs:
-  github-publish:
-    name: Upload release to GitHub Packages
+  package-validate:
+    name: Build and validate package
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -28,11 +28,6 @@ jobs:
       - name: Build package
         run: python -m build
 
-      - name: Publish distribution 📦 to GitHub Packages
+      - name: Validate package metadata
         run: |
-          twine upload dist/* \
-            --repository-url https://python.pkg.github.com/ssi-dk/uqcme \
-            --username __token__ \
-            --password ${{ secrets.GITHUB_TOKEN }}
-        env:
-          TWINE_NON_INTERACTIVE: true
+          twine check dist/*

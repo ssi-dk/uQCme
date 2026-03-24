@@ -20,7 +20,7 @@ jobs:
         working-directory: .
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0  # Needed for version detection from tags
 
@@ -63,4 +63,4 @@ jobs:
             exit 1
           fi
           echo "Uploading: $PACKAGE"
-          anaconda upload --user kimleeng --force "$PACKAGE"
+          anaconda upload --user ssi-dk --force "$PACKAGE"

@@ -46,6 +46,7 @@ app:
     #     api_call: "https://example.org/api/samples"
     #     value_field: "sample_name"
     #     method: "POST"
+    #     api_bearer_token_env: "UQCME_ACTION_TOKEN"
     #     payload_field: "samples"
     #     send_as_list: true
     #     include_sample_ids: false

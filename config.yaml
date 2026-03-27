@@ -19,10 +19,10 @@ app:
   input:
     data:
       file: "./output/example/uQCme_run_data.tsv" # can also load via an API, only 1 can be enabled
-      api_call: "http://127.0.0.1:8000/api/v1/uQCme"
-      api_bearer_token: "6yvaAmUXcYSlnGKI97unGLVVh-EBbDO6izAMZ6mOdVPkxBbJKzleqwZrDmv2qG4a"
-      api_bearer_token_env: ""
-      api_query_params:
+      # api_call: 
+      # api_bearer_token: 
+      # api_bearer_token_env: ""
+      # api_query_params:
         - project_id
         - batchIDs
         - seqSamples

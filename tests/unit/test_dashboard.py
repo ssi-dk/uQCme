@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import types
+import importlib
 from pathlib import Path
 
 import pandas as pd
@@ -98,12 +99,15 @@ sys.modules["uQCme.plot"] = plot_stub
 from uQCme import app
 from uQCme.core import loader
 
+dashboard_main = importlib.import_module("uQCme.app.main")
+
 
 class DummyResponse:
     """Simple response object emulating requests.Response for tests."""
 
-    def __init__(self, payload):
+    def __init__(self, payload, status_code: int = 200):
         self._payload = payload
+        self.status_code = status_code
         self.headers = {"content-type": "application/json"}
 
     def json(self):
@@ -146,6 +150,29 @@ def _build_api_config(
     config_path = tmp_path / "config_api.yaml"
     config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
     return config_path
+
+
+def _build_dashboard_with_sample_action(
+    tmp_path,
+    test_data_paths,
+    sample_action: dict,
+):
+    config = {
+        "app": {
+            "input": {
+                "data": {"file": str(test_data_paths["example_run_data"])},
+                "mapping": str(test_data_paths["mapping"]),
+                "qc_rules": str(test_data_paths["qc_rules"]),
+                "qc_tests": str(test_data_paths["qc_tests"]),
+            },
+            "dashboard": {
+                "sample_api_actions": [sample_action]
+            },
+        }
+    }
+    config_path = tmp_path / "config_sample_action.yaml"
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    return app.QCDashboard(str(config_path))
 
 
 def test_load_data_from_api(monkeypatch, tmp_path, test_data_paths):
@@ -267,6 +294,88 @@ def test_load_data_from_api_with_bearer_token_env(
     monkeypatch.setattr(loader.requests, "get", fake_get)
 
     dashboard.load_data()
+
+
+def test_trigger_sample_api_action_with_bearer_token(
+    monkeypatch, tmp_path, test_data_paths
+):
+    """Sample action requests should include bearer token from config."""
+    streamlit_stub.reset()
+    dashboard = _build_dashboard_with_sample_action(
+        tmp_path,
+        test_data_paths,
+        {
+            "label": "Notify",
+            "api_call": "https://example.test/api/action",
+            "value_field": "sample_name",
+            "api_bearer_token": "action-token",
+            "headers": {"X-Trace-Id": "trace-123"},
+        },
+    )
+    action = dashboard.config.app.dashboard.sample_api_actions[0]
+    selected_rows = pd.DataFrame([
+        {"sample_name": "S1", "sample_id": "ID-1"},
+        {"sample_name": "S2", "sample_id": "ID-2"},
+    ])
+    response = DummyResponse({"ok": True})
+
+    def fake_request(**kwargs):
+        assert kwargs["method"] == "POST"
+        assert kwargs["url"] == "https://example.test/api/action"
+        assert kwargs["timeout"] == 30
+        assert kwargs["headers"] == {
+            "X-Trace-Id": "trace-123",
+            "Authorization": "Bearer action-token",
+        }
+        assert kwargs["json"] == {"sample_name": ["S1", "S2"]}
+        return response
+
+    monkeypatch.setattr(dashboard_main.requests, "request", fake_request)
+
+    result = dashboard._trigger_sample_api_action(
+        action, selected_rows, "sample_id"
+    )
+
+    assert result is response
+
+
+def test_trigger_sample_api_action_with_bearer_token_env(
+    monkeypatch, tmp_path, test_data_paths
+):
+    """Sample action requests should include bearer token from env var."""
+    streamlit_stub.reset()
+    monkeypatch.setenv("UQCME_ACTION_TOKEN", "env-action-token")
+    dashboard = _build_dashboard_with_sample_action(
+        tmp_path,
+        test_data_paths,
+        {
+            "label": "Notify",
+            "api_call": "https://example.test/api/action",
+            "value_field": "sample_name",
+            "api_bearer_token_env": "UQCME_ACTION_TOKEN",
+            "send_as_list": False,
+        },
+    )
+    action = dashboard.config.app.dashboard.sample_api_actions[0]
+    selected_rows = pd.DataFrame([
+        {"sample_name": "S1", "sample_id": "ID-1"},
+    ])
+    response = DummyResponse({"ok": True})
+
+    def fake_request(**kwargs):
+        assert kwargs["headers"] == {
+            "Authorization": "Bearer env-action-token",
+        }
+        assert kwargs["json"] == {"sample_name": "S1"}
+        return response
+
+    monkeypatch.setattr(dashboard_main.requests, "request", fake_request)
+
+    result = dashboard._trigger_sample_api_action(
+        action, selected_rows, "sample_id"
+    )
+
+    assert result is response
 
 
 def test_load_data_from_api_with_custom_headers(

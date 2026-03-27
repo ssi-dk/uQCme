@@ -21,7 +21,11 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
 from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
 from uQCme.app.plot import QCPlotter, get_available_metrics
-from uQCme.core.loader import load_data_from_config, load_config_from_file
+from uQCme.core.loader import (
+    _resolve_api_bearer_token,
+    load_config_from_file,
+    load_data_from_config,
+)
 from uQCme.core.engine import QCProcessor
 from uQCme.core.config import UQCMeConfig, DataInput, SampleApiAction
 from uQCme.core.exceptions import ConfigError, DataLoadError
@@ -1114,8 +1118,15 @@ class QCDashboard:
             'url': action.api_call,
             'timeout': action.timeout_seconds
         }
-        if action.headers:
-            request_kwargs['headers'] = action.headers
+        headers = dict(action.headers or {})
+        bearer_token = _resolve_api_bearer_token(
+            api_bearer_token=action.api_bearer_token,
+            api_bearer_token_env=action.api_bearer_token_env
+        )
+        if bearer_token:
+            headers['Authorization'] = f'Bearer {bearer_token}'
+        if headers:
+            request_kwargs['headers'] = headers
 
         if action.method == 'GET':
             request_kwargs['params'] = payload

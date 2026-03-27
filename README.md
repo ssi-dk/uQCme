@@ -212,6 +212,7 @@ app:
         api_call: "https://example.org/api/notify"
         value_field: "sample_name"
         method: "POST"
+        api_bearer_token_env: "UQCME_ACTION_TOKEN"
         payload_field: "sample_ids"
         send_as_list: true
         include_sample_ids: false
@@ -219,6 +220,10 @@ app:
 
 When users select samples in the Data Preview table and click the configured
 button, uQCme sends the selected `value_field` values to `api_call`.
+For authenticated button actions, configure one of:
+- `api_bearer_token_env` (recommended): environment variable name containing the token
+- `api_bearer_token`: raw token in config file
+- `headers`: optional additional request headers
 
 **Config-driven report mode defaults**
 

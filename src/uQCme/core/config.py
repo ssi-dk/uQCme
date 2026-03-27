@@ -50,6 +50,8 @@ class SampleApiAction(BaseModel):
     api_call: str
     value_field: str
     method: str = "POST"
+    api_bearer_token: Optional[str] = None
+    api_bearer_token_env: Optional[str] = None
     payload_field: Optional[str] = None
     timeout_seconds: int = 30
     send_as_list: bool = True

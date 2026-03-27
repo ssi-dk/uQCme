@@ -99,6 +99,61 @@ class TestConfigModels(unittest.TestCase):
             report_mode.default_filters["species"], "Escherichia coli"
         )
 
+    def test_data_input_supports_api_bearer_token_fields(self):
+        """Data input config should parse bearer token auth fields."""
+        config = UQCMeConfig(
+            app={
+                "input": {
+                    "data": {
+                        "api_call": "https://example.org/api/data",
+                        "api_bearer_token": "test-token",
+                        "api_bearer_token_env": "UQCME_API_TOKEN",
+                        "api_headers": {
+                            "X-Project-Id": "project-123"
+                        },
+                    },
+                    "mapping": "config/mapping.yaml",
+                    "qc_rules": "config/QC_rules.tsv",
+                    "qc_tests": "config/QC_tests.tsv",
+                }
+            }
+        )
+
+        data_input = config.app.input.data
+        self.assertEqual(data_input.api_bearer_token, "test-token")
+        self.assertEqual(data_input.api_bearer_token_env, "UQCME_API_TOKEN")
+        self.assertEqual(
+            data_input.api_headers["X-Project-Id"], "project-123"
+        )
+
+    def test_sample_api_action_supports_bearer_token_fields(self):
+        """Sample API actions should parse bearer token auth fields."""
+        config = UQCMeConfig(
+            app={
+                "input": {
+                    "data": {"file": "output/qc_results.tsv"},
+                    "mapping": "config/mapping.yaml",
+                    "qc_rules": "config/QC_rules.tsv",
+                    "qc_tests": "config/QC_tests.tsv",
+                },
+                "dashboard": {
+                    "sample_api_actions": [
+                        {
+                            "label": "Notify",
+                            "api_call": "https://example.org/api/notify",
+                            "value_field": "sample_name",
+                            "api_bearer_token": "test-token",
+                            "api_bearer_token_env": "UQCME_ACTION_TOKEN",
+                        }
+                    ]
+                },
+            }
+        )
+
+        action = config.app.dashboard.sample_api_actions[0]
+        self.assertEqual(action.api_bearer_token, "test-token")
+        self.assertEqual(action.api_bearer_token_env, "UQCME_ACTION_TOKEN")
+
 
 if __name__ == "__main__":
     unittest.main()

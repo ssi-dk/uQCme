@@ -111,6 +111,11 @@ uqcme --file path/to/my_run_data.tsv
 
 # Process data from an API
 uqcme --api-call "https://api.example.com/runs/123"
+
+# Process data from an authenticated API (recommended: env var)
+export UQCME_API_TOKEN="your-token-here"
+uqcme --api-call "https://api.example.com/runs/123" \
+  --api-bearer-token-env UQCME_API_TOKEN
 ```
 
 **Custom Configuration:**
@@ -174,6 +179,26 @@ The tool is driven by a `config.yaml` file. This file defines:
 *   `QC_rules.tsv`: Defines the specific thresholds and checks for each species. (default values originally from https://www.pathogensurveillance.net/resources/quality/ and https://happykhan.github.io/qualibact/)
 *   `QC_tests.tsv`: Defines how rule failures translate into overall QC outcomes.
 
+**Bearer token for `api_call`**
+
+When `qc.input.data.api_call` or `app.input.data.api_call` requires bearer auth,
+configure one of:
+- `api_bearer_token_env` (recommended): environment variable name containing the token
+- `api_bearer_token`: raw token in config file
+- `api_query_params`: URL query params to forward (for example `project_id`)
+
+```yaml
+app:
+  input:
+    data:
+      api_call: "https://api.example.com/runs/123"
+      api_bearer_token_env: "UQCME_API_TOKEN"
+      api_query_params:
+        - project_id
+        - seqSamples
+      # api_bearer_token: "plain-text-token"  # avoid in shared files
+```
+
 **Config-driven sample API action buttons**
 
 You can configure one or more action buttons in the dashboard that send values
@@ -187,6 +212,7 @@ app:
         api_call: "https://example.org/api/notify"
         value_field: "sample_name"
         method: "POST"
+        api_bearer_token_env: "UQCME_ACTION_TOKEN"
         payload_field: "sample_ids"
         send_as_list: true
         include_sample_ids: false
@@ -194,6 +220,10 @@ app:
 
 When users select samples in the Data Preview table and click the configured
 button, uQCme sends the selected `value_field` values to `api_call`.
+For authenticated button actions, configure one of:
+- `api_bearer_token_env` (recommended): environment variable name containing the token
+- `api_bearer_token`: raw token in config file
+- `headers`: optional additional request headers
 
 **Config-driven report mode defaults**
 

@@ -19,7 +19,13 @@ app:
   input:
     data:
       file: "./output/example/uQCme_run_data.tsv" # can also load via an API, only 1 can be enabled
-      api_call: ""
+      # api_call: 
+      # api_bearer_token: 
+      # api_bearer_token_env: ""
+      # api_query_params:
+        - project_id
+        - batchIDs
+        - seqSamples
     mapping: "./input/example/mapping.yaml"
     qc_rules: "./input/example/QC_rules.tsv"
     qc_tests: "./input/example/QC_tests.tsv"
@@ -36,5 +42,3 @@ app:
     4: "#FFB6C1"
 log:
   file: "./log/log.tsv"
-
-

@@ -5,6 +5,10 @@ qc:
   input:
     data:
       file: ""
+      api_call: ""
+      api_bearer_token: ""
+      api_bearer_token_env: ""
+      api_headers: {}
     mapping: "mapping.yaml"
     qc_rules: "QC_rules.tsv"
     qc_tests: "QC_tests.tsv"
@@ -20,6 +24,9 @@ app:
     data:
       file: "qc_results.tsv"
       api_call: ""
+      api_bearer_token: ""
+      api_bearer_token_env: ""
+      api_headers: {}
     mapping: "mapping.yaml"
     qc_rules: "QC_rules.tsv"
     qc_tests: "QC_tests.tsv"
@@ -39,6 +46,7 @@ app:
     #     api_call: "https://example.org/api/samples"
     #     value_field: "sample_name"
     #     method: "POST"
+    #     api_bearer_token_env: "UQCME_ACTION_TOKEN"
     #     payload_field: "samples"
     #     send_as_list: true
     #     include_sample_ids: false

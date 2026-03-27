@@ -30,8 +30,23 @@ class QCProcessor:
 
         # Apply data override if provided
         if data_override:
+            # Merge with existing data config so auth-related settings are
+            # preserved unless explicitly overridden.
+            existing_data_config = self.config.qc.input.data
+            if isinstance(existing_data_config, DataInput):
+                merged_override = {
+                    **existing_data_config.model_dump(exclude_none=True),
+                    **data_override
+                }
+            elif isinstance(existing_data_config, dict):
+                merged_override = {**existing_data_config, **data_override}
+            elif isinstance(existing_data_config, str):
+                merged_override = {'file': existing_data_config, **data_override}
+            else:
+                merged_override = data_override
+
             # Convert override dict to DataInput model
-            self.config.qc.input.data = DataInput(**data_override)
+            self.config.qc.input.data = DataInput(**merged_override)
             logger.info(f"Data source overridden: {data_override}")
 
         self.logger = setup_logging(str(self.config.log.file))

@@ -34,6 +34,14 @@ def main():
         '--api-call',
         help='Override data source with an API URL'
     )
+    parser.add_argument(
+        '--api-bearer-token',
+        help='Bearer token used with --api-call for API authentication'
+    )
+    parser.add_argument(
+        '--api-bearer-token-env',
+        help='Environment variable name containing bearer token for --api-call'
+    )
 
     args = parser.parse_args()
 
@@ -42,12 +50,24 @@ def main():
     print("=" * 50)
 
     try:
+        if args.file and (args.api_bearer_token or args.api_bearer_token_env):
+            parser.error(
+                "--api-bearer-token and --api-bearer-token-env require "
+                "--api-call"
+            )
+
         # Prepare data override if arguments are provided
         data_override = None
         if args.file:
             data_override = {'file': args.file}
         elif args.api_call:
             data_override = {'api_call': args.api_call}
+            if args.api_bearer_token:
+                data_override['api_bearer_token'] = args.api_bearer_token
+            if args.api_bearer_token_env:
+                data_override['api_bearer_token_env'] = (
+                    args.api_bearer_token_env
+                )
 
         # Initialize processor with optional override
         processor = QCProcessor(args.config, data_override=data_override)

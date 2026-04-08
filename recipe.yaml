@@ -1,6 +1,6 @@
 package:
   name: uqcme
-  version: 0.8.1  # Update this to match __init__.py version
+  version: 0.8.4
 
 build:
   noarch: python

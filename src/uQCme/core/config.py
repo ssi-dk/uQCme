@@ -100,7 +100,7 @@ class LogConfig(BaseModel):
 
 class UQCMeConfig(BaseModel):
     title: str = "uQCme - Microbial QC Reporter"
-    version: str = "0.8.3"
+    version: str = "0.8.5"
     qc: Optional[QCConfig] = None
     app: Optional[AppConfig] = None
     log: LogConfig = Field(default_factory=LogConfig)

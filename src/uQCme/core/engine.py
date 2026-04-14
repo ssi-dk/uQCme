@@ -7,7 +7,13 @@ import re
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from pandera.errors import SchemaError
-from .loader import load_data_from_config, load_config_from_file
+from .loader import (
+    collect_duplicate_row_warnings,
+    get_unique_columns_from_mapping,
+    load_data_from_config,
+    load_config_from_file,
+    validate_run_data_frame,
+)
 from .config import UQCMeConfig, DataInput, QCConfig
 from .exceptions import (
     ConfigError, DataLoadError, ProcessingError, ValidationError
@@ -119,6 +125,9 @@ class QCProcessor:
         data_config = self.qc_config.input.data
         # Pass mapping config for column name normalization
         self.run_data = load_data_from_config(data_config, self.mapping)
+        self.run_data = self.prepare_run_data(
+            self.run_data, validate_schema=False
+        )
         self.logger.info("✓ Run data loaded: %d samples",
                          len(self.run_data))
 
@@ -203,6 +212,28 @@ class QCProcessor:
                     self.qc_overrides[key] = value
 
         self.logger.info(f"✓ QC overrides loaded: {self.qc_overrides}")
+
+    def prepare_run_data(
+        self,
+        data: pd.DataFrame,
+        *,
+        validate_schema: bool = True
+    ) -> pd.DataFrame:
+        """Validate run data and collect duplicate warnings."""
+        if validate_schema:
+            validate_run_data_frame(data, self.mapping)
+
+        unique_columns = set(get_unique_columns_from_mapping(self.mapping))
+        warning_columns = [
+            column for column in ['sample_name']
+            if column in data.columns and column not in unique_columns
+        ]
+
+        for warning in collect_duplicate_row_warnings(data, warning_columns):
+            self.warnings.add(warning)
+            self.logger.warning(warning)
+
+        return data
 
     def _apply_operator(self, value: Any, operator: str,
                         threshold: Any, field_name: str = "unknown") -> bool:

@@ -82,6 +82,7 @@ class DashboardConfig(BaseModel):
     categorical_filter_threshold: int = 20
     section_toggle_columns: int = 3
     max_displayed_rules: int = 10
+    debug_api: bool = False
     report_mode: ReportModeConfig = Field(default_factory=ReportModeConfig)
     sample_api_actions: List[SampleApiAction] = Field(default_factory=list)
 
@@ -100,7 +101,7 @@ class LogConfig(BaseModel):
 
 class UQCMeConfig(BaseModel):
     title: str = "uQCme - Microbial QC Reporter"
-    version: str = "0.8.5"
+    version: str = "0.8.6"
     qc: Optional[QCConfig] = None
     app: Optional[AppConfig] = None
     log: LogConfig = Field(default_factory=LogConfig)

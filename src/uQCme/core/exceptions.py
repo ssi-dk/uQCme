@@ -15,10 +15,11 @@ class DataLoadError(UQCMeError):
     """Raised when there is an issue loading data or files."""
     
     def __init__(self, message: str, error_type: str = None,
-                 status_code: int = None):
+                 status_code: int = None, debug_info=None):
         super().__init__(message)
         self.error_type = error_type  # 'timeout', '502', 'http_error', etc.
         self.status_code = status_code
+        self.debug_info = debug_info
 
 
 class ValidationError(UQCMeError):
@@ -27,4 +28,3 @@ class ValidationError(UQCMeError):
 
 class ProcessingError(UQCMeError):
     """Raised when an error occurs during QC processing."""
-

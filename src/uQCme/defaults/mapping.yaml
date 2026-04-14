@@ -92,6 +92,7 @@ Sections:
         mapping: sample_name
       report:
         id: true # represents the unique identifier for the sample which can be passed to other systems
+        # unique: true # optional: validate that this mapped column has no duplicates
   QC_metrics:
     QC action: # generated from qc
       data:

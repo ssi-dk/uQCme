@@ -22,13 +22,17 @@ from typing import Dict, Any, List, Optional, Union
 from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
 from uQCme.app.plot import QCPlotter, get_available_metrics
 from uQCme.core.loader import (
+    collect_duplicate_row_warnings,
+    get_unique_columns_from_mapping,
     _resolve_api_bearer_token,
     load_config_from_file,
     load_data_from_config,
+    load_data_from_api_with_debug,
+    prepare_loaded_data_frame,
 )
 from uQCme.core.engine import QCProcessor
 from uQCme.core.config import UQCMeConfig, DataInput, SampleApiAction
-from uQCme.core.exceptions import ConfigError, DataLoadError
+from uQCme.core.exceptions import ConfigError, DataLoadError, ValidationError
 
 
 class QCDashboard:
@@ -44,6 +48,166 @@ class QCDashboard:
         self.qc_tests: pd.DataFrame = pd.DataFrame()
         self.plotter: QCPlotter = QCPlotter(self.config)
         self.report_mode = self._is_report_mode()
+        self.api_debug_info: Optional[Dict[str, Any]] = None
+        self.api_debug_error: Optional[str] = None
+
+    def _is_api_debug_enabled(self) -> bool:
+        """Check if API debug mode is enabled in URL or dashboard config."""
+        query_params = getattr(st, "query_params", None)
+        if query_params is not None:
+            query_debug = str(query_params.get("debug", "")).strip().lower()
+            if query_debug in {"1", "true", "yes"}:
+                return True
+            if query_debug in {"0", "false", "no"}:
+                return False
+
+        if not self.config.app or not self.config.app.dashboard:
+            return False
+        return bool(self.config.app.dashboard.debug_api)
+
+    def _resolve_data_config_for_runtime(
+        self,
+        data_config: Union[str, DataInput, Dict[str, Any]]
+    ) -> Union[str, DataInput, Dict[str, Any]]:
+        """Resolve runtime data config, including forwarded query params."""
+        resolved_data_config = data_config
+
+        if isinstance(resolved_data_config, DataInput):
+            api_query_params = resolved_data_config.api_query_params
+            if resolved_data_config.api_call and api_query_params:
+                dynamic_url = self._build_api_url_with_query_params(
+                    resolved_data_config.api_call, api_query_params
+                )
+                resolved_data_config = DataInput(
+                    file=resolved_data_config.file,
+                    api_call=dynamic_url,
+                    api_query_params=api_query_params,
+                    api_bearer_token=resolved_data_config.api_bearer_token,
+                    api_bearer_token_env=(
+                        resolved_data_config.api_bearer_token_env
+                    ),
+                    api_headers=resolved_data_config.api_headers
+                )
+        elif (
+            isinstance(resolved_data_config, dict) and
+            resolved_data_config.get('api_call')
+        ):
+            api_query_params = resolved_data_config.get('api_query_params')
+            if api_query_params:
+                dynamic_url = self._build_api_url_with_query_params(
+                    resolved_data_config['api_call'], api_query_params
+                )
+                resolved_data_config = {
+                    **resolved_data_config,
+                    'api_call': dynamic_url
+                }
+
+        return resolved_data_config
+
+    def _is_api_data_config(
+        self,
+        data_config: Union[str, DataInput, Dict[str, Any]]
+    ) -> bool:
+        """Return True when the runtime data source is API-based."""
+        if isinstance(data_config, DataInput):
+            return bool(data_config.api_call)
+        if isinstance(data_config, dict):
+            return bool(data_config.get('api_call'))
+        return False
+
+    def _load_data_with_optional_api_debug(
+        self,
+        data_config: Union[str, DataInput, Dict[str, Any]]
+    ) -> pd.DataFrame:
+        """Load data, capturing raw API results when debug mode is enabled."""
+        if (
+            not self._is_api_debug_enabled() or
+            not self._is_api_data_config(data_config)
+        ):
+            return load_data_from_config(data_config, self.mapping)
+
+        if isinstance(data_config, DataInput):
+            bearer_token = _resolve_api_bearer_token(
+                api_bearer_token=data_config.api_bearer_token,
+                api_bearer_token_env=data_config.api_bearer_token_env
+            )
+            raw_df, debug_info = load_data_from_api_with_debug(
+                data_config.api_call,
+                bearer_token=bearer_token,
+                custom_headers=data_config.api_headers
+            )
+        else:
+            bearer_token = _resolve_api_bearer_token(
+                api_bearer_token=data_config.get('api_bearer_token'),
+                api_bearer_token_env=data_config.get('api_bearer_token_env')
+            )
+            raw_df, debug_info = load_data_from_api_with_debug(
+                data_config['api_call'],
+                bearer_token=bearer_token,
+                custom_headers=data_config.get('api_headers')
+            )
+
+        self.api_debug_info = debug_info
+        prepared_df = prepare_loaded_data_frame(raw_df, self.mapping)
+        self.api_debug_info['normalized_row_count'] = len(prepared_df)
+        self.api_debug_info['normalized_columns'] = prepared_df.columns.tolist()
+        return prepared_df
+
+    def _render_api_debug_panel(self):
+        """Render API debug details when enabled."""
+        if not self._is_api_debug_enabled():
+            return
+
+        if not self.api_debug_info and not self.api_debug_error:
+            return
+
+        with st.expander("API Debug", expanded=bool(self.api_debug_error)):
+            if self.api_debug_error:
+                st.write(f"**Load Status:** failed - {self.api_debug_error}")
+            else:
+                st.write("**Load Status:** success")
+
+            if self.api_debug_info:
+                resolved_url = self.api_debug_info.get('resolved_url')
+                if resolved_url:
+                    st.write(f"**Resolved URL:** `{resolved_url}`")
+
+                status_code = self.api_debug_info.get('status_code')
+                if status_code is not None:
+                    st.write(f"**HTTP Status:** {status_code}")
+
+                payload_type = self.api_debug_info.get('payload_type')
+                if payload_type:
+                    st.write(f"**Payload Type:** {payload_type}")
+
+                row_count = self.api_debug_info.get('row_count')
+                if row_count is not None:
+                    st.write(f"**Parsed Rows:** {row_count}")
+
+                columns = self.api_debug_info.get('columns') or []
+                if columns:
+                    st.write(f"**Parsed Columns:** {', '.join(columns)}")
+
+                normalized_columns = (
+                    self.api_debug_info.get('normalized_columns') or []
+                )
+                if normalized_columns:
+                    st.write(
+                        "**Normalized Columns:** " +
+                        ', '.join(normalized_columns)
+                    )
+
+                payload_preview = self.api_debug_info.get('payload_preview')
+                if payload_preview is not None:
+                    st.write("**Payload Preview:**")
+                    if isinstance(payload_preview, (dict, list)):
+                        st.json(payload_preview)
+                    else:
+                        st.write(payload_preview)
+
+                if not self.data.empty:
+                    st.write("**Loaded Data Preview:**")
+                    st.dataframe(self.data.head(50), width='stretch')
 
     def _is_report_mode(self) -> bool:
         """Detect report mode from env var, query param, or config."""
@@ -231,6 +395,9 @@ class QCDashboard:
             st.stop()
 
         try:
+            self.api_debug_info = None
+            self.api_debug_error = None
+
             # Load mapping configuration first as it's needed for validation
             mapping_path = self.config.app.input.mapping
             with open(mapping_path, 'r', encoding='utf-8') as f:
@@ -250,40 +417,24 @@ class QCDashboard:
             elif isinstance(data_config, str) and data_config:
                 has_configured_source = True
 
-            # Build dynamic API URL with browser query params if configured
-            if isinstance(data_config, DataInput) and data_config.api_call:
-                api_query_params = data_config.api_query_params
-                if api_query_params:
-                    dynamic_url = self._build_api_url_with_query_params(
-                        data_config.api_call, api_query_params
-                    )
-                    # Create a new DataInput with the dynamic URL
-                    data_config = DataInput(
-                        file=data_config.file,
-                        api_call=dynamic_url,
-                        api_query_params=api_query_params,
-                        api_bearer_token=data_config.api_bearer_token,
-                        api_bearer_token_env=data_config.api_bearer_token_env,
-                        api_headers=data_config.api_headers
-                    )
-            elif isinstance(data_config, dict) and data_config.get('api_call'):
-                api_query_params = data_config.get('api_query_params')
-                if api_query_params:
-                    dynamic_url = self._build_api_url_with_query_params(
-                        data_config['api_call'], api_query_params
-                    )
-                    data_config = {**data_config, 'api_call': dynamic_url}
+            data_config = self._resolve_data_config_for_runtime(data_config)
 
             # Only attempt to load if a source is configured
             if has_configured_source:
                 try:
-                    self.data = load_data_from_config(data_config, self.mapping)
+                    self.data = self._load_data_with_optional_api_debug(
+                        data_config
+                    )
                     # Validate the loaded data if not empty
                     if not self.data.empty:
                         self.data = self._validate_api_data(self.data)
+                        self._warn_on_duplicate_sample_names(self.data)
                     # Clear any previous API warnings
                     self.api_warning = None
                 except DataLoadError as e:
+                    self.api_debug_error = str(e)
+                    if getattr(e, 'debug_info', None):
+                        self.api_debug_info = e.debug_info
                     # Check for timeout/502 errors and show specific warnings
                     if hasattr(e, 'error_type') and e.error_type in ['timeout', '502']:
                         self.api_warning = {
@@ -304,7 +455,13 @@ class QCDashboard:
                     st.error(f"Configuration error: {e}")
                     self.data = pd.DataFrame()
                     self.api_warning = None
+                except ValidationError as e:
+                    self.api_debug_error = str(e)
+                    st.error(f"Data validation failed: {e}")
+                    self.data = pd.DataFrame()
+                    self.api_warning = None
                 except Exception as e:
+                    self.api_debug_error = str(e)
                     st.error(f"Unexpected error loading data: {e}")
                     self.data = pd.DataFrame()
                     self.api_warning = None
@@ -467,6 +624,18 @@ class QCDashboard:
             )
         
         return data
+
+    def _warn_on_duplicate_sample_names(self, data: pd.DataFrame):
+        """Warn when sample_name is duplicated and not marked unique."""
+        if data.empty or not self.mapping:
+            return
+
+        unique_columns = set(get_unique_columns_from_mapping(self.mapping))
+        if 'sample_name' in unique_columns:
+            return
+
+        for warning in collect_duplicate_row_warnings(data, ['sample_name']):
+            st.warning(warning)
 
 
     def setup_page(self):
@@ -1970,8 +2139,8 @@ class QCDashboard:
                 # Load reference data
                 processor.load_reference_data()
                 
-                # Set run data directly
-                processor.run_data = df
+                # Validate and set run data
+                processor.run_data = processor.prepare_run_data(df)
                 
                 # Process
                 processor.process_samples()
@@ -2019,6 +2188,8 @@ class QCDashboard:
         # Render header
         if not self.report_mode:
             self.render_header()
+
+        self._render_api_debug_panel()
         
         # Data Source Info & Override in Sidebar
         if not self.report_mode:

@@ -1,12 +1,13 @@
 """Data loading utilities for uQCme."""
 
+import copy
 import os
 import pandas as pd
 import requests
 import urllib3
 import yaml
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
-from typing import Union, Dict, Any, Optional
+from typing import Union, Dict, Any, Optional, List, Tuple
 import logging
 from pandera.errors import SchemaError
 from .config import UQCMeConfig, DataInput
@@ -206,6 +207,345 @@ def _get_sample_name_source(mapping_config: Optional[Dict[str, Any]]) -> Optiona
     return None
 
 
+def _format_duplicate_value(value: Any) -> str:
+    """Format duplicate value for user-facing warning messages."""
+    if pd.isna(value):
+        return "<missing>"
+
+    value_str = str(value)
+    if not value_str.strip():
+        return "<empty>"
+
+    return value_str
+
+
+def get_unique_columns_from_mapping(
+    mapping_config: Optional[Dict[str, Any]]
+) -> List[str]:
+    """Return mapped data columns marked as unique in mapping config."""
+    unique_columns: List[str] = []
+    seen = set()
+
+    if not mapping_config or 'Sections' not in mapping_config:
+        return unique_columns
+
+    for section_data in mapping_config['Sections'].values():
+        for field_config in section_data.values():
+            if not isinstance(field_config, dict):
+                continue
+
+            data_config = field_config.get('data', {})
+            report_config = field_config.get('report', {})
+            is_unique = bool(
+                data_config.get('unique') or report_config.get('unique')
+            )
+            if not is_unique:
+                continue
+
+            data_mapping = data_config.get('mapping')
+            if isinstance(data_mapping, str) and data_mapping not in seen:
+                unique_columns.append(data_mapping)
+                seen.add(data_mapping)
+
+    return unique_columns
+
+
+def get_duplicate_rows_for_column(
+    df: pd.DataFrame,
+    column: str
+) -> List[Dict[str, Any]]:
+    """Return duplicate values and their 1-based row positions for a column."""
+    if df.empty or column not in df.columns:
+        return []
+
+    duplicate_mask = df[column].duplicated(keep=False)
+    if not duplicate_mask.any():
+        return []
+
+    duplicate_rows = df.loc[duplicate_mask, [column]].copy()
+    duplicate_rows = duplicate_rows.reset_index().rename(
+        columns={'index': 'row_number'}
+    )
+    duplicate_rows['row_number'] = duplicate_rows['row_number'] + 1
+
+    duplicates = []
+    grouped = duplicate_rows.groupby(column, dropna=False, sort=False)
+    for value, group in grouped:
+        duplicates.append({
+            'column': column,
+            'value': value,
+            'rows': group['row_number'].astype(int).tolist()
+        })
+
+    return duplicates
+
+
+def collect_duplicate_row_warnings(
+    df: pd.DataFrame,
+    columns: List[str]
+) -> List[str]:
+    """Build warning messages for duplicate values in selected columns."""
+    warnings: List[str] = []
+
+    for column in columns:
+        for duplicate in get_duplicate_rows_for_column(df, column):
+            row_numbers = ', '.join(str(row) for row in duplicate['rows'])
+            value = _format_duplicate_value(duplicate['value'])
+            warnings.append(
+                f"Duplicate value '{value}' found in column '{column}' "
+                f"at rows {row_numbers}."
+            )
+
+    return warnings
+
+
+def validate_unique_columns(
+    df: pd.DataFrame,
+    mapping_config: Optional[Dict[str, Any]]
+) -> None:
+    """Validate mapped columns marked as unique."""
+    errors: List[str] = []
+
+    for column in get_unique_columns_from_mapping(mapping_config):
+        for duplicate in get_duplicate_rows_for_column(df, column):
+            row_numbers = ', '.join(str(row) for row in duplicate['rows'])
+            value = _format_duplicate_value(duplicate['value'])
+            errors.append(
+                f"Column '{column}' is marked unique, but value '{value}' "
+                f"appears in rows {row_numbers}."
+            )
+
+    if errors:
+        raise ValidationError(
+            "Unique column validation failed: " + ' '.join(errors)
+        )
+
+
+def validate_run_data_frame(
+    df: pd.DataFrame,
+    mapping_config: Optional[Dict[str, Any]] = None
+) -> None:
+    """Validate run data schema and mapping-driven uniqueness rules."""
+    try:
+        RunDataSchema.validate(df)
+    except SchemaError as e:
+        raise ValidationError(f"Data validation failed: {e}")
+
+    validate_unique_columns(df, mapping_config)
+
+
+def prepare_loaded_data_frame(
+    df: pd.DataFrame,
+    mapping_config: Optional[Dict[str, Any]] = None
+) -> pd.DataFrame:
+    """Apply configured column mappings and validate loaded data."""
+    if df is not None and mapping_config:
+        column_mappings = _get_column_mappings(mapping_config)
+        rename_map = {}
+
+        for source_col, target_col in column_mappings.items():
+            # Only rename if source exists and target doesn't
+            if source_col in df.columns and target_col not in df.columns:
+                rename_map[source_col] = target_col
+
+        if rename_map:
+            df = df.rename(columns=rename_map)
+
+    # Fallback for sample_name if not mapped
+    if df is not None and 'sample_name' not in df.columns:
+        sample_name_source = _get_sample_name_source(mapping_config)
+        if sample_name_source and sample_name_source in df.columns:
+            df = df.rename(columns={sample_name_source: 'sample_name'})
+        elif 'sampleName' in df.columns:
+            # Fallback: try camelCase version
+            df = df.rename(columns={'sampleName': 'sample_name'})
+
+    validate_run_data_frame(df, mapping_config)
+    return df
+
+
+def _payload_preview(data: Any, limit: int = 20) -> Any:
+    """Return a bounded preview of API payload for debug display."""
+    if isinstance(data, list):
+        return copy.deepcopy(data[:limit])
+
+    if isinstance(data, dict):
+        preview = {}
+        for idx, (key, value) in enumerate(data.items()):
+            if idx >= limit:
+                preview['...'] = (
+                    f"{len(data) - limit} additional top-level keys omitted"
+                )
+                break
+
+            if isinstance(value, list) and len(value) > limit:
+                preview[key] = copy.deepcopy(value[:limit])
+            else:
+                preview[key] = copy.deepcopy(value)
+        return preview
+
+    return data
+
+
+def _coerce_api_payload_to_dataframe(data: Any) -> pd.DataFrame:
+    """Convert API payload into a DataFrame using existing heuristics."""
+    if isinstance(data, list):
+        return pd.DataFrame(data)
+    elif isinstance(data, dict):
+        # If it's a dict, try to find the list of records
+        # This is a heuristic, might need adjustment
+        for key, value in data.items():
+            if (isinstance(value, list) and len(value) > 0 and
+                    isinstance(value[0], dict)):
+                return pd.DataFrame(value)
+
+        # If no list found, try converting the whole dict
+        return pd.DataFrame([data])
+    else:
+        raise DataLoadError(f"Unexpected API response format: {type(data)}")
+
+
+def _load_api_payload(
+    api_url: str,
+    bearer_token: Optional[str] = None,
+    custom_headers: Optional[Dict[str, str]] = None
+) -> Tuple[Any, Dict[str, Any]]:
+    """Load raw payload from API endpoint and return debug metadata."""
+    resolved_url, resolved_headers = _resolve_project_scope_request(
+        api_url, custom_headers
+    )
+    logger.info(f"Loading data from API: {resolved_url}")
+
+    def _send_request(
+        *,
+        verify: bool,
+        request_headers: Dict[str, str],
+        cookies: Optional[Dict[str, str]] = None
+    ):
+        return requests.get(
+            resolved_url,
+            headers=request_headers,
+            timeout=30,
+            verify=verify,
+            cookies=cookies
+        )
+
+    headers = {'accept': 'application/json'}
+    if resolved_headers:
+        headers.update(resolved_headers)
+    if bearer_token:
+        headers['Authorization'] = f'Bearer {bearer_token}'
+
+    debug_info: Dict[str, Any] = {
+        'resolved_url': resolved_url,
+        'payload_preview': None,
+        'payload_type': None,
+        'status_code': None,
+        'row_count': None,
+        'columns': [],
+    }
+
+    try:
+        verify_ssl = True
+        try:
+            response = _send_request(
+                verify=verify_ssl,
+                request_headers=headers
+            )
+        except requests.exceptions.SSLError:
+            warning_msg = ("SSL verification failed, retrying without "
+                           "SSL verification...")
+            logger.warning(warning_msg)
+            urllib3.disable_warnings(
+                urllib3.exceptions.InsecureRequestWarning
+            )
+            verify_ssl = False
+            response = _send_request(
+                verify=verify_ssl,
+                request_headers=headers
+            )
+
+        debug_info['status_code'] = response.status_code
+
+        if response.status_code == 401 and bearer_token:
+            auth_detail = _extract_api_error_detail(response)
+            if auth_detail == "NOT_AUTHENTICATED":
+                retry_headers = {
+                    key: value for key, value in headers.items()
+                    if key.lower() != 'authorization'
+                }
+                response = _send_request(
+                    verify=verify_ssl,
+                    request_headers=retry_headers,
+                    cookies={'viewer_session': bearer_token}
+                )
+                debug_info['status_code'] = response.status_code
+
+        response.raise_for_status()
+        data = response.json()
+        debug_info['payload_type'] = type(data).__name__
+        debug_info['payload_preview'] = _payload_preview(data)
+        return data, debug_info
+    except requests.exceptions.Timeout as e:
+        raise DataLoadError(
+            f"API request timed out after 30 seconds: {e}",
+            error_type="timeout",
+            debug_info=debug_info
+        )
+    except requests.exceptions.HTTPError as e:
+        status_code = e.response.status_code if e.response is not None else None
+        error_detail = _extract_api_error_detail(e.response)
+        error_url = None
+        if e.response is not None:
+            error_url = getattr(e.response, 'url', None)
+            debug_info['status_code'] = e.response.status_code
+            try:
+                payload = e.response.json()
+                debug_info['payload_type'] = type(payload).__name__
+                debug_info['payload_preview'] = _payload_preview(payload)
+            except ValueError:
+                if e.response.text:
+                    debug_info['payload_type'] = 'text'
+                    debug_info['payload_preview'] = e.response.text[:2000]
+        if not error_url:
+            error_url = resolved_url
+        if status_code == 502:
+            raise DataLoadError(
+                f"API returned 502 Bad Gateway error for url: {error_url}. "
+                "The server may be overloaded or temporarily unavailable.",
+                error_type="502",
+                status_code=502,
+                debug_info=debug_info
+            )
+        elif status_code == 504:
+            raise DataLoadError(
+                f"API returned 504 Gateway Timeout error for url: {error_url}. "
+                "The request took too long to process.",
+                error_type="timeout",
+                status_code=504,
+                debug_info=debug_info
+            )
+        else:
+            detail_msg = f" - {error_detail}" if error_detail else ""
+            raise DataLoadError(
+                f"API request failed with HTTP {status_code} "
+                f"for url: {error_url}{detail_msg}",
+                error_type="http_error",
+                status_code=status_code,
+                debug_info=debug_info
+            )
+    except requests.RequestException as e:
+        raise DataLoadError(
+            f"API request failed: {e}",
+            debug_info=debug_info
+        )
+    except ValueError as e:
+        raise DataLoadError(
+            f"Invalid JSON response: {e}",
+            debug_info=debug_info
+        )
+
+
 def load_config_from_file(config_path: str) -> UQCMeConfig:
     """
     Load configuration from a YAML file.
@@ -298,33 +638,7 @@ def load_data_from_config(
             # Legacy structure - direct file path
             df = pd.read_csv(data_config, sep='\t')
             
-        # Apply column mappings from configuration
-        if df is not None and mapping_config:
-            column_mappings = _get_column_mappings(mapping_config)
-            rename_map = {}
-            
-            for source_col, target_col in column_mappings.items():
-                # Only rename if source exists and target doesn't
-                if source_col in df.columns and target_col not in df.columns:
-                    rename_map[source_col] = target_col
-            
-            if rename_map:
-                df = df.rename(columns=rename_map)
-        
-        # Fallback for sample_name if not mapped
-        if df is not None and 'sample_name' not in df.columns:
-            sample_name_source = _get_sample_name_source(mapping_config)
-            if sample_name_source and sample_name_source in df.columns:
-                df = df.rename(columns={sample_name_source: 'sample_name'})
-            elif 'sampleName' in df.columns:
-                # Fallback: try camelCase version
-                df = df.rename(columns={'sampleName': 'sample_name'})
-
-        # Validate data schema
-        try:
-            RunDataSchema.validate(df)
-        except SchemaError as e:
-            raise ValidationError(f"Data validation failed: {e}")
+        df = prepare_loaded_data_frame(df, mapping_config)
             
         return df
         
@@ -356,128 +670,26 @@ def load_data_from_api(
     Raises:
         DataLoadError: If API request fails or response is invalid.
     """
-    resolved_url, resolved_headers = _resolve_project_scope_request(
-        api_url, custom_headers
+    data, _ = _load_api_payload(
+        api_url,
+        bearer_token=bearer_token,
+        custom_headers=custom_headers
     )
-    logger.info(f"Loading data from API: {resolved_url}")
+    return _coerce_api_payload_to_dataframe(data)
 
-    def _send_request(
-        *,
-        verify: bool,
-        request_headers: Dict[str, str],
-        cookies: Optional[Dict[str, str]] = None
-    ):
-        return requests.get(
-            resolved_url,
-            headers=request_headers,
-            timeout=30,
-            verify=verify,
-            cookies=cookies
-        )
-    
-    # Make API request with JSON accept header
-    headers = {'accept': 'application/json'}
-    if resolved_headers:
-        headers.update(resolved_headers)
-    if bearer_token:
-        headers['Authorization'] = f'Bearer {bearer_token}'
-    
-    # Try with SSL verification first, then without if it fails
-    try:
-        verify_ssl = True
-        try:
-            response = _send_request(
-                verify=verify_ssl,
-                request_headers=headers
-            )
-        except requests.exceptions.SSLError:
-            warning_msg = ("SSL verification failed, retrying without "
-                           "SSL verification...")
-            logger.warning(warning_msg)
-            # Disable SSL warnings for cleaner output
-            urllib3.disable_warnings(
-                urllib3.exceptions.InsecureRequestWarning
-            )
-            verify_ssl = False
-            response = _send_request(
-                verify=verify_ssl,
-                request_headers=headers
-            )
 
-        # Backward compatibility for session-cookie auth backends:
-        # If bearer auth returns NOT_AUTHENTICATED, retry once by sending
-        # the configured token as viewer_session cookie.
-        if response.status_code == 401 and bearer_token:
-            auth_detail = _extract_api_error_detail(response)
-            if auth_detail == "NOT_AUTHENTICATED":
-                retry_headers = {
-                    key: value for key, value in headers.items()
-                    if key.lower() != 'authorization'
-                }
-                response = _send_request(
-                    verify=verify_ssl,
-                    request_headers=retry_headers,
-                    cookies={'viewer_session': bearer_token}
-                )
-        
-        response.raise_for_status()
-        
-        # Parse JSON response
-        data = response.json()
-    except requests.exceptions.Timeout as e:
-        raise DataLoadError(
-            f"API request timed out after 30 seconds: {e}",
-            error_type="timeout"
-        )
-    except requests.exceptions.HTTPError as e:
-        status_code = e.response.status_code if e.response is not None else None
-        error_detail = _extract_api_error_detail(e.response)
-        error_url = None
-        if e.response is not None:
-            error_url = getattr(e.response, 'url', None)
-        if not error_url:
-            error_url = resolved_url
-        if status_code == 502:
-            raise DataLoadError(
-                f"API returned 502 Bad Gateway error for url: {error_url}. "
-                "The server may be overloaded or temporarily unavailable.",
-                error_type="502",
-                status_code=502
-            )
-        elif status_code == 504:
-            raise DataLoadError(
-                f"API returned 504 Gateway Timeout error for url: {error_url}. "
-                "The request took too long to process.",
-                error_type="timeout",
-                status_code=504
-            )
-        else:
-            detail_msg = f" - {error_detail}" if error_detail else ""
-            raise DataLoadError(
-                f"API request failed with HTTP {status_code} "
-                f"for url: {error_url}{detail_msg}",
-                error_type="http_error",
-                status_code=status_code
-            )
-    except requests.RequestException as e:
-        raise DataLoadError(f"API request failed: {e}")
-    except ValueError as e:
-        raise DataLoadError(f"Invalid JSON response: {e}")
-    
-    # Convert to DataFrame
-    # Assuming the API returns a list of records or similar structure
-    # Adjust this based on actual API response format
-    if isinstance(data, list):
-        return pd.DataFrame(data)
-    elif isinstance(data, dict):
-        # If it's a dict, try to find the list of records
-        # This is a heuristic, might need adjustment
-        for key, value in data.items():
-            if (isinstance(value, list) and len(value) > 0 and
-                    isinstance(value[0], dict)):
-                return pd.DataFrame(value)
-        
-        # If no list found, try converting the whole dict
-        return pd.DataFrame([data])
-    else:
-        raise DataLoadError(f"Unexpected API response format: {type(data)}")
+def load_data_from_api_with_debug(
+    api_url: str,
+    bearer_token: Optional[str] = None,
+    custom_headers: Optional[Dict[str, str]] = None
+) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    """Load data from API and return debug metadata for UI inspection."""
+    data, debug_info = _load_api_payload(
+        api_url,
+        bearer_token=bearer_token,
+        custom_headers=custom_headers
+    )
+    df = _coerce_api_payload_to_dataframe(data)
+    debug_info['row_count'] = len(df)
+    debug_info['columns'] = df.columns.tolist()
+    return df, debug_info

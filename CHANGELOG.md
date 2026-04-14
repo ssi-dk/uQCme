@@ -24,9 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Bumped application version to `0.8.2` (`src/uQCme/__init__.py`) and aligned config version defaults to `0.8.2`.
+- Bumped application version to `0.8.6` (`src/uQCme/__init__.py`) and aligned config version defaults to `0.8.6`.
 - Updated README for current behavior and layout:
-  - Version badge now reflects `0.8.2`.
+  - Version badge now reflects `0.8.6`.
   - Output filename examples now use `qc_results.tsv` and `qc_warnings.tsv`.
   - QC tests example updated to `passed_rule_conditions`/`failed_rule_conditions` schema.
   - Project structure section updated to reflect `app/main.py`, `cli/main.py`, and `core/*`.

@@ -3,7 +3,7 @@ authors = ["Kim Ng <kimleeng@gmail.com>"]
 channels = ["conda-forge", "bioconda"]
 name = "uQCme"
 platforms = ["osx-arm64"]
-version = "0.5.0"
+version = "0.8.6"
 
 [tasks]
 build = "rattler-build build --recipe recipe.yaml"

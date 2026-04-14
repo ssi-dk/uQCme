@@ -44,6 +44,10 @@ class StreamlitStub(types.ModuleType):
         self.info_calls = []
         self.warning_calls = []
         self.success_calls = []
+        self.write_calls = []
+        self.json_calls = []
+        self.dataframe_calls = []
+        self.query_params = _QueryParamsStub()
 
     def info(self, message):
         self.info_calls.append(message)
@@ -53,6 +57,19 @@ class StreamlitStub(types.ModuleType):
 
     def success(self, message):
         self.success_calls.append(message)
+
+    def write(self, message):
+        self.write_calls.append(message)
+
+    def json(self, payload):
+        self.json_calls.append(payload)
+
+    def dataframe(self, data, **kwargs):
+        self.dataframe_calls.append((data, kwargs))
+        return None
+
+    def expander(self, *args, **kwargs):
+        return _ContextStub()
 
     def error(self, message):
         raise AssertionError(f"st.error called unexpectedly: {message}")
@@ -76,6 +93,13 @@ class _ContextStub:
 
     def metric(self, *args, **kwargs):
         return None
+
+
+class _QueryParamsStub(dict):
+    """Dictionary-like query params stub with Streamlit-compatible API."""
+
+    def to_dict(self):
+        return dict(self)
 
 
 streamlit_stub = StreamlitStub()
@@ -128,6 +152,7 @@ def _build_api_config(
     api_bearer_token: str | None = None,
     api_bearer_token_env: str | None = None,
     api_headers: dict[str, str] | None = None,
+    debug_api: bool = False,
 ):
     data_config = {"api_call": api_url}
     if api_bearer_token:
@@ -144,7 +169,10 @@ def _build_api_config(
                 "mapping": str(test_data_paths["mapping"]),
                 "qc_rules": str(test_data_paths["qc_rules"]),
                 "qc_tests": str(test_data_paths["qc_tests"]),
-            }
+            },
+            "dashboard": {
+                "debug_api": debug_api
+            },
         }
     }
     config_path = tmp_path / "config_api.yaml"
@@ -294,6 +322,124 @@ def test_load_data_from_api_with_bearer_token_env(
     monkeypatch.setattr(loader.requests, "get", fake_get)
 
     dashboard.load_data()
+
+
+def test_load_data_from_api_debug_captures_payload(
+    monkeypatch, tmp_path, test_data_paths
+):
+    """Debug mode should retain API payload preview for browser inspection."""
+    streamlit_stub.reset()
+
+    expected_url = "https://example.test/api/run-data"
+    config_path = _build_api_config(
+        tmp_path,
+        test_data_paths,
+        expected_url,
+        debug_api=True,
+    )
+    dashboard = app.QCDashboard(str(config_path))
+
+    api_payload = [
+        {
+            "sample_name": "S1",
+            "qc_outcome": "PASS",
+            "species": "E. coli",
+            "provided_species": "E. coli",
+        },
+        {
+            "sample_name": "S2",
+            "qc_outcome": "FAIL",
+            "species": "Listeria",
+            "provided_species": "Listeria",
+        },
+    ]
+
+    response = DummyResponse(api_payload)
+
+    def fake_get(url, headers, timeout, verify, cookies=None):
+        assert url == expected_url
+        return response
+
+    monkeypatch.setattr(loader.requests, "get", fake_get)
+
+    dashboard.load_data()
+
+    assert dashboard.api_debug_info is not None
+    assert dashboard.api_debug_info["resolved_url"] == expected_url
+    assert dashboard.api_debug_info["payload_preview"] == api_payload
+    assert dashboard.api_debug_info["row_count"] == 2
+    assert "sample_name" in dashboard.api_debug_info["columns"]
+
+
+def test_render_api_debug_panel_shows_payload(
+    monkeypatch, tmp_path, test_data_paths
+):
+    """Debug panel should render payload preview and table preview."""
+    streamlit_stub.reset()
+
+    expected_url = "https://example.test/api/run-data"
+    config_path = _build_api_config(
+        tmp_path,
+        test_data_paths,
+        expected_url,
+        debug_api=True,
+    )
+    dashboard = app.QCDashboard(str(config_path))
+    dashboard.api_debug_info = {
+        "resolved_url": expected_url,
+        "status_code": 200,
+        "payload_type": "list",
+        "payload_preview": [{"sample_name": "S1"}],
+        "row_count": 1,
+        "columns": ["sample_name"],
+        "normalized_columns": ["sample_name", "qc_outcome"],
+    }
+    dashboard.data = pd.DataFrame([
+        {"sample_name": "S1", "qc_outcome": "PASS"}
+    ])
+
+    dashboard._render_api_debug_panel()
+
+    assert streamlit_stub.json_calls == [[{"sample_name": "S1"}]]
+    assert len(streamlit_stub.dataframe_calls) == 1
+
+
+def test_url_debug_param_enables_api_debug(
+    tmp_path, test_data_paths
+):
+    """URL debug query param should override config and enable debug."""
+    streamlit_stub.reset()
+    streamlit_stub.query_params["debug"] = "TRUE"
+
+    expected_url = "https://example.test/api/run-data"
+    config_path = _build_api_config(
+        tmp_path,
+        test_data_paths,
+        expected_url,
+        debug_api=False,
+    )
+    dashboard = app.QCDashboard(str(config_path))
+
+    assert dashboard._is_api_debug_enabled() is True
+
+
+def test_url_debug_param_disables_api_debug(
+    tmp_path, test_data_paths
+):
+    """URL debug query param should override config and disable debug."""
+    streamlit_stub.reset()
+    streamlit_stub.query_params["debug"] = "FALSE"
+
+    expected_url = "https://example.test/api/run-data"
+    config_path = _build_api_config(
+        tmp_path,
+        test_data_paths,
+        expected_url,
+        debug_api=True,
+    )
+    dashboard = app.QCDashboard(str(config_path))
+
+    assert dashboard._is_api_debug_enabled() is False
 
 
 def test_trigger_sample_api_action_with_bearer_token(

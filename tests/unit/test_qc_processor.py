@@ -16,6 +16,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
 from uQCme.core.engine import QCProcessor
 from uQCme.core.config import UQCMeConfig
+from uQCme.core.exceptions import ValidationError
 
 
 class TestQCProcessor(unittest.TestCase):
@@ -332,6 +333,56 @@ class TestQCProcessor(unittest.TestCase):
             self.processor._evaluate_rule(sample, skip_rule), 'SKIP'
         )
         self.assertIn('R3', self.processor.skipped_rules)
+
+    def test_prepare_run_data_warns_on_duplicate_sample_names(self):
+        """Duplicate sample_name values should warn when not marked unique."""
+        self.processor.mapping = {
+            'Sections': {
+                'Basic': {
+                    'Name': {
+                        'data': {'mapping': 'sample_name'},
+                        'report': {'id': True}
+                    }
+                }
+            }
+        }
+
+        duplicate_data = pd.DataFrame([
+            {'sample_name': 'S1', 'species': 'Escherichia coli'},
+            {'sample_name': 'S1', 'species': 'Escherichia coli'},
+            {'sample_name': 'S2', 'species': 'Salmonella enterica'},
+        ])
+
+        prepared = self.processor.prepare_run_data(duplicate_data)
+
+        pd.testing.assert_frame_equal(prepared, duplicate_data)
+        self.assertTrue(
+            any(
+                "Duplicate value 'S1' found in column 'sample_name'" in warning
+                for warning in self.processor.warnings
+            )
+        )
+
+    def test_prepare_run_data_rejects_duplicate_unique_column(self):
+        """Duplicate values should fail when mapping marks the column unique."""
+        self.processor.mapping = {
+            'Sections': {
+                'Basic': {
+                    'Name': {
+                        'data': {'mapping': 'sample_name'},
+                        'report': {'id': True, 'unique': True}
+                    }
+                }
+            }
+        }
+
+        duplicate_data = pd.DataFrame([
+            {'sample_name': 'S1', 'species': 'Escherichia coli'},
+            {'sample_name': 'S1', 'species': 'Escherichia coli'},
+        ])
+
+        with self.assertRaises(ValidationError):
+            self.processor.prepare_run_data(duplicate_data)
 
 
 class TestFieldMapping(unittest.TestCase):

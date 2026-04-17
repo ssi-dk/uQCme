@@ -245,6 +245,79 @@ def test_load_data_from_api(monkeypatch, tmp_path, test_data_paths):
     )
 
 
+def test_load_data_from_api_allows_missing_sample_name_when_not_required(
+    monkeypatch, tmp_path, test_data_paths
+):
+    """API data without sample_name should load when mapping does not require it."""
+    streamlit_stub.reset()
+
+    expected_url = "https://example.test/api/run-data"
+    mapping_path = tmp_path / "mapping_without_sample_name.yaml"
+    mapping_path.write_text(
+        yaml.safe_dump(
+            {
+                "Sections": {
+                    "QC_metrics": {
+                        "QC outcome": {
+                            "data": {"mapping": "qc_outcome"},
+                            "report": {"filter": True},
+                        },
+                        "Provided Species": {
+                            "data": {"mapping": "species"},
+                        },
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = {
+        "app": {
+            "input": {
+                "data": {"api_call": expected_url},
+                "mapping": str(mapping_path),
+                "qc_rules": str(test_data_paths["qc_rules"]),
+                "qc_tests": str(test_data_paths["qc_tests"]),
+            }
+        }
+    }
+    config_path = tmp_path / "config_api_without_sample_name.yaml"
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    dashboard = app.QCDashboard(str(config_path))
+
+    api_payload = [
+        {
+            "qc_outcome": "PASS",
+            "species": "E. coli",
+            "provided_species": "E. coli",
+        },
+        {
+            "qc_outcome": "FAIL",
+            "species": "Listeria",
+            "provided_species": "Listeria",
+        },
+    ]
+
+    response = DummyResponse(api_payload)
+
+    def fake_get(url, headers, timeout, verify, cookies=None):
+        assert url == expected_url
+        assert headers == {"accept": "application/json"}
+        assert timeout == 30
+        assert verify is True
+        return response
+
+    monkeypatch.setattr(loader.requests, "get", fake_get)
+
+    dashboard.load_data()
+
+    expected_df = pd.DataFrame(api_payload)
+    pd.testing.assert_frame_equal(
+        dashboard.data.sort_index(axis=1), expected_df.sort_index(axis=1)
+    )
+
+
 def test_load_data_from_api_with_bearer_token(
     monkeypatch, tmp_path, test_data_paths
 ):

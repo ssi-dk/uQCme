@@ -17,6 +17,7 @@ sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
 from uQCme.core.engine import QCProcessor
 from uQCme.core.config import UQCMeConfig
 from uQCme.core.exceptions import ValidationError
+from uQCme.core.loader import validate_run_data_frame
 
 
 class TestQCProcessor(unittest.TestCase):
@@ -383,6 +384,38 @@ class TestQCProcessor(unittest.TestCase):
 
         with self.assertRaises(ValidationError):
             self.processor.prepare_run_data(duplicate_data)
+
+    def test_validate_run_data_allows_missing_sample_name(self):
+        """Run data validation should allow datasets without sample_name."""
+        data_without_sample_name = pd.DataFrame([
+            {'species': 'Escherichia coli', 'GC': 50.0, 'N50': 100000},
+            {'species': 'Salmonella enterica', 'GC': 52.0, 'N50': 90000},
+        ])
+
+        validate_run_data_frame(data_without_sample_name)
+
+    def test_prepare_run_data_allows_missing_sample_name(self):
+        """Preparing run data should not fail when sample_name is absent."""
+        self.processor.mapping = {
+            'Sections': {
+                'Basic': {
+                    'Species': {
+                        'data': {'mapping': 'species'},
+                        'report': {'filter': True}
+                    }
+                }
+            }
+        }
+
+        data_without_sample_name = pd.DataFrame([
+            {'species': 'Escherichia coli', 'GC': 50.0},
+            {'species': 'Salmonella enterica', 'GC': 52.0},
+        ])
+
+        prepared = self.processor.prepare_run_data(data_without_sample_name)
+
+        pd.testing.assert_frame_equal(prepared, data_without_sample_name)
+        self.assertEqual(len(self.processor.warnings), 0)
 
 
 class TestFieldMapping(unittest.TestCase):

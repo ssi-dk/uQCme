@@ -186,9 +186,10 @@ class QCPlotter:
             title = f"{x_name} vs {y_name}"
         
         # Determine which columns to include in hover_data
-        hover_cols = ['sample_name']
-        if 'species' in data.columns:
-            hover_cols.append('species')
+        hover_cols = [
+            column for column in ['sample_name', 'species']
+            if column in data.columns
+        ]
         
         fig = px.scatter(
             data,

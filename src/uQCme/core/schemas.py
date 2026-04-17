@@ -71,7 +71,10 @@ class RunDataSchema(pa.DataFrameModel):
     Base schema for run data.
     Note: Actual columns depend on the input data, but we enforce some basics.
     """
-    sample_name: Series[str] = pa.Field(description="Sample identifier")
+    sample_name: Optional[Series[str]] = pa.Field(
+        nullable=True,
+        description="Optional sample identifier"
+    )
     species: Optional[Series[str]] = pa.Field(
         nullable=True, description="Species name"
     )

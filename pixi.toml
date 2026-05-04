@@ -2,13 +2,20 @@
 authors = ["Kim Ng <kimleeng@gmail.com>"]
 channels = ["conda-forge", "bioconda"]
 name = "uQCme"
-platforms = ["osx-arm64"]
-version = "0.8.7"
+platforms = ["linux-64", "osx-arm64", "osx-64"]
+version = "0.9.0"
 
 [tasks]
 build = "rattler-build build --recipe recipe.yaml"
 publish = "anaconda upload output/**/*.conda"
 login = "anaconda login"
+test = "pytest"
+test-packaging = "pytest -m standalone tests/test_python_standalone_packaging.py"
+test-dashboard-smoke = "pytest -m dashboard_smoke tests/unit/test_dashboard_smoke.py"
+build-standalone = "python scripts/build_python_standalone_bundle.py --download-python --profile all"
+build-standalone-cli = "python scripts/build_python_standalone_bundle.py --download-python --profile cli"
+build-standalone-dashboard = "python scripts/build_python_standalone_bundle.py --download-python --profile dashboard"
+build-standalone-local = "python scripts/build_python_standalone_bundle.py --python-bin .pixi/envs/default/bin/python --profile all"
 
 [dependencies]
 anaconda-client = ">=1.12.0"
@@ -17,6 +24,7 @@ pandas = ">=2.3.1,<3"
 plotly = ">=6.2.0,<7"
 pyyaml = ">=6.0.2,<7"
 openpyxl = ">=3.1.5,<4"
+requests = ">=2.31.0,<3"
 pytest = ">=9.0.1,<10"
 python-build = ">=1.3.0,<2"
 pydantic = ">=2.12.4,<3"
@@ -25,3 +33,6 @@ pip = ">=24.0"
 python = ">=3.12,<3.15"
 setuptools = ">=69.0"
 wheel = ">=0.42"
+
+[pypi-dependencies]
+getpybs = ">=0.1.0"

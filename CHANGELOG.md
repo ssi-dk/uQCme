@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `uqcme-dashboard-smoke` console command for starting a dashboard process,
+  probing HTTP, and cleaning it up for deployment validation.
+- Python standalone bundle builder with separate CLI and dashboard profiles:
+  `uqcme-cli-standalone` and `uqcme-dashboard-standalone`.
+- GitHub Actions workflow for publishing both standalone Linux release assets.
+- Pytest markers `standalone` and `dashboard_smoke` for slower packaging and
+  dashboard startup checks.
 - Config-driven dashboard sample API actions via `app.dashboard.sample_api_actions`:
   - Configurable button label, endpoint, HTTP method, payload field, headers, and timeout.
   - Sends values from selected rows (for a configured `value_field`) to external APIs.
@@ -24,9 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Bumped application version to `0.8.7` (`src/uQCme/__init__.py`) and aligned config version defaults to `0.8.7`.
+- Bumped application version to `0.9.0` (`src/uQCme/__init__.py`) and aligned config version defaults to `0.9.0`.
 - Updated README for current behavior and layout:
-  - Version badge now reflects `0.8.7`.
+  - Version badge now reflects `0.9.0`.
   - Output filename examples now use `qc_results.tsv` and `qc_warnings.tsv`.
   - QC tests example updated to `passed_rule_conditions`/`failed_rule_conditions` schema.
   - Project structure section updated to reflect `app/main.py`, `cli/main.py`, and `core/*`.

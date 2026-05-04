@@ -38,24 +38,28 @@ app = [
     "streamlit>=1.28.0",
     "plotly>=5.15.0",
     "openpyxl>=3.0.0",
+    "requests>=2.31.0",
 ]
 # All dependencies (CLI + App)
 all = [
     "streamlit>=1.28.0",
     "plotly>=5.15.0",
     "openpyxl>=3.0.0",
+    "requests>=2.31.0",
 ]
 # Development dependencies
 dev = [
     "streamlit>=1.28.0",
     "plotly>=5.15.0",
     "openpyxl>=3.0.0",
+    "requests>=2.31.0",
     "pytest>=9.0.0",
 ]
 
 [project.scripts]
 uqcme = "uQCme.cli.main:main"
 uqcme-dashboard = "uQCme.app.main:main"
+uqcme-dashboard-smoke = "uQCme.app.smoke:main"
 
 [tool.hatch.version]
 path = "src/uQCme/__init__.py"
@@ -73,4 +77,10 @@ include = [
 include = [
     "src/uQCme/**/*.py",
     "src/uQCme/defaults/*",
+]
+
+[tool.pytest.ini_options]
+markers = [
+    "standalone: standalone packaging tests and bundle checks",
+    "dashboard_smoke: dashboard process startup and HTTP smoke tests",
 ]

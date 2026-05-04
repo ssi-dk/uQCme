@@ -31,6 +31,7 @@ requirements:
     - streamlit >=1.28.0
     - plotly >=5.15.0
     - openpyxl >=3.0.0
+    - requests >=2.31.0
 
 test:
   imports:

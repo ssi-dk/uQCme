@@ -1,6 +1,6 @@
 # uQCme - Microbial Quality Control Tool
 
-![Version](https://img.shields.io/badge/version-0.8.7-blue.svg)
+![Version](https://img.shields.io/badge/version-0.9.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.12+-green.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
@@ -284,6 +284,38 @@ Detailed log of rule evaluation issues:
 
 ## Advanced Usage
 
+### Standalone Bundles
+
+uQCme can build relocatable `python-build-standalone` bundles for deployment
+targets where installing Python packages directly is undesirable. Build Linux
+release artifacts on Linux so the embedded Python runtime matches the target
+host.
+
+```bash
+pixi run build-standalone
+```
+
+The build writes both profiles:
+
+```text
+packaging/dist/uqcme-cli-standalone.tar.gz
+packaging/dist/uqcme-dashboard-standalone.tar.gz
+```
+
+The CLI bundle exposes `uqcme`. The dashboard bundle exposes `uqcme`,
+`uqcme-dashboard`, and `uqcme-dashboard-smoke`. Release builds publish:
+
+```text
+uqcme-cli-standalone-linux-x86_64.tar.gz
+uqcme-dashboard-standalone-linux-x86_64.tar.gz
+```
+
+Use the smoke command to validate a dashboard runtime:
+
+```bash
+uqcme-dashboard-smoke --config config/config.yaml --port 49105
+```
+
 ### Custom QC Rules
 
 Create custom QC rules by editing `QC_rules.tsv`:
@@ -328,7 +360,8 @@ uQCme/
 │       ├── __init__.py
 │       ├── app/
 │       │   ├── main.py     # Streamlit web dashboard entry
-│       │   └── plot.py     # Dashboard plotting utilities
+│       │   ├── plot.py     # Dashboard plotting utilities
+│       │   └── smoke.py    # Dashboard startup smoke CLI
 │       ├── cli/
 │       │   └── main.py     # CLI entry
 │       └── core/

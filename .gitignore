@@ -193,6 +193,8 @@ logs/
 output/
 results/
 reports/
+packaging/build/
+packaging/dist/
 
 # Test output files (keep test data but ignore generated outputs)
 tests/uQCme_*.tsv

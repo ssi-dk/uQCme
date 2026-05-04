@@ -2,6 +2,7 @@
 """Tests for optional python-build-standalone bundle assets."""
 
 import subprocess
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -65,7 +66,17 @@ def test_package_defines_dashboard_smoke_console_script():
     pyproject_text = pyproject_path.read_text(encoding="utf-8")
 
     assert 'uqcme-dashboard-smoke = "uQCme.app.smoke:main"' in pyproject_text
-    assert '"requests>=2.31.0"' in pyproject_text
+
+
+@pytest.mark.standalone
+def test_cli_profile_installs_core_runtime_dependencies():
+    """The CLI standalone bundle needs dependencies imported by shared core code."""
+    pyproject_path = APP_ROOT / "pyproject.toml"
+    pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+
+    dependencies = pyproject["project"]["dependencies"]
+
+    assert "requests>=2.31.0" in dependencies
 
 
 @pytest.mark.standalone

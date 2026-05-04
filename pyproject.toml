@@ -28,6 +28,7 @@ dependencies = [
     "PyYAML>=6.0",
     "pydantic>=2.0.0",
     "pandera>=0.30.0,<0.31",
+    "requests>=2.31.0",
 ]
 
 [project.optional-dependencies]
@@ -38,21 +39,18 @@ app = [
     "streamlit>=1.28.0",
     "plotly>=5.15.0",
     "openpyxl>=3.0.0",
-    "requests>=2.31.0",
 ]
 # All dependencies (CLI + App)
 all = [
     "streamlit>=1.28.0",
     "plotly>=5.15.0",
     "openpyxl>=3.0.0",
-    "requests>=2.31.0",
 ]
 # Development dependencies
 dev = [
     "streamlit>=1.28.0",
     "plotly>=5.15.0",
     "openpyxl>=3.0.0",
-    "requests>=2.31.0",
     "pytest>=9.0.0",
 ]
 

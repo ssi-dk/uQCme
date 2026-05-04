@@ -31,9 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Bumped application version to `0.9.0` (`src/uQCme/__init__.py`) and aligned config version defaults to `0.9.0`.
+- Bumped application version to `0.9.1` (`src/uQCme/__init__.py`) and aligned config version defaults to `0.9.1`.
 - Updated README for current behavior and layout:
-  - Version badge now reflects `0.9.0`.
+  - Version badge now reflects `0.9.1`.
   - Output filename examples now use `qc_results.tsv` and `qc_warnings.tsv`.
   - QC tests example updated to `passed_rule_conditions`/`failed_rule_conditions` schema.
   - Project structure section updated to reflect `app/main.py`, `cli/main.py`, and `core/*`.
@@ -41,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Added `requests` to core package dependencies so the CLI-only standalone
+  bundle includes the dependency required by `uQCme.core.loader`.
 - Fixed malformed `deploy/local/input/QC_tests.tsv` rows (extra tab delimiters on lines 3 and 4) that caused local startup failure with:
   `Error tokenizing data. C error: Expected 7 fields in line 3, saw 8`.
 

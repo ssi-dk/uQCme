@@ -20,7 +20,11 @@ import yaml
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
 from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
-from uQCme.app.plot import QCPlotter, get_available_metrics
+from uQCme.app.plot import (
+    QCPlotter,
+    build_quality_metric_catalog,
+    get_plottable_quality_metric_columns,
+)
 from uQCme.core.loader import (
     collect_duplicate_row_warnings,
     get_unique_columns_from_mapping,
@@ -718,16 +722,23 @@ class QCDashboard:
     def _get_filterable_fields(self, data: pd.DataFrame) -> list:
         """Get all fields that should have filters based on mapping config."""
         filterable_fields = []
+        seen_columns = set()
         sections_columns = self._get_columns_by_section(data)
         
         for section_name, section_cols in sections_columns.items():
             for col_info in section_cols:
-                if col_info['filter'] and col_info['column'] in data.columns:
-                    filterable_fields.append({
-                        'column': col_info['column'],
-                        'field_name': col_info['field_name'],
-                        'section': section_name
-                    })
+                column = col_info['column']
+                if not col_info['filter'] or column not in data.columns:
+                    continue
+                if column in seen_columns:
+                    continue
+
+                seen_columns.add(column)
+                filterable_fields.append({
+                    'column': column,
+                    'field_name': col_info['field_name'],
+                    'section': section_name
+                })
         
         return filterable_fields
 
@@ -1124,6 +1135,88 @@ class QCDashboard:
         
         # Return None if no mapping found
         return None
+
+    def _format_sample_metric_value(self, value) -> Optional[str]:
+        """Format a single sample metric value for display."""
+        if value is None:
+            return None
+        try:
+            if pd.isna(value):
+                return None
+        except (ValueError, TypeError):
+            pass
+
+        value_text = str(value).strip()
+        if not value_text:
+            return None
+
+        try:
+            numeric_value = pd.to_numeric(
+                pd.Series([value]),
+                errors='coerce'
+            ).iloc[0]
+        except (ValueError, TypeError):
+            return value_text
+
+        if pd.isna(numeric_value):
+            return value_text
+
+        numeric_float = float(numeric_value)
+        if numeric_float.is_integer():
+            return f"{numeric_float:,.0f}"
+
+        return f"{numeric_float:,.4f}".rstrip('0').rstrip('.')
+
+    def _get_quality_metric_catalog(self, data: pd.DataFrame):
+        """Return quality metric catalog for the current dashboard data."""
+        qc_rules = getattr(self, 'qc_rules', pd.DataFrame())
+        return build_quality_metric_catalog(data, self.mapping, qc_rules)
+
+    def _render_non_plottable_quality_metrics(self, catalog):
+        """Render a compact note for quality metrics omitted from plots."""
+        omitted = [entry for entry in catalog if not entry.plottable]
+        if not omitted:
+            return
+
+        st.info("Quality metrics omitted from plots")
+        omitted_rows = [
+            {
+                "Metric": entry.label,
+                "Column": entry.data_column,
+                "Reason": entry.non_plottable_reason,
+                "Rule fields": ", ".join(entry.rule_fields),
+            }
+            for entry in omitted
+        ]
+        st.dataframe(
+            pd.DataFrame(omitted_rows),
+            width='stretch',
+            hide_index=True
+        )
+
+    def _get_sample_quality_metric_entries(
+        self,
+        filtered_data: pd.DataFrame,
+        sample_data: pd.Series
+    ) -> List[tuple[str, str]]:
+        """Return display-ready quality metric name/value pairs for a sample."""
+        metric_entries = []
+        for entry in self._get_quality_metric_catalog(filtered_data):
+            if (
+                not entry.value_available or
+                entry.data_column not in sample_data.index
+            ):
+                continue
+
+            formatted_value = self._format_sample_metric_value(
+                sample_data[entry.data_column]
+            )
+            if formatted_value is None:
+                continue
+
+            metric_entries.append((entry.label, formatted_value))
+
+        return metric_entries
 
     def _get_qc_action_color(self, action: str) -> str:
         """Get color for QC action based on action type."""
@@ -1622,10 +1715,13 @@ class QCDashboard:
     def render_overview_tab(self, filtered_data: pd.DataFrame):
         """Render the overview tab with summary statistics."""
         st.header("📈 Overview")
+        metric_catalog = self._get_quality_metric_catalog(filtered_data)
+        plottable_metrics = get_plottable_quality_metric_columns(metric_catalog)
         
         # Use the plotter to create overview charts
         overview_plots = self.plotter.create_quality_overview_dashboard(
-            filtered_data
+            filtered_data,
+            metrics=plottable_metrics
         )
         
         # Display charts in columns
@@ -1668,13 +1764,18 @@ class QCDashboard:
     def render_quality_metrics_tab(self, filtered_data: pd.DataFrame):
         """Render quality metrics visualizations."""
         st.header("🔍 Quality Metrics")
-        
-        # Get available numeric columns
-        available_cols = get_available_metrics(filtered_data)
-        
+        metric_catalog = self._get_quality_metric_catalog(filtered_data)
+        available_cols = get_plottable_quality_metric_columns(metric_catalog)
+        metric_labels = {
+            entry.data_column: entry.label
+            for entry in metric_catalog
+        }
+
+        self._render_non_plottable_quality_metrics(metric_catalog)
+
         if not available_cols:
             warning_msg = (
-                "No numeric quality metrics available for visualization."
+                "No plottable quality metrics available for visualization."
             )
             st.warning(warning_msg)
             return
@@ -1686,7 +1787,10 @@ class QCDashboard:
             selected_metric = st.selectbox(
                 "Select Quality Metric",
                 available_cols,
-                format_func=lambda x: self.plotter._format_column_name(x),
+                format_func=lambda x: metric_labels.get(
+                    x,
+                    self.plotter._format_column_name(x)
+                ),
                 index=0
             )
         
@@ -1720,7 +1824,10 @@ class QCDashboard:
                 
                 if other_metrics:
                     def format_metric_name(x):
-                        return self.plotter._format_column_name(x)
+                        return metric_labels.get(
+                            x,
+                            self.plotter._format_column_name(x)
+                        )
                     
                     y_metric = st.selectbox(
                         "Select Y-axis metric",
@@ -1798,34 +1905,16 @@ class QCDashboard:
         
         with col2:
             st.subheader("Quality Metrics")
-            # Display available numeric quality metrics dynamically
-            # Get system fields to skip from mapping
-            system_fields = set()
-            if id_field:
-                system_fields.add(id_field)
-            if outcome_field:
-                system_fields.add(outcome_field)
-            if action_field:
-                system_fields.add(action_field)
-            if species_field:
-                system_fields.add(species_field)
-            system_fields.update(['failed_rules', 'passed_rules', 'error'])
-            
-            quality_metrics_displayed = 0
-            for col in sample_data.index:
-                if quality_metrics_displayed >= 3:  # Limit to 3 metrics
-                    break
-                # Skip system columns
-                if col in system_fields:
-                    continue
-                try:
-                    val = sample_data[col]
-                    if pd.notna(val) and isinstance(val, (int, float)):
-                        # Format with 2 decimal places
-                        st.write(f"**{col}:** {val:.2f}")
-                        quality_metrics_displayed += 1
-                except (ValueError, TypeError):
-                    continue
+            metric_entries = self._get_sample_quality_metric_entries(
+                filtered_data,
+                sample_data
+            )
+
+            if metric_entries:
+                for metric_name, metric_value in metric_entries:
+                    st.write(f"**{metric_name}:** {metric_value}")
+            else:
+                st.info("No quality metric values available for this sample.")
         
         # Failed and passed rules
         st.subheader("QC Rules Analysis")

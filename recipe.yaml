@@ -1,6 +1,6 @@
 package:
   name: uqcme
-  version: 0.9.1
+  version: 0.9.2
 
 build:
   noarch: python

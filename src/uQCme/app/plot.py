@@ -12,43 +12,22 @@ Note: This module requires the 'app' or 'all' extras to be installed:
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from typing import Dict, Any, Optional, Iterable
+from dataclasses import dataclass
+from typing import Dict, Any, Optional, Iterable, List, Tuple
 from uQCme.core.config import UQCMeConfig
 
 
-_EXCLUDED_METRIC_COLUMN_TOKENS = {
-    'sample_name',
-    'samplename',
-    'species',
-    'qc_outcome',
-    'qcoutcome',
-    'qc_action',
-    'qcaction',
-    'failed_rules',
-    'failedrules',
-    'passed_rules',
-    'passedrules',
-    'error',
-    'select',
-    'run_id',
-    'runid',
-    'analysis_run_id',
-    'analysisrunid',
-    'seq_sample_id',
-    'seqsampleid',
-    'sample_id',
-    'sampleid',
-}
+@dataclass(frozen=True)
+class QualityMetricCatalogEntry:
+    """A mapped quality metric and whether it can be plotted."""
 
-
-def _column_token(column: str) -> str:
-    """Normalize a column name for metric exclusion checks."""
-    return ''.join(char for char in str(column).lower() if char.isalnum())
-
-
-def _is_excluded_metric_column(column: str) -> bool:
-    """Return True when a column is metadata rather than a QC metric."""
-    return _column_token(column) in _EXCLUDED_METRIC_COLUMN_TOKENS
+    label: str
+    data_column: str
+    rule_fields: Tuple[str, ...]
+    section: str
+    value_available: bool
+    plottable: bool
+    non_plottable_reason: str = ""
 
 
 def _to_numeric_values(values: pd.Series) -> pd.Series:
@@ -69,6 +48,216 @@ def _coerce_metric_columns(
         if metric in plot_data.columns:
             plot_data[metric] = _to_numeric_values(plot_data[metric])
     return plot_data
+
+
+def _as_list(value) -> list:
+    """Normalize scalar/list config values to a list."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    return [value]
+
+
+def _unique_text_values(values: Iterable[Any]) -> Tuple[str, ...]:
+    """Return ordered, non-empty string values."""
+    seen = set()
+    unique_values = []
+    for value in values:
+        if value is None or pd.isna(value):
+            continue
+        value_text = str(value).strip()
+        if not value_text or value_text in seen:
+            continue
+        seen.add(value_text)
+        unique_values.append(value_text)
+    return tuple(unique_values)
+
+
+def _metric_column_status(
+    data: pd.DataFrame,
+    data_column: str
+) -> tuple[bool, bool, str]:
+    """Return value availability, plottability, and non-plottable reason."""
+    if data_column not in data.columns:
+        return False, False, "missing column"
+
+    values = data[data_column]
+    has_values = values.notna().any()
+    if not has_values:
+        return False, False, "all values empty"
+
+    text_values = values.dropna().astype(str).str.strip()
+    if not text_values.astype(bool).any():
+        return False, False, "all values empty"
+
+    numeric_values = _to_numeric_values(values)
+    if numeric_values.notna().any():
+        return True, True, ""
+
+    return True, False, "non-numeric/categorical"
+
+
+def _mapping_metric_metadata(mapping_config: Optional[Dict[str, Any]]) -> dict:
+    """Extract mapping metadata used to define quality metrics."""
+    metadata = {
+        'by_data': {},
+        'by_qc': {},
+        'included': [],
+        'excluded_data': set(),
+        'excluded_qc': set(),
+    }
+
+    if not mapping_config or 'Sections' not in mapping_config:
+        return metadata
+
+    for section_name, section_data in mapping_config.get('Sections', {}).items():
+        if not isinstance(section_data, dict):
+            continue
+
+        for field_name, field_config in section_data.items():
+            if not isinstance(field_config, dict):
+                continue
+
+            data_mapping = field_config.get('data', {}).get('mapping')
+            if not isinstance(data_mapping, str) or not data_mapping:
+                continue
+
+            qc_mappings = _as_list(field_config.get('QC', {}).get('mapping'))
+            qc_mappings = [
+                str(mapping) for mapping in qc_mappings
+                if mapping is not None and str(mapping).strip()
+            ]
+            report_config = field_config.get('report', {}) or {}
+            quality_metric_flag = report_config.get('quality_metric')
+            is_id_field = report_config.get('id') is True
+            has_qc_mapping = bool(qc_mappings)
+            is_excluded = (
+                quality_metric_flag is False or
+                (is_id_field and quality_metric_flag is not True)
+            )
+            is_included = (
+                quality_metric_flag is True or
+                has_qc_mapping
+            )
+
+            item = {
+                'label': field_name,
+                'data_column': data_mapping,
+                'section': section_name,
+                'qc_mappings': tuple(qc_mappings),
+                'excluded': is_excluded,
+                'included': is_included and not is_excluded,
+            }
+
+            metadata['by_data'].setdefault(data_mapping, item)
+            for qc_mapping in qc_mappings:
+                metadata['by_qc'].setdefault(qc_mapping, item)
+
+            if is_excluded:
+                metadata['excluded_data'].add(data_mapping)
+                metadata['excluded_qc'].update(qc_mappings)
+                continue
+
+            if is_included:
+                metadata['included'].append(item)
+
+    return metadata
+
+
+def _metric_key(data_column: str) -> str:
+    """Return a stable catalog key for a data column."""
+    return data_column
+
+
+def build_quality_metric_catalog(
+    data: pd.DataFrame,
+    mapping_config: Optional[Dict[str, Any]] = None,
+    qc_rules: Optional[pd.DataFrame] = None
+) -> List[QualityMetricCatalogEntry]:
+    """Build quality metric catalog from rules and mapping configuration."""
+    mapping_metadata = _mapping_metric_metadata(mapping_config)
+    catalog_records: Dict[str, Dict[str, Any]] = {}
+
+    def add_metric(
+        *,
+        label: str,
+        data_column: str,
+        section: str,
+        rule_field: Optional[str] = None
+    ) -> None:
+        if (
+            data_column in mapping_metadata['excluded_data'] or
+            (rule_field and rule_field in mapping_metadata['excluded_qc'])
+        ):
+            return
+        key = _metric_key(data_column)
+        if key not in catalog_records:
+            catalog_records[key] = {
+                'label': label,
+                'data_column': data_column,
+                'section': section,
+                'rule_fields': [],
+            }
+
+        if rule_field and rule_field not in catalog_records[key]['rule_fields']:
+            catalog_records[key]['rule_fields'].append(rule_field)
+
+    if qc_rules is not None and 'field' in qc_rules.columns:
+        for rule_field in _unique_text_values(qc_rules['field']):
+            mapping_item = (
+                mapping_metadata['by_qc'].get(rule_field) or
+                mapping_metadata['by_data'].get(rule_field)
+            )
+
+            if mapping_item:
+                add_metric(
+                    label=mapping_item['label'],
+                    data_column=mapping_item['data_column'],
+                    section=mapping_item['section'],
+                    rule_field=rule_field
+                )
+            else:
+                add_metric(
+                    label=rule_field,
+                    data_column=rule_field,
+                    section='Rules',
+                    rule_field=rule_field
+                )
+
+    for mapping_item in mapping_metadata['included']:
+        add_metric(
+            label=mapping_item['label'],
+            data_column=mapping_item['data_column'],
+            section=mapping_item['section']
+        )
+
+    catalog = []
+    for record in catalog_records.values():
+        value_available, plottable, reason = _metric_column_status(
+            data,
+            record['data_column']
+        )
+        catalog.append(
+            QualityMetricCatalogEntry(
+                label=record['label'],
+                data_column=record['data_column'],
+                rule_fields=tuple(record['rule_fields']),
+                section=record['section'],
+                value_available=value_available,
+                plottable=plottable,
+                non_plottable_reason=reason,
+            )
+        )
+
+    return catalog
+
+
+def get_plottable_quality_metric_columns(
+    catalog: Iterable[QualityMetricCatalogEntry]
+) -> list:
+    """Return data columns for metrics that can be plotted."""
+    return [entry.data_column for entry in catalog if entry.plottable]
 
 
 class QCPlotter:
@@ -317,7 +506,9 @@ class QCPlotter:
         return fig
 
     def create_quality_overview_dashboard(
-        self, data: pd.DataFrame
+        self,
+        data: pd.DataFrame,
+        metrics: Optional[list] = None
     ) -> Dict[str, go.Figure]:
         """Create a set of overview plots for dashboard display."""
         plots = {}
@@ -331,8 +522,8 @@ class QCPlotter:
         # Failed rules analysis
         plots['failed_rules'] = self.create_failed_rules_chart(data)
         
-        # Quality metrics (dynamically find available numeric columns)
-        available_cols = get_available_metrics(data)
+        # Quality metrics
+        available_cols = metrics if metrics is not None else get_available_metrics(data)
         
         if available_cols:
             # Distribution of first available metric
@@ -405,11 +596,15 @@ class QCPlotter:
         return default_colors
 
 
-def get_available_metrics(data: pd.DataFrame) -> list:
-    """Get list of available numeric metrics for plotting."""
+def get_available_metrics(
+    data: pd.DataFrame,
+    mapping_config: Optional[Dict[str, Any]] = None
+) -> list:
+    """Get available numeric metrics, excluding mapping-defined non-metrics."""
+    excluded_columns = _mapping_metric_metadata(mapping_config)['excluded_data']
     available_metrics = []
     for col in data.columns:
-        if _is_excluded_metric_column(col):
+        if col in excluded_columns:
             continue
 
         numeric_values = _to_numeric_values(data[col])
@@ -419,9 +614,14 @@ def get_available_metrics(data: pd.DataFrame) -> list:
     return available_metrics
 
 
-def validate_metric_for_plotting(data: pd.DataFrame, metric: str) -> bool:
+def validate_metric_for_plotting(
+    data: pd.DataFrame,
+    metric: str,
+    mapping_config: Optional[Dict[str, Any]] = None
+) -> bool:
     """Validate that a metric can be used for plotting."""
-    if metric not in data.columns or _is_excluded_metric_column(metric):
+    excluded_columns = _mapping_metric_metadata(mapping_config)['excluded_data']
+    if metric not in data.columns or metric in excluded_columns:
         return False
     
     # Check if column has numeric data

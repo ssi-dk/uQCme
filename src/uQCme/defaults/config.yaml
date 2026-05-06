@@ -1,5 +1,5 @@
 title: "uQCme - Microbial QC Reporter"
-version: "0.9.1"
+version: "0.9.2"
 
 qc:
   input:

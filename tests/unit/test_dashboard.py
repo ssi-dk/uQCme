@@ -94,6 +94,10 @@ class StreamlitStub(types.ModuleType):
         self.events.append("columns")
         return [_ContextStub() for _ in range(n)]
 
+    def selectbox(self, label, options, index=0, **kwargs):
+        self.events.append(f"selectbox:{label}")
+        return options[index]
+
     def checkbox(self, label, value=False, key=None):
         self.events.append(f"checkbox:{label}")
         if key and key in self.session_state:
@@ -350,6 +354,7 @@ def _bare_dashboard(table_height: int = 3600):
     dashboard.mapping = {}
     dashboard.report_mode = False
     dashboard.data = pd.DataFrame()
+    dashboard.qc_rules = pd.DataFrame()
     return dashboard
 
 
@@ -804,6 +809,145 @@ def test_sidebar_summary_stays_at_top_of_left_panel():
         streamlit_stub.events.index(summary_event)
         < streamlit_stub.events.index(filters_event)
     )
+
+
+def test_filterable_fields_deduplicates_reused_data_columns():
+    """Duplicate mapped columns should not create duplicate Streamlit keys."""
+    dashboard = _bare_dashboard()
+    dashboard.mapping = {
+        "Sections": {
+            "uQCme": {
+                "rMLST Match": {
+                    "data": {"mapping": "rMLST_match"},
+                    "report": {"filter": True},
+                },
+            },
+            "QC_metrics": {
+                "Expected species": {
+                    "data": {"mapping": "rMLST_match"},
+                    "report": {"filter": True},
+                },
+                "GC": {
+                    "data": {"mapping": "Quast_GC_Pct"},
+                    "report": {"filter": True},
+                },
+            },
+        }
+    }
+    data = pd.DataFrame([
+        {"rMLST_match": "E. coli", "Quast_GC_Pct": 50.1},
+        {"rMLST_match": "S. aureus", "Quast_GC_Pct": 32.9},
+    ])
+
+    fields = dashboard._get_filterable_fields(data)
+
+    assert [field["column"] for field in fields] == [
+        "rMLST_match",
+        "Quast_GC_Pct",
+    ]
+    assert fields[0]["field_name"] == "rMLST Match"
+
+
+def test_sample_details_renders_numeric_string_quality_metrics():
+    """Sample details should show plottable and categorical metric values."""
+    streamlit_stub.reset()
+    dashboard = _bare_dashboard()
+    dashboard.mapping = {
+        "Sections": {
+            "Basic": {
+                "Sample Name": {
+                    "data": {"mapping": "sample_name"},
+                    "report": {"id": True},
+                },
+                "QC Outcome": {"data": {"mapping": "qc_outcome"}},
+                "QC Label": {
+                    "data": {"mapping": "qc_label"},
+                    "report": {"quality_metric": True},
+                },
+            },
+            "Read_QC": {
+                "Coverage": {
+                    "data": {"mapping": "coverage_x"},
+                    "QC": {"mapping": "Coverage"},
+                    "report": {"filter": True},
+                },
+                "Number of genomes": {
+                    "data": {"mapping": "number_of_genomes"},
+                    "QC": {"mapping": "number_of_genomes"},
+                },
+            },
+        }
+    }
+    data = pd.DataFrame([
+        {
+            "sample_name": "S1",
+            "qc_outcome": "PASS",
+            "coverage_x": "45.5",
+            "number_of_genomes": "2",
+            "qc_label": "good",
+            "RunID": "12345",
+        }
+    ])
+    dashboard.data = data
+
+    dashboard.render_sample_details_tab(data)
+
+    assert "**Coverage:** 45.5" in streamlit_stub.write_calls
+    assert "**Number of genomes:** 2" in streamlit_stub.write_calls
+    assert "**QC Label:** good" in streamlit_stub.write_calls
+    assert "**RunID:** 12,345" not in streamlit_stub.write_calls
+
+
+def test_quality_metrics_tab_lists_non_plottable_catalog_entries():
+    """Non-plottable quality metrics should be listed with reasons."""
+    streamlit_stub.reset()
+    dashboard = _bare_dashboard()
+    dashboard.mapping = {
+        "Sections": {
+            "Read_QC": {
+                "Categorical Metric": {
+                    "data": {"mapping": "categorical_metric"},
+                    "QC": {"mapping": "CategoricalField"},
+                },
+                "Empty Metric": {
+                    "data": {"mapping": "empty_metric"},
+                    "QC": {"mapping": "EmptyField"},
+                },
+                "Missing Metric": {
+                    "data": {"mapping": "missing_metric"},
+                    "QC": {"mapping": "MissingField"},
+                },
+            }
+        }
+    }
+    dashboard.qc_rules = pd.DataFrame([
+        {"field": "CategoricalField"},
+        {"field": "EmptyField"},
+        {"field": "MissingField"},
+    ])
+    data = pd.DataFrame([
+        {
+            "sample_name": "S1",
+            "categorical_metric": "high",
+            "empty_metric": None,
+        }
+    ])
+
+    dashboard.render_quality_metrics_tab(data)
+
+    assert "Quality metrics omitted from plots" in streamlit_stub.info_calls
+    assert (
+        "No plottable quality metrics available for visualization."
+        in streamlit_stub.warning_calls
+    )
+    assert len(streamlit_stub.dataframe_calls) == 1
+    omitted_table, _ = streamlit_stub.dataframe_calls[0]
+    reasons = dict(zip(omitted_table["Metric"], omitted_table["Reason"]))
+    assert reasons == {
+        "Categorical Metric": "non-numeric/categorical",
+        "Empty Metric": "all values empty",
+        "Missing Metric": "missing column",
+    }
 
 
 def test_url_debug_param_enables_api_debug(

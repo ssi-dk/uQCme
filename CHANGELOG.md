@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Bumped application version to `0.9.1` (`src/uQCme/__init__.py`) and aligned config version defaults to `0.9.1`.
+- Bumped application version to `0.9.2` (`src/uQCme/__init__.py`) and aligned config version defaults to `0.9.2`.
 - Dashboard summary metrics now render at the top of the sidebar, and Data tab
   section visibility controls now render below the sample table.
 - Data tab section visibility now uses a compact Streamlit multi-select control
@@ -41,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dashboard tables now shrink below `app.dashboard.table_height` when fewer
   rows are rendered than fit in the configured maximum height.
 - Updated README for current behavior and layout:
-  - Version badge now reflects `0.9.1`.
+  - Version badge now reflects `0.9.2`.
   - Output filename examples now use `qc_results.tsv` and `qc_warnings.tsv`.
   - QC tests example updated to `passed_rule_conditions`/`failed_rule_conditions` schema.
   - Project structure section updated to reflect `app/main.py`, `cli/main.py`, and `core/*`.

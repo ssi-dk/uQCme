@@ -80,8 +80,8 @@ class ReportModeConfig(BaseModel):
 
 class DashboardConfig(BaseModel):
     categorical_filter_threshold: int = 20
-    section_toggle_columns: int = 3
     max_displayed_rules: int = 10
+    table_height: int = Field(default=3600, ge=200)
     debug_api: bool = False
     report_mode: ReportModeConfig = Field(default_factory=ReportModeConfig)
     sample_api_actions: List[SampleApiAction] = Field(default_factory=list)

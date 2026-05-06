@@ -225,6 +225,18 @@ For authenticated button actions, configure one of:
 - `api_bearer_token`: raw token in config file
 - `headers`: optional additional request headers
 
+**Dashboard table height**
+
+The main sample table uses `table_height` as a maximum height. For smaller
+datasets, the table shrinks to the rendered row count instead of leaving empty
+space. Increase or reduce the maximum visible row count with:
+
+```yaml
+app:
+  dashboard:
+    table_height: 3600
+```
+
 **Config-driven report mode defaults**
 
 Use the same dashboard config to control deterministic report rendering:

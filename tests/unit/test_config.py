@@ -99,6 +99,26 @@ class TestConfigModels(unittest.TestCase):
             report_mode.default_filters["species"], "Escherichia coli"
         )
 
+    def test_dashboard_table_height_defaults_and_overrides(self):
+        """Dashboard table height should default to a 100-row viewport."""
+        base_input = {
+            "data": {"file": "output/qc_results.tsv"},
+            "mapping": "config/mapping.yaml",
+            "qc_rules": "config/QC_rules.tsv",
+            "qc_tests": "config/QC_tests.tsv",
+        }
+
+        default_config = UQCMeConfig(app={"input": base_input})
+        custom_config = UQCMeConfig(
+            app={
+                "input": base_input,
+                "dashboard": {"table_height": 4200},
+            }
+        )
+
+        self.assertEqual(default_config.app.dashboard.table_height, 3600)
+        self.assertEqual(custom_config.app.dashboard.table_height, 4200)
+
     def test_data_input_supports_api_bearer_token_fields(self):
         """Data input config should parse bearer token auth fields."""
         config = UQCMeConfig(

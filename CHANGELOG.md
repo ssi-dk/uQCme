@@ -26,12 +26,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `enabled` flag
   - `default_visible_sections`
   - `default_filters` for deterministic non-interactive filtering.
+- Config-driven dashboard table maximum height (`app.dashboard.table_height`)
+  defaulting to 3600 pixels, sized to show about 100 sample rows.
 - New PDF export module: `src/uQCme/app/report_export.py`.
 - New dashboard CLI export option: `uqcme-dashboard --config <config.yaml> --export-pdf <report.pdf>`.
 
 ### Changed
 
 - Bumped application version to `0.9.1` (`src/uQCme/__init__.py`) and aligned config version defaults to `0.9.1`.
+- Dashboard summary metrics now render at the top of the sidebar, and Data tab
+  section visibility controls now render below the sample table.
+- Data tab section visibility now uses a compact Streamlit multi-select control
+  instead of a checkbox grid.
+- Dashboard tables now shrink below `app.dashboard.table_height` when fewer
+  rows are rendered than fit in the configured maximum height.
 - Updated README for current behavior and layout:
   - Version badge now reflects `0.9.1`.
   - Output filename examples now use `qc_results.tsv` and `qc_warnings.tsv`.
@@ -77,15 +85,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `_render_styled_dataframe()` method for consistent DataFrame rendering
   - **Moved hardcoded constants to configurable YAML settings**:
     - `categorical_filter_threshold`: Controls when to use dropdown vs text search (default: 20)
-    - `section_toggle_columns`: Number of columns for section toggles (default: 3)
     - `max_displayed_rules`: Maximum rules shown in sample details (default: 10)
+    - `table_height`: Main sample table maximum height in pixels (default: 3600)
     - Added `_get_dashboard_config()` helper for config value retrieval with fallbacks
   - Reduced function complexity: `render_sidebar_filters()` now 50% shorter and more readable
   - Eliminated repetitive Plotly chart rendering patterns across all visualization tabs
   - Improved type annotations with `Optional` for better code documentation
   - Enhanced maintainability through method extraction and consistent patterns
 - **Enhanced UI layout and space optimization**:
-  - Moved version, sample count, and QC metrics from main header to sidebar
+  - Moved version, sample count, and QC metrics into a compact sidebar summary
   - Created dedicated `render_sidebar_metrics()` method for summary statistics
   - Significantly increased available space for data tables and visualizations
   - Improved information organization with logical grouping of filters and metrics

@@ -651,29 +651,29 @@ class QCDashboard:
         """Render the application header."""
         st.title("🔬 uQCme - Microbial Quality Control Dashboard")
     
-    def render_sidebar_metrics(self, filtered_data: pd.DataFrame):
-        """Render summary metrics in the sidebar."""
-        st.sidebar.subheader("📊 Summary")
+    def render_sidebar_metrics(self, filtered_data: pd.DataFrame,
+                               target=None):
+        """Render summary metrics at the top of the sidebar."""
+        target = target or st.sidebar
+        target.subheader("📊 Summary")
         
         # Version info
         version = self.config.version
-        st.sidebar.markdown(f"**Version:** {version}")
+        target.markdown(f"**Version:** {version}")
         
         # Create columns for horizontal layout
-        col1, col2, col3 = st.sidebar.columns(3)
+        col1, col2, col3 = target.columns(3)
         
         # Sample count metrics (filtered vs total)
         total_samples = len(filtered_data)
         total_all = len(self.data)
-        with col1:
-            # Show filtered count vs total
-            if total_samples == total_all:
-                st.metric("Samples", total_samples)
-            else:
-                delta_text = f"of {total_all}"
-                st.metric("Samples", total_samples, delta=delta_text)
+        if total_samples == total_all:
+            col1.metric("Samples", total_samples)
+        else:
+            delta_text = f"of {total_all}"
+            col1.metric("Samples", total_samples, delta=delta_text)
         
-        st.sidebar.markdown("---")
+        target.markdown("---")
 
         # QC outcome metrics (based on filtered data)
         outcome_field = self._get_outcome_field()
@@ -692,12 +692,11 @@ class QCDashboard:
             total_pass_filter = self.data[outcome_field].apply(contains_only_pass)
             total_pass_count = len(self.data[total_pass_filter])
             
-            with col2:
-                if pass_count == total_pass_count:
-                    st.metric("PASS", pass_count)
-                else:
-                    delta_text = f"of {total_pass_count}"
-                    st.metric("PASS", pass_count, delta=delta_text)
+            if pass_count == total_pass_count:
+                col2.metric("PASS", pass_count)
+            else:
+                delta_text = f"of {total_pass_count}"
+                col2.metric("PASS", pass_count, delta=delta_text)
             
             fail_filter = ~filtered_data[outcome_field].apply(contains_only_pass)
             fail_count = len(filtered_data[fail_filter])
@@ -706,18 +705,15 @@ class QCDashboard:
             total_fail_filter = ~self.data[outcome_field].apply(contains_only_pass)
             total_fail_count = len(self.data[total_fail_filter])
             
-            with col3:
-                if fail_count == total_fail_count:
-                    st.metric("Issues", fail_count)
-                else:
-                    delta_text = f"of {total_fail_count}"
-                    st.metric("Issues", fail_count, delta=delta_text)
+            if fail_count == total_fail_count:
+                col3.metric("Issues", fail_count)
+            else:
+                delta_text = f"of {total_fail_count}"
+                col3.metric("Issues", fail_count, delta=delta_text)
         else:
             # No outcome field available
-            with col2:
-                st.metric("PASS", "N/A")
-            with col3:
-                st.metric("Issues", "N/A")
+            col2.metric("PASS", "N/A")
+            col3.metric("Issues", "N/A")
 
     def _get_filterable_fields(self, data: pd.DataFrame) -> list:
         """Get all fields that should have filters based on mapping config."""
@@ -874,6 +870,13 @@ class QCDashboard:
         if self.report_mode:
             return self._apply_report_filters(self.data)
 
+        summary_container = st.sidebar.container()
+        st.sidebar.header("🔍 Filters")
+
+        # Add Clear All Filters button
+        if st.sidebar.button("🗑️ Clear All Filters", type="secondary"):
+            self._clear_all_filters()
+
         # Get filterable fields from mapping configuration
         filterable_fields = self._get_filterable_fields(self.data)
         
@@ -950,15 +953,8 @@ class QCDashboard:
         if st.session_state.get('filters_reset', False):
             st.session_state['filters_reset'] = False
         
-        # Render summary metrics at the top with filtered data
-        self.render_sidebar_metrics(filtered_data)
-        
-        st.sidebar.header("🔍 Filters")
-        
-        # Add Clear All Filters button
-        if st.sidebar.button("🗑️ Clear All Filters", type="secondary"):
-            self._clear_all_filters()
-        
+        self.render_sidebar_metrics(filtered_data, target=summary_container)
+
         return filtered_data
 
     def _get_columns_by_section(self, data: pd.DataFrame) -> Dict[str, list]:
@@ -1024,7 +1020,8 @@ class QCDashboard:
         ]
         
         if unmapped_cols:
-            sections_columns['Other'] = [
+            other_columns = sections_columns.get('Other', [])
+            other_columns.extend([
                 {
                     'column': col,
                     'field_name': col.replace('_', ' ').title(),
@@ -1033,9 +1030,59 @@ class QCDashboard:
                     'id': False
                 }
                 for col in unmapped_cols
-            ]
+            ])
+            sections_columns['Other'] = other_columns
         
         return sections_columns
+
+    def _get_visible_section_defaults(self, sections_columns: Dict[str, list]):
+        """Return section default visibility and visible column counts."""
+        defaults = {}
+        column_counts = {}
+
+        for section_name, section_cols in sections_columns.items():
+            visible_col_count = len([
+                col for col in section_cols if not col['hidden']
+            ])
+            column_counts[section_name] = visible_col_count
+            defaults[section_name] = visible_col_count > 0
+
+        return defaults, column_counts
+
+    def _render_section_visibility_control(
+        self,
+        section_names: list,
+        active_sections: list,
+        visible_col_counts: Dict[str, int]
+    ):
+        """Render compact section visibility controls below the data table."""
+        label = "Visible sections"
+
+        def format_section(section_name):
+            count = visible_col_counts.get(section_name, 0)
+            return f"{section_name} ({count})"
+
+        if hasattr(st, "pills"):
+            st.pills(
+                label,
+                section_names,
+                selection_mode="multi",
+                default=active_sections,
+                format_func=format_section,
+                key="data_preview_visible_sections",
+                label_visibility="collapsed",
+                width="stretch"
+            )
+        else:
+            st.multiselect(
+                label,
+                section_names,
+                default=active_sections,
+                format_func=format_section,
+                key="data_preview_visible_sections",
+                label_visibility="collapsed",
+                placeholder="Choose visible sections"
+            )
 
     def _get_id_column(self, data: pd.DataFrame) -> Optional[str]:
         """Get the column marked as ID field in mapping configuration."""
@@ -1135,6 +1182,18 @@ class QCDashboard:
                 key=key
             )
 
+    def _get_table_height(self, row_count: int) -> int:
+        """Return a table height capped by config and sized to visible rows."""
+        max_height = self._get_dashboard_config('table_height', 3600)
+        header_height = 38
+        row_height = 35
+        frame_padding = 6
+        visible_rows = max(row_count, 1)
+        natural_height = (
+            header_height + (visible_rows * row_height) + frame_padding
+        )
+        return min(max_height, natural_height)
+
     def _render_styled_dataframe(self, filtered_data: pd.DataFrame,
                                  column_order: list, key: str):
         """Helper method to render dataframe with selection checkboxes."""
@@ -1200,6 +1259,7 @@ class QCDashboard:
         edited_data = st.data_editor(
             styled_data,
             width='stretch',
+            height=self._get_table_height(len(display_data)),
             key=key,
             column_order=column_order,
             column_config=column_config,
@@ -1350,46 +1410,44 @@ class QCDashboard:
                             st.error(f"'{action.label}' failed: {e}")
 
     def render_data_tab(self, filtered_data: pd.DataFrame):
-        """Render the data tab with section toggles."""
+        """Render the data tab with section visibility controls."""
         st.header("📊 Data")
 
         sections_columns = self._get_columns_by_section(filtered_data)
         visible_sections = {}
         section_names = list(sections_columns.keys())
+        section_defaults, visible_col_counts = (
+            self._get_visible_section_defaults(sections_columns)
+        )
 
         if self.report_mode:
             report_cfg = self._get_report_mode_config()
             default_sections = report_cfg.get("default_visible_sections", {})
             for section_name in section_names:
-                section_cols = sections_columns[section_name]
-                visible_col_count = len([
-                    col for col in section_cols if not col['hidden']
-                ])
-                default_visible = visible_col_count > 0
                 visible_sections[section_name] = bool(
-                    default_sections.get(section_name, default_visible)
+                    default_sections.get(
+                        section_name,
+                        section_defaults[section_name]
+                    )
                 )
         else:
-            # Section toggles
-            st.subheader("Section Visibility")
-            num_columns = self._get_dashboard_config('section_toggle_columns', 3)
-            toggle_columns = st.columns(num_columns)
+            default_active_sections = [
+                name for name in section_names if section_defaults[name]
+            ]
+            selected_sections = st.session_state.get(
+                "data_preview_visible_sections",
+                default_active_sections
+            )
+            selected_sections = [
+                name for name in selected_sections
+                if name in section_names
+            ]
+            selected_section_set = set(selected_sections)
 
-            # Distribute toggles across columns
-            for i, section_name in enumerate(section_names):
-                col_idx = i % num_columns
-
-                with toggle_columns[col_idx]:
-                    section_cols = sections_columns[section_name]
-                    visible_col_count = len([
-                        col for col in section_cols if not col['hidden']
-                    ])
-                    default_visible = visible_col_count > 0
-                    visible_sections[section_name] = st.checkbox(
-                        f"{section_name} ({visible_col_count} columns)",
-                        value=default_visible,
-                        key=f"data_preview_toggle_{section_name}"
-                    )
+            for section_name in section_names:
+                visible_sections[section_name] = (
+                    section_name in selected_section_set
+                )
         
         # Get ordered columns based on visible sections for reference
         ordered_columns = self._get_ordered_columns_with_sections(
@@ -1403,16 +1461,6 @@ class QCDashboard:
             if visible
         ]
         
-        # Display helpful info about column organization
-        if ordered_columns and not self.report_mode:
-            tip_msg = (
-                f"💡 **Tip:** Use the column visibility controls (👁️) in the "
-                f"table to show/hide specific columns. Currently showing "
-                f"{len(ordered_columns)} columns from selected sections: "
-                f"{', '.join(active_sections)}"
-            )
-            st.info(tip_msg)
-        
         # Reorder dataframe columns to put important ones first
         # Only show columns from visible sections
         priority_columns = []
@@ -1425,10 +1473,11 @@ class QCDashboard:
         # Create column order for Streamlit - only visible section columns
         column_order = priority_columns
         
-        # Filter the dataframe to only show columns from visible sections
-        display_data = filtered_data[
-            [col for col in priority_columns if col in filtered_data.columns]
-        ] if priority_columns else filtered_data
+        # Filter the dataframe to only show columns from visible sections.
+        visible_columns = [
+            col for col in priority_columns if col in filtered_data.columns
+        ]
+        display_data = filtered_data[visible_columns]
         
         # Display the dataframe with built-in controls and QC action styling
         # Only show columns from visible sections
@@ -1436,12 +1485,30 @@ class QCDashboard:
             st.dataframe(
                 display_data,
                 width='stretch',
+                height=self._get_table_height(len(display_data)),
                 hide_index=True
             )
         else:
             self._render_styled_dataframe(
                 display_data, column_order, "data_preview_table"
             )
+
+        if not self.report_mode:
+            st.subheader("Section Visibility")
+            self._render_section_visibility_control(
+                section_names,
+                active_sections,
+                visible_col_counts
+            )
+
+            if ordered_columns:
+                tip_msg = (
+                    f"💡 **Tip:** Use the column visibility controls (👁️) in "
+                    f"the table to show/hide specific columns. Currently "
+                    f"showing {len(ordered_columns)} columns from selected "
+                    f"sections: {', '.join(active_sections)}"
+                )
+                st.info(tip_msg)
 
         # Optional config-driven API actions for selected samples.
         self.render_sample_api_actions(filtered_data)
@@ -2281,9 +2348,9 @@ class QCDashboard:
             else:
                 st.stop()
 
-        # Get filtered data (this will also render sidebar metrics)
+        # Get filtered data from sidebar controls
         filtered_data = self.render_sidebar_filters()
-        
+
         # Main content tabs
         if self.report_mode:
             self.render_report_tab(filtered_data)

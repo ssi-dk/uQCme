@@ -33,42 +33,132 @@ class StreamlitStub(types.ModuleType):
     def __init__(self):
         super().__init__("streamlit")
         self.sidebar = types.SimpleNamespace()
-        self.sidebar.subheader = lambda *args, **kwargs: None
-        self.sidebar.markdown = lambda *args, **kwargs: None
+        self.sidebar.container = self._sidebar_container
+        self.sidebar.header = self._sidebar_header
+        self.sidebar.subheader = self._sidebar_subheader
+        self.sidebar.markdown = self._sidebar_markdown
+        self.sidebar.button = lambda *args, **kwargs: False
+        self.sidebar.slider = self._sidebar_slider
+        self.sidebar.selectbox = self._sidebar_selectbox
+        self.sidebar.text_input = self._sidebar_text_input
         self.sidebar.columns = lambda n: [
             _ContextStub() for _ in range(n)
         ]
+        self.column_config = types.SimpleNamespace(
+            NumberColumn=lambda *args, **kwargs: ("number", args, kwargs),
+            CheckboxColumn=lambda *args, **kwargs: ("checkbox", args, kwargs),
+        )
         self.reset()
 
     def reset(self):
+        self.events = []
         self.info_calls = []
         self.warning_calls = []
         self.success_calls = []
         self.write_calls = []
         self.json_calls = []
         self.dataframe_calls = []
+        self.data_editor_calls = []
+        self.session_state = _SessionStateStub()
         self.query_params = _QueryParamsStub()
 
     def info(self, message):
+        self.events.append("info")
         self.info_calls.append(message)
 
     def warning(self, message):
+        self.events.append("warning")
         self.warning_calls.append(message)
 
     def success(self, message):
+        self.events.append("success")
         self.success_calls.append(message)
 
     def write(self, message):
+        self.events.append("write")
         self.write_calls.append(message)
 
+    def header(self, message):
+        self.events.append(f"header:{message}")
+
+    def subheader(self, message):
+        self.events.append(f"subheader:{message}")
+
+    def markdown(self, message, **kwargs):
+        self.events.append("markdown")
+
+    def metric(self, *args, **kwargs):
+        self.events.append("metric")
+
+    def columns(self, n):
+        self.events.append("columns")
+        return [_ContextStub() for _ in range(n)]
+
+    def checkbox(self, label, value=False, key=None):
+        self.events.append(f"checkbox:{label}")
+        if key and key in self.session_state:
+            return self.session_state[key]
+        if key:
+            self.session_state[key] = value
+        return value
+
+    def pills(self, label, options, default=None, key=None, **kwargs):
+        self.events.append(f"pills:{label}")
+        return self._stateful_selection(default, key)
+
+    def multiselect(self, label, options, default=None, key=None, **kwargs):
+        self.events.append(f"multiselect:{label}")
+        return self._stateful_selection(default, key)
+
+    def _stateful_selection(self, default, key):
+        if key and key in self.session_state:
+            return self.session_state[key]
+        selection = list(default or [])
+        if key:
+            self.session_state[key] = selection
+        return selection
+
+    def _sidebar_header(self, message):
+        self.events.append(f"sidebar.header:{message}")
+
+    def _sidebar_subheader(self, message):
+        self.events.append(f"sidebar.subheader:{message}")
+
+    def _sidebar_markdown(self, *args, **kwargs):
+        self.events.append("sidebar.markdown")
+
+    def _sidebar_container(self):
+        return _InsertedContextStub(
+            self.events, "sidebar.container", len(self.events)
+        )
+
+    def _sidebar_slider(self, *args, **kwargs):
+        return kwargs.get("value")
+
+    def _sidebar_selectbox(self, label, options, index=0, **kwargs):
+        return options[index]
+
+    def _sidebar_text_input(self, *args, **kwargs):
+        return kwargs.get("value", "")
+
     def json(self, payload):
+        self.events.append("json")
         self.json_calls.append(payload)
 
     def dataframe(self, data, **kwargs):
+        self.events.append("dataframe")
         self.dataframe_calls.append((data, kwargs))
         return None
 
+    def data_editor(self, data, **kwargs):
+        self.events.append("data_editor")
+        self.data_editor_calls.append((data, kwargs))
+        if hasattr(data, "data") and not hasattr(data, "columns"):
+            return data.data.copy()
+        return data.copy()
+
     def expander(self, *args, **kwargs):
+        self.events.append("expander")
         return _ContextStub()
 
     def error(self, message):
@@ -76,6 +166,9 @@ class StreamlitStub(types.ModuleType):
 
     def stop(self):
         raise AssertionError("st.stop called unexpectedly")
+
+    def rerun(self):
+        raise AssertionError("st.rerun called unexpectedly")
     
     @property
     def runtime(self):
@@ -95,11 +188,47 @@ class _ContextStub:
         return None
 
 
+class _InsertedContextStub(_ContextStub):
+    """Context stub that preserves the visual insertion point."""
+
+    def __init__(self, events, prefix: str, insert_index: int):
+        self._events = events
+        self._prefix = prefix
+        self._insert_index = insert_index
+
+    def _record(self, event: str):
+        self._events.insert(self._insert_index, event)
+        self._insert_index += 1
+
+    def subheader(self, message):
+        self._record(f"{self._prefix}.subheader:{message}")
+
+    def markdown(self, *args, **kwargs):
+        self._record(f"{self._prefix}.markdown")
+
+    def columns(self, n):
+        self._record(f"{self._prefix}.columns")
+        return [_ContextStub() for _ in range(n)]
+
+
 class _QueryParamsStub(dict):
     """Dictionary-like query params stub with Streamlit-compatible API."""
 
     def to_dict(self):
         return dict(self)
+
+
+class _SessionStateStub(dict):
+    """Dictionary with attribute access for Streamlit session state."""
+
+    def __getattr__(self, name):
+        try:
+            return self[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
+
+    def __setattr__(self, name, value):
+        self[name] = value
 
 
 streamlit_stub = StreamlitStub()
@@ -121,6 +250,7 @@ sys.modules["streamlit"] = streamlit_stub
 sys.modules["uQCme.plot"] = plot_stub
 
 from uQCme import app
+from uQCme.core.config import UQCMeConfig
 from uQCme.core import loader
 
 dashboard_main = importlib.import_module("uQCme.app.main")
@@ -201,6 +331,26 @@ def _build_dashboard_with_sample_action(
     config_path = tmp_path / "config_sample_action.yaml"
     config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
     return app.QCDashboard(str(config_path))
+
+
+def _bare_dashboard(table_height: int = 3600):
+    """Construct a dashboard instance without loading files."""
+    dashboard = app.QCDashboard.__new__(app.QCDashboard)
+    dashboard.config = UQCMeConfig(
+        app={
+            "input": {
+                "data": {"file": "output/qc_results.tsv"},
+                "mapping": "config/mapping.yaml",
+                "qc_rules": "config/QC_rules.tsv",
+                "qc_tests": "config/QC_tests.tsv",
+            },
+            "dashboard": {"table_height": table_height},
+        }
+    )
+    dashboard.mapping = {}
+    dashboard.report_mode = False
+    dashboard.data = pd.DataFrame()
+    return dashboard
 
 
 def test_load_data_from_api(monkeypatch, tmp_path, test_data_paths):
@@ -475,6 +625,185 @@ def test_render_api_debug_panel_shows_payload(
 
     assert streamlit_stub.json_calls == [[{"sample_name": "S1"}]]
     assert len(streamlit_stub.dataframe_calls) == 1
+
+
+def test_styled_dataframe_uses_configured_table_height():
+    """The main sample table should cap height at the configured maximum."""
+    streamlit_stub.reset()
+    dashboard = _bare_dashboard(table_height=4200)
+    data = pd.DataFrame(
+        [
+            {"sample_name": f"S{i}", "qc_outcome": "PASS"}
+            for i in range(200)
+        ]
+    )
+
+    dashboard._render_styled_dataframe(
+        data,
+        ["sample_name", "qc_outcome"],
+        "data_preview_table",
+    )
+
+    assert len(streamlit_stub.data_editor_calls) == 1
+    _, kwargs = streamlit_stub.data_editor_calls[0]
+    assert kwargs["height"] == 4200
+
+
+def test_styled_dataframe_shrinks_when_rows_are_below_configured_height():
+    """The sample table should not leave empty space for small datasets."""
+    streamlit_stub.reset()
+    dashboard = _bare_dashboard(table_height=4200)
+    data = pd.DataFrame([
+        {"sample_name": "S1", "qc_outcome": "PASS"},
+        {"sample_name": "S2", "qc_outcome": "FAIL"},
+    ])
+
+    dashboard._render_styled_dataframe(
+        data,
+        ["sample_name", "qc_outcome"],
+        "data_preview_table",
+    )
+
+    assert len(streamlit_stub.data_editor_calls) == 1
+    _, kwargs = streamlit_stub.data_editor_calls[0]
+    assert kwargs["height"] == 114
+
+
+def test_explicit_other_section_mappings_are_preserved_with_unmapped_columns():
+    """Explicit Other mappings should keep descriptions and section ordering."""
+    dashboard = _bare_dashboard()
+    dashboard.mapping = {
+        "Sections": {
+            "Other": {
+                "Contigs Path": {
+                    "data": {"mapping": "shovil_contigs_path"},
+                    "report": {"description": "Path to assembled contigs."},
+                },
+                "unmapped": True,
+            }
+        }
+    }
+    data = pd.DataFrame([
+        {
+            "shovil_contigs_path": "/tmp/contigs.fa",
+            "extra_column": "extra",
+        }
+    ])
+
+    sections = dashboard._get_columns_by_section(data)
+
+    assert [col["column"] for col in sections["Other"]] == [
+        "shovil_contigs_path",
+        "extra_column",
+    ]
+    assert (
+        dashboard._get_column_description("shovil_contigs_path")
+        == "Path to assembled contigs."
+    )
+
+
+def test_data_tab_renders_section_visibility_below_table():
+    """Section visibility controls should render after the main table."""
+    streamlit_stub.reset()
+    dashboard = _bare_dashboard(table_height=4200)
+    data = pd.DataFrame([
+        {"sample_name": "S1", "qc_outcome": "PASS"},
+        {"sample_name": "S2", "qc_outcome": "FAIL"},
+    ])
+    dashboard.data = data
+
+    dashboard.render_data_tab(data)
+
+    assert "data_editor" in streamlit_stub.events
+    assert "subheader:Section Visibility" in streamlit_stub.events
+    assert "pills:Visible sections" in streamlit_stub.events
+    assert (
+        streamlit_stub.events.index("data_editor")
+        < streamlit_stub.events.index("subheader:Section Visibility")
+    )
+    assert (
+        streamlit_stub.events.index("subheader:Section Visibility")
+        < streamlit_stub.events.index("pills:Visible sections")
+    )
+
+
+def test_section_visibility_uses_compact_stateful_selection():
+    """Selected sections should be read from one compact Streamlit widget."""
+    streamlit_stub.reset()
+    dashboard = _bare_dashboard()
+    dashboard.mapping = {
+        "Sections": {
+            "Basic": {
+                "Sample Name": {"data": {"mapping": "sample_name"}},
+            },
+            "QC": {
+                "QC Outcome": {"data": {"mapping": "qc_outcome"}},
+            },
+        }
+    }
+    data = pd.DataFrame([
+        {"sample_name": "S1", "qc_outcome": "PASS"},
+    ])
+    dashboard.data = data
+    streamlit_stub.session_state["data_preview_visible_sections"] = ["Basic"]
+
+    dashboard.render_data_tab(data)
+
+    rendered_data, _ = streamlit_stub.data_editor_calls[0]
+    assert list(rendered_data.columns) == ["sample_name"]
+    assert "pills:Visible sections" in streamlit_stub.events
+    assert not any(
+        event.startswith("checkbox:") for event in streamlit_stub.events
+    )
+
+
+def test_section_visibility_empty_selection_does_not_show_all_columns():
+    """Deselecting all sections should not fall back to showing everything."""
+    streamlit_stub.reset()
+    dashboard = _bare_dashboard()
+    dashboard.mapping = {
+        "Sections": {
+            "Basic": {
+                "Sample Name": {"data": {"mapping": "sample_name"}},
+            },
+            "QC": {
+                "QC Outcome": {"data": {"mapping": "qc_outcome"}},
+            },
+        }
+    }
+    data = pd.DataFrame([
+        {"sample_name": "S1", "qc_outcome": "PASS"},
+    ])
+    dashboard.data = data
+    streamlit_stub.session_state["data_preview_visible_sections"] = []
+
+    dashboard.render_data_tab(data)
+
+    rendered_data, _ = streamlit_stub.data_editor_calls[0]
+    assert list(rendered_data.columns) == []
+
+
+def test_sidebar_summary_stays_at_top_of_left_panel():
+    """Summary metrics should render in the sidebar above filter controls."""
+    streamlit_stub.reset()
+    dashboard = _bare_dashboard()
+    data = pd.DataFrame([
+        {"sample_name": "S1", "qc_outcome": "PASS"},
+        {"sample_name": "S2", "qc_outcome": "FAIL"},
+    ])
+    dashboard.data = data
+
+    dashboard.render_sidebar_filters()
+
+    summary_event = "sidebar.container.subheader:📊 Summary"
+    filters_event = "sidebar.header:🔍 Filters"
+    assert summary_event in streamlit_stub.events
+    assert filters_event in streamlit_stub.events
+    assert "subheader:📊 Summary" not in streamlit_stub.events
+    assert (
+        streamlit_stub.events.index(summary_event)
+        < streamlit_stub.events.index(filters_event)
+    )
 
 
 def test_url_debug_param_enables_api_debug(

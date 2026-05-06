@@ -33,8 +33,8 @@ app:
     warnings: "qc_warnings.tsv"
   dashboard:
     categorical_filter_threshold: 20
-    section_toggle_columns: 3
     max_displayed_rules: 10
+    table_height: 3600
     report_mode:
       enabled: false
       default_visible_sections: {}

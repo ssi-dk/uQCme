@@ -12,8 +12,63 @@ Note: This module requires the 'app' or 'all' extras to be installed:
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Iterable
 from uQCme.core.config import UQCMeConfig
+
+
+_EXCLUDED_METRIC_COLUMN_TOKENS = {
+    'sample_name',
+    'samplename',
+    'species',
+    'qc_outcome',
+    'qcoutcome',
+    'qc_action',
+    'qcaction',
+    'failed_rules',
+    'failedrules',
+    'passed_rules',
+    'passedrules',
+    'error',
+    'select',
+    'run_id',
+    'runid',
+    'analysis_run_id',
+    'analysisrunid',
+    'seq_sample_id',
+    'seqsampleid',
+    'sample_id',
+    'sampleid',
+}
+
+
+def _column_token(column: str) -> str:
+    """Normalize a column name for metric exclusion checks."""
+    return ''.join(char for char in str(column).lower() if char.isalnum())
+
+
+def _is_excluded_metric_column(column: str) -> bool:
+    """Return True when a column is metadata rather than a QC metric."""
+    return _column_token(column) in _EXCLUDED_METRIC_COLUMN_TOKENS
+
+
+def _to_numeric_values(values: pd.Series) -> pd.Series:
+    """Coerce a column to numeric values, returning NaN for non-numeric data."""
+    try:
+        return pd.to_numeric(values, errors='coerce')
+    except (ValueError, TypeError):
+        return pd.Series(pd.NA, index=values.index)
+
+
+def _coerce_metric_columns(
+    data: pd.DataFrame,
+    metrics: Iterable[str]
+) -> pd.DataFrame:
+    """Return a plot copy where selected metric columns are numeric."""
+    plot_data = data.copy()
+    for metric in metrics:
+        if metric in plot_data.columns:
+            plot_data[metric] = _to_numeric_values(plot_data[metric])
+    return plot_data
 
 
 class QCPlotter:
@@ -123,11 +178,13 @@ class QCPlotter:
         title: Optional[str] = None
     ) -> go.Figure:
         """Create distribution histogram for a quality metric."""
+        plot_data = _coerce_metric_columns(data, [metric])
+
         if title is None:
             title = f"Distribution of {self._format_column_name(metric)}"
         
         fig = px.histogram(
-            data,
+            plot_data,
             x=metric,
             color='qc_outcome',
             title=title,
@@ -151,11 +208,13 @@ class QCPlotter:
         title: Optional[str] = None
     ) -> go.Figure:
         """Create box plot for a quality metric by QC outcome."""
+        plot_data = _coerce_metric_columns(data, [metric])
+
         if title is None:
             title = f"{self._format_column_name(metric)} by QC Outcome"
         
         fig = px.box(
-            data,
+            plot_data,
             x='qc_outcome',
             y=metric,
             title=title,
@@ -180,6 +239,8 @@ class QCPlotter:
         title: Optional[str] = None
     ) -> go.Figure:
         """Create scatter plot comparing two quality metrics."""
+        plot_data = _coerce_metric_columns(data, [x_metric, y_metric])
+
         if title is None:
             x_name = self._format_column_name(x_metric)
             y_name = self._format_column_name(y_metric)
@@ -188,11 +249,11 @@ class QCPlotter:
         # Determine which columns to include in hover_data
         hover_cols = [
             column for column in ['sample_name', 'species']
-            if column in data.columns
+            if column in plot_data.columns
         ]
         
         fig = px.scatter(
-            data,
+            plot_data,
             x=x_metric,
             y=y_metric,
             color='qc_outcome',
@@ -234,8 +295,10 @@ class QCPlotter:
             fig.update_layout(title=title)
             return fig
         
+        plot_data = _coerce_metric_columns(data, available_metrics)
+
         # Calculate correlation matrix
-        corr_matrix = data[available_metrics].corr()
+        corr_matrix = plot_data[available_metrics].corr()
         
         fig = px.imshow(
             corr_matrix,
@@ -344,33 +407,23 @@ class QCPlotter:
 
 def get_available_metrics(data: pd.DataFrame) -> list:
     """Get list of available numeric metrics for plotting."""
-    # Exclude system/non-metric columns
-    excluded_cols = [
-        'sample_name', 'species', 'qc_outcome', 'qc_action',
-        'failed_rules', 'passed_rules', 'error', 'Select'
-    ]
-    
     available_metrics = []
     for col in data.columns:
-        if col in excluded_cols:
+        if _is_excluded_metric_column(col):
             continue
-        # Check if column is numeric
-        if pd.api.types.is_numeric_dtype(data[col]):
-            # Ensure there's actual data (not all NaN)
-            if data[col].notna().any():
-                available_metrics.append(col)
+
+        numeric_values = _to_numeric_values(data[col])
+        if numeric_values.notna().any():
+            available_metrics.append(col)
     
     return available_metrics
 
 
 def validate_metric_for_plotting(data: pd.DataFrame, metric: str) -> bool:
     """Validate that a metric can be used for plotting."""
-    if metric not in data.columns:
+    if metric not in data.columns or _is_excluded_metric_column(metric):
         return False
     
     # Check if column has numeric data
-    try:
-        pd.to_numeric(data[metric], errors='coerce')
-        return True
-    except (ValueError, TypeError):
-        return False
+    numeric_values = _to_numeric_values(data[metric])
+    return bool(numeric_values.notna().any())

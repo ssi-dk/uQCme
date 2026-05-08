@@ -12,9 +12,7 @@ class DataInput(BaseModel):
 
 
 class QCInput(BaseModel):
-    data: Union[str, DataInput, Dict[str, Any]] = Field(
-        default_factory=DataInput
-    )
+    data: Union[str, DataInput, Dict[str, Any]] = Field(default_factory=DataInput)
     mapping: str
     qc_rules: str
     qc_tests: str
@@ -36,9 +34,7 @@ class AppServer(BaseModel):
 
 
 class AppInput(BaseModel):
-    data: Union[str, DataInput, Dict[str, Any]] = Field(
-        default_factory=DataInput
-    )
+    data: Union[str, DataInput, Dict[str, Any]] = Field(default_factory=DataInput)
     mapping: str
     qc_rules: str
     qc_tests: str
@@ -59,7 +55,7 @@ class SampleApiAction(BaseModel):
     sample_ids_field: str = "sample_ids"
     headers: Optional[Dict[str, str]] = None
 
-    @field_validator('method', mode='before')
+    @field_validator("method", mode="before")
     @classmethod
     def normalize_method(cls, value):
         method = str(value or "POST").upper()
@@ -107,7 +103,7 @@ class UQCMeConfig(BaseModel):
     log: LogConfig = Field(default_factory=LogConfig)
     outcome_priorities: Optional[Dict[str, int]] = None
 
-    @field_validator('qc', 'app', mode='before')
+    @field_validator("qc", "app", mode="before")
     @classmethod
     def ensure_dict(cls, v):
         if v is None:

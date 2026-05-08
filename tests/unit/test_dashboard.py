@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import importlib
 import sys
 import types
-import importlib
 from pathlib import Path
 
 import pandas as pd
@@ -41,9 +41,7 @@ class StreamlitStub(types.ModuleType):
         self.sidebar.slider = self._sidebar_slider
         self.sidebar.selectbox = self._sidebar_selectbox
         self.sidebar.text_input = self._sidebar_text_input
-        self.sidebar.columns = lambda n: [
-            _ContextStub() for _ in range(n)
-        ]
+        self.sidebar.columns = lambda n: [_ContextStub() for _ in range(n)]
         self.column_config = types.SimpleNamespace(
             NumberColumn=lambda *args, **kwargs: ("number", args, kwargs),
             CheckboxColumn=lambda *args, **kwargs: ("checkbox", args, kwargs),
@@ -132,9 +130,7 @@ class StreamlitStub(types.ModuleType):
         self.events.append("sidebar.markdown")
 
     def _sidebar_container(self):
-        return _InsertedContextStub(
-            self.events, "sidebar.container", len(self.events)
-        )
+        return _InsertedContextStub(self.events, "sidebar.container", len(self.events))
 
     def _sidebar_slider(self, *args, **kwargs):
         return kwargs.get("value")
@@ -173,7 +169,7 @@ class StreamlitStub(types.ModuleType):
 
     def rerun(self):
         raise AssertionError("st.rerun called unexpectedly")
-    
+
     @property
     def runtime(self):
         return types.SimpleNamespace(exists=lambda: True)
@@ -253,9 +249,12 @@ plot_stub.get_available_metrics = _empty_metrics
 sys.modules["streamlit"] = streamlit_stub
 sys.modules["uQCme.plot"] = plot_stub
 
-from uQCme import app
-from uQCme.core.config import UQCMeConfig
-from uQCme.core import loader
+# We have these imports not at top-level because the code above switches modules
+# with stubs as part of the testing. Therefore, modules can't be imported before
+# that happens
+from uQCme import app  # noqa: E402
+from uQCme.core import loader  # noqa: E402
+from uQCme.core.config import UQCMeConfig  # noqa: E402
 
 dashboard_main = importlib.import_module("uQCme.app.main")
 
@@ -304,9 +303,7 @@ def _build_api_config(
                 "qc_rules": str(test_data_paths["qc_rules"]),
                 "qc_tests": str(test_data_paths["qc_tests"]),
             },
-            "dashboard": {
-                "debug_api": debug_api
-            },
+            "dashboard": {"debug_api": debug_api},
         }
     }
     config_path = tmp_path / "config_api.yaml"
@@ -327,9 +324,7 @@ def _build_dashboard_with_sample_action(
                 "qc_rules": str(test_data_paths["qc_rules"]),
                 "qc_tests": str(test_data_paths["qc_tests"]),
             },
-            "dashboard": {
-                "sample_api_actions": [sample_action]
-            },
+            "dashboard": {"sample_api_actions": [sample_action]},
         }
     }
     config_path = tmp_path / "config_sample_action.yaml"
@@ -473,9 +468,7 @@ def test_load_data_from_api_allows_missing_sample_name_when_not_required(
     )
 
 
-def test_load_data_from_api_with_bearer_token(
-    monkeypatch, tmp_path, test_data_paths
-):
+def test_load_data_from_api_with_bearer_token(monkeypatch, tmp_path, test_data_paths):
     """API data loading should include bearer token from config."""
     streamlit_stub.reset()
 
@@ -488,14 +481,16 @@ def test_load_data_from_api_with_bearer_token(
     )
     dashboard = app.QCDashboard(str(config_path))
 
-    response = DummyResponse([
-        {
-            "sample_name": "S1",
-            "qc_outcome": "PASS",
-            "species": "E. coli",
-            "provided_species": "E. coli",
-        }
-    ])
+    response = DummyResponse(
+        [
+            {
+                "sample_name": "S1",
+                "qc_outcome": "PASS",
+                "species": "E. coli",
+                "provided_species": "E. coli",
+            }
+        ]
+    )
 
     def fake_get(url, headers, timeout, verify, cookies=None):
         assert url == expected_url
@@ -528,14 +523,16 @@ def test_load_data_from_api_with_bearer_token_env(
     )
     dashboard = app.QCDashboard(str(config_path))
 
-    response = DummyResponse([
-        {
-            "sample_name": "S1",
-            "qc_outcome": "PASS",
-            "species": "E. coli",
-            "provided_species": "E. coli",
-        }
-    ])
+    response = DummyResponse(
+        [
+            {
+                "sample_name": "S1",
+                "qc_outcome": "PASS",
+                "species": "E. coli",
+                "provided_species": "E. coli",
+            }
+        ]
+    )
 
     def fake_get(url, headers, timeout, verify, cookies=None):
         assert url == expected_url
@@ -599,9 +596,7 @@ def test_load_data_from_api_debug_captures_payload(
     assert "sample_name" in dashboard.api_debug_info["columns"]
 
 
-def test_render_api_debug_panel_shows_payload(
-    monkeypatch, tmp_path, test_data_paths
-):
+def test_render_api_debug_panel_shows_payload(monkeypatch, tmp_path, test_data_paths):
     """Debug panel should render payload preview and table preview."""
     streamlit_stub.reset()
 
@@ -622,9 +617,7 @@ def test_render_api_debug_panel_shows_payload(
         "columns": ["sample_name"],
         "normalized_columns": ["sample_name", "qc_outcome"],
     }
-    dashboard.data = pd.DataFrame([
-        {"sample_name": "S1", "qc_outcome": "PASS"}
-    ])
+    dashboard.data = pd.DataFrame([{"sample_name": "S1", "qc_outcome": "PASS"}])
 
     dashboard._render_api_debug_panel()
 
@@ -637,10 +630,7 @@ def test_styled_dataframe_uses_configured_table_height():
     streamlit_stub.reset()
     dashboard = _bare_dashboard(table_height=4200)
     data = pd.DataFrame(
-        [
-            {"sample_name": f"S{i}", "qc_outcome": "PASS"}
-            for i in range(200)
-        ]
+        [{"sample_name": f"S{i}", "qc_outcome": "PASS"} for i in range(200)]
     )
 
     dashboard._render_styled_dataframe(
@@ -658,10 +648,12 @@ def test_styled_dataframe_shrinks_when_rows_are_below_configured_height():
     """The sample table should not leave empty space for small datasets."""
     streamlit_stub.reset()
     dashboard = _bare_dashboard(table_height=4200)
-    data = pd.DataFrame([
-        {"sample_name": "S1", "qc_outcome": "PASS"},
-        {"sample_name": "S2", "qc_outcome": "FAIL"},
-    ])
+    data = pd.DataFrame(
+        [
+            {"sample_name": "S1", "qc_outcome": "PASS"},
+            {"sample_name": "S2", "qc_outcome": "FAIL"},
+        ]
+    )
 
     dashboard._render_styled_dataframe(
         data,
@@ -688,12 +680,14 @@ def test_explicit_other_section_mappings_are_preserved_with_unmapped_columns():
             }
         }
     }
-    data = pd.DataFrame([
-        {
-            "shovil_contigs_path": "/tmp/contigs.fa",
-            "extra_column": "extra",
-        }
-    ])
+    data = pd.DataFrame(
+        [
+            {
+                "shovil_contigs_path": "/tmp/contigs.fa",
+                "extra_column": "extra",
+            }
+        ]
+    )
 
     sections = dashboard._get_columns_by_section(data)
 
@@ -711,10 +705,12 @@ def test_data_tab_renders_section_visibility_below_table():
     """Section visibility controls should render after the main table."""
     streamlit_stub.reset()
     dashboard = _bare_dashboard(table_height=4200)
-    data = pd.DataFrame([
-        {"sample_name": "S1", "qc_outcome": "PASS"},
-        {"sample_name": "S2", "qc_outcome": "FAIL"},
-    ])
+    data = pd.DataFrame(
+        [
+            {"sample_name": "S1", "qc_outcome": "PASS"},
+            {"sample_name": "S2", "qc_outcome": "FAIL"},
+        ]
+    )
     dashboard.data = data
 
     dashboard.render_data_tab(data)
@@ -722,14 +718,12 @@ def test_data_tab_renders_section_visibility_below_table():
     assert "data_editor" in streamlit_stub.events
     assert "subheader:Section Visibility" in streamlit_stub.events
     assert "pills:Visible sections" in streamlit_stub.events
-    assert (
-        streamlit_stub.events.index("data_editor")
-        < streamlit_stub.events.index("subheader:Section Visibility")
+    assert streamlit_stub.events.index("data_editor") < streamlit_stub.events.index(
+        "subheader:Section Visibility"
     )
-    assert (
-        streamlit_stub.events.index("subheader:Section Visibility")
-        < streamlit_stub.events.index("pills:Visible sections")
-    )
+    assert streamlit_stub.events.index(
+        "subheader:Section Visibility"
+    ) < streamlit_stub.events.index("pills:Visible sections")
 
 
 def test_section_visibility_uses_compact_stateful_selection():
@@ -746,9 +740,11 @@ def test_section_visibility_uses_compact_stateful_selection():
             },
         }
     }
-    data = pd.DataFrame([
-        {"sample_name": "S1", "qc_outcome": "PASS"},
-    ])
+    data = pd.DataFrame(
+        [
+            {"sample_name": "S1", "qc_outcome": "PASS"},
+        ]
+    )
     dashboard.data = data
     streamlit_stub.session_state["data_preview_visible_sections"] = ["Basic"]
 
@@ -757,9 +753,7 @@ def test_section_visibility_uses_compact_stateful_selection():
     rendered_data, _ = streamlit_stub.data_editor_calls[0]
     assert list(rendered_data.columns) == ["sample_name"]
     assert "pills:Visible sections" in streamlit_stub.events
-    assert not any(
-        event.startswith("checkbox:") for event in streamlit_stub.events
-    )
+    assert not any(event.startswith("checkbox:") for event in streamlit_stub.events)
 
 
 def test_section_visibility_empty_selection_does_not_show_all_columns():
@@ -776,9 +770,11 @@ def test_section_visibility_empty_selection_does_not_show_all_columns():
             },
         }
     }
-    data = pd.DataFrame([
-        {"sample_name": "S1", "qc_outcome": "PASS"},
-    ])
+    data = pd.DataFrame(
+        [
+            {"sample_name": "S1", "qc_outcome": "PASS"},
+        ]
+    )
     dashboard.data = data
     streamlit_stub.session_state["data_preview_visible_sections"] = []
 
@@ -792,10 +788,12 @@ def test_sidebar_summary_stays_at_top_of_left_panel():
     """Summary metrics should render in the sidebar above filter controls."""
     streamlit_stub.reset()
     dashboard = _bare_dashboard()
-    data = pd.DataFrame([
-        {"sample_name": "S1", "qc_outcome": "PASS"},
-        {"sample_name": "S2", "qc_outcome": "FAIL"},
-    ])
+    data = pd.DataFrame(
+        [
+            {"sample_name": "S1", "qc_outcome": "PASS"},
+            {"sample_name": "S2", "qc_outcome": "FAIL"},
+        ]
+    )
     dashboard.data = data
 
     dashboard.render_sidebar_filters()
@@ -805,9 +803,8 @@ def test_sidebar_summary_stays_at_top_of_left_panel():
     assert summary_event in streamlit_stub.events
     assert filters_event in streamlit_stub.events
     assert "subheader:📊 Summary" not in streamlit_stub.events
-    assert (
-        streamlit_stub.events.index(summary_event)
-        < streamlit_stub.events.index(filters_event)
+    assert streamlit_stub.events.index(summary_event) < streamlit_stub.events.index(
+        filters_event
     )
 
 
@@ -834,10 +831,12 @@ def test_filterable_fields_deduplicates_reused_data_columns():
             },
         }
     }
-    data = pd.DataFrame([
-        {"rMLST_match": "E. coli", "Quast_GC_Pct": 50.1},
-        {"rMLST_match": "S. aureus", "Quast_GC_Pct": 32.9},
-    ])
+    data = pd.DataFrame(
+        [
+            {"rMLST_match": "E. coli", "Quast_GC_Pct": 50.1},
+            {"rMLST_match": "S. aureus", "Quast_GC_Pct": 32.9},
+        ]
+    )
 
     fields = dashboard._get_filterable_fields(data)
 
@@ -878,16 +877,18 @@ def test_sample_details_renders_numeric_string_quality_metrics():
             },
         }
     }
-    data = pd.DataFrame([
-        {
-            "sample_name": "S1",
-            "qc_outcome": "PASS",
-            "coverage_x": "45.5",
-            "number_of_genomes": "2",
-            "qc_label": "good",
-            "RunID": "12345",
-        }
-    ])
+    data = pd.DataFrame(
+        [
+            {
+                "sample_name": "S1",
+                "qc_outcome": "PASS",
+                "coverage_x": "45.5",
+                "number_of_genomes": "2",
+                "qc_label": "good",
+                "RunID": "12345",
+            }
+        ]
+    )
     dashboard.data = data
 
     dashboard.render_sample_details_tab(data)
@@ -920,18 +921,22 @@ def test_quality_metrics_tab_lists_non_plottable_catalog_entries():
             }
         }
     }
-    dashboard.qc_rules = pd.DataFrame([
-        {"field": "CategoricalField"},
-        {"field": "EmptyField"},
-        {"field": "MissingField"},
-    ])
-    data = pd.DataFrame([
-        {
-            "sample_name": "S1",
-            "categorical_metric": "high",
-            "empty_metric": None,
-        }
-    ])
+    dashboard.qc_rules = pd.DataFrame(
+        [
+            {"field": "CategoricalField"},
+            {"field": "EmptyField"},
+            {"field": "MissingField"},
+        ]
+    )
+    data = pd.DataFrame(
+        [
+            {
+                "sample_name": "S1",
+                "categorical_metric": "high",
+                "empty_metric": None,
+            }
+        ]
+    )
 
     dashboard.render_quality_metrics_tab(data)
 
@@ -950,9 +955,7 @@ def test_quality_metrics_tab_lists_non_plottable_catalog_entries():
     }
 
 
-def test_url_debug_param_enables_api_debug(
-    tmp_path, test_data_paths
-):
+def test_url_debug_param_enables_api_debug(tmp_path, test_data_paths):
     """URL debug query param should override config and enable debug."""
     streamlit_stub.reset()
     streamlit_stub.query_params["debug"] = "TRUE"
@@ -969,9 +972,7 @@ def test_url_debug_param_enables_api_debug(
     assert dashboard._is_api_debug_enabled() is True
 
 
-def test_url_debug_param_disables_api_debug(
-    tmp_path, test_data_paths
-):
+def test_url_debug_param_disables_api_debug(tmp_path, test_data_paths):
     """URL debug query param should override config and disable debug."""
     streamlit_stub.reset()
     streamlit_stub.query_params["debug"] = "FALSE"
@@ -1005,10 +1006,12 @@ def test_trigger_sample_api_action_with_bearer_token(
         },
     )
     action = dashboard.config.app.dashboard.sample_api_actions[0]
-    selected_rows = pd.DataFrame([
-        {"sample_name": "S1", "sample_id": "ID-1"},
-        {"sample_name": "S2", "sample_id": "ID-2"},
-    ])
+    selected_rows = pd.DataFrame(
+        [
+            {"sample_name": "S1", "sample_id": "ID-1"},
+            {"sample_name": "S2", "sample_id": "ID-2"},
+        ]
+    )
     response = DummyResponse({"ok": True})
 
     def fake_request(**kwargs):
@@ -1024,9 +1027,7 @@ def test_trigger_sample_api_action_with_bearer_token(
 
     monkeypatch.setattr(dashboard_main.requests, "request", fake_request)
 
-    result = dashboard._trigger_sample_api_action(
-        action, selected_rows, "sample_id"
-    )
+    result = dashboard._trigger_sample_api_action(action, selected_rows, "sample_id")
 
     assert result is response
 
@@ -1049,9 +1050,11 @@ def test_trigger_sample_api_action_with_bearer_token_env(
         },
     )
     action = dashboard.config.app.dashboard.sample_api_actions[0]
-    selected_rows = pd.DataFrame([
-        {"sample_name": "S1", "sample_id": "ID-1"},
-    ])
+    selected_rows = pd.DataFrame(
+        [
+            {"sample_name": "S1", "sample_id": "ID-1"},
+        ]
+    )
     response = DummyResponse({"ok": True})
 
     def fake_request(**kwargs):
@@ -1063,16 +1066,12 @@ def test_trigger_sample_api_action_with_bearer_token_env(
 
     monkeypatch.setattr(dashboard_main.requests, "request", fake_request)
 
-    result = dashboard._trigger_sample_api_action(
-        action, selected_rows, "sample_id"
-    )
+    result = dashboard._trigger_sample_api_action(action, selected_rows, "sample_id")
 
     assert result is response
 
 
-def test_load_data_from_api_with_custom_headers(
-    monkeypatch, tmp_path, test_data_paths
-):
+def test_load_data_from_api_with_custom_headers(monkeypatch, tmp_path, test_data_paths):
     """X-Project-Id header should be converted to project_id query param."""
     streamlit_stub.reset()
 
@@ -1088,14 +1087,16 @@ def test_load_data_from_api_with_custom_headers(
     )
     dashboard = app.QCDashboard(str(config_path))
 
-    response = DummyResponse([
-        {
-            "sample_name": "S1",
-            "qc_outcome": "PASS",
-            "species": "E. coli",
-            "provided_species": "E. coli",
-        }
-    ])
+    response = DummyResponse(
+        [
+            {
+                "sample_name": "S1",
+                "qc_outcome": "PASS",
+                "species": "E. coli",
+                "provided_species": "E. coli",
+            }
+        ]
+    )
 
     def fake_get(url, headers, timeout, verify, cookies=None):
         assert url == f"{expected_url}?project_id=project-123"
@@ -1155,15 +1156,11 @@ def test_load_data_from_api_retries_with_session_cookie(monkeypatch):
 
     monkeypatch.setattr(loader.requests, "get", fake_get)
 
-    df = loader.load_data_from_api(
-        expected_url, bearer_token="token-from-config"
-    )
+    df = loader.load_data_from_api(expected_url, bearer_token="token-from-config")
 
     assert call_count["value"] == 2
     expected_df = pd.DataFrame(payload)
-    pd.testing.assert_frame_equal(
-        df.sort_index(axis=1), expected_df.sort_index(axis=1)
-    )
+    pd.testing.assert_frame_equal(df.sort_index(axis=1), expected_df.sort_index(axis=1))
 
 
 def test_load_data_from_api_http_error_surfaces_detail(monkeypatch):

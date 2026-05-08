@@ -88,11 +88,13 @@ def dashboard_command(args):
         raise SystemExit("--dashboard-command must not be empty")
     if args.config:
         command.extend(["--config", args.config])
-    command.extend([
-        "--server.headless=true",
-        "--server.address={0}".format(args.host),
-        "--server.port={0}".format(args.port),
-    ])
+    command.extend(
+        [
+            "--server.headless=true",
+            "--server.address={0}".format(args.host),
+            "--server.port={0}".format(args.port),
+        ]
+    )
     return command
 
 

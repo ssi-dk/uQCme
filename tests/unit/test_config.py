@@ -81,12 +81,12 @@ class TestConfigModels(unittest.TestCase):
                         "enabled": True,
                         "default_visible_sections": {
                             "Basic": True,
-                            "Experimental": False
+                            "Experimental": False,
                         },
                         "default_filters": {
                             "species": "Escherichia coli",
-                            "completeness": {"min": 90}
-                        }
+                            "completeness": {"min": 90},
+                        },
                     }
                 },
             }
@@ -95,9 +95,7 @@ class TestConfigModels(unittest.TestCase):
         report_mode = config.app.dashboard.report_mode
         self.assertTrue(report_mode.enabled)
         self.assertFalse(report_mode.default_visible_sections["Experimental"])
-        self.assertEqual(
-            report_mode.default_filters["species"], "Escherichia coli"
-        )
+        self.assertEqual(report_mode.default_filters["species"], "Escherichia coli")
 
     def test_dashboard_table_height_defaults_and_overrides(self):
         """Dashboard table height should default to a 100-row viewport."""
@@ -128,9 +126,7 @@ class TestConfigModels(unittest.TestCase):
                         "api_call": "https://example.org/api/data",
                         "api_bearer_token": "test-token",
                         "api_bearer_token_env": "UQCME_API_TOKEN",
-                        "api_headers": {
-                            "X-Project-Id": "project-123"
-                        },
+                        "api_headers": {"X-Project-Id": "project-123"},
                     },
                     "mapping": "config/mapping.yaml",
                     "qc_rules": "config/QC_rules.tsv",
@@ -142,9 +138,7 @@ class TestConfigModels(unittest.TestCase):
         data_input = config.app.input.data
         self.assertEqual(data_input.api_bearer_token, "test-token")
         self.assertEqual(data_input.api_bearer_token_env, "UQCME_API_TOKEN")
-        self.assertEqual(
-            data_input.api_headers["X-Project-Id"], "project-123"
-        )
+        self.assertEqual(data_input.api_headers["X-Project-Id"], "project-123")
 
     def test_sample_api_action_supports_bearer_token_fields(self):
         """Sample API actions should parse bearer token auth fields."""

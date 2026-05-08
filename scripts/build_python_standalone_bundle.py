@@ -59,8 +59,7 @@ def build_parser():
     """Build CLI parser."""
     parser = argparse.ArgumentParser(
         description=(
-            "Build relocatable uQCme bundles using a "
-            "python-build-standalone runtime."
+            "Build relocatable uQCme bundles using a python-build-standalone runtime."
         )
     )
     parser.add_argument(
@@ -161,7 +160,8 @@ def download_python_archive(args, download_dir):
         )
 
     archives = sorted(
-        path for path in download_dir.iterdir()
+        path
+        for path in download_dir.iterdir()
         if path.name.startswith("cpython-") and ".tar." in path.name
     )
     if not archives:
@@ -217,9 +217,7 @@ def validate_runtime_matches_host(python_bin):
     host_system = platform.system()
     host_machine = platform.machine()
     print(
-        "Selected runtime: Python {version} for {system}/{machine}".format(
-            **metadata
-        )
+        "Selected runtime: Python {version} for {system}/{machine}".format(**metadata)
     )
     print("Build host: {0}/{1}".format(host_system, host_machine))
     if metadata["system"] != host_system:
@@ -283,8 +281,7 @@ exec "$PYTHON_BIN" -c 'from {module_name} import main; raise SystemExit(main())'
 def write_readme(dist_root, profile):
     """Write bundle-local operator notes."""
     launcher_lines = "\n".join(
-        "  ./{0} --help".format(name)
-        for name in sorted(PROFILES[profile]["launchers"])
+        "  ./{0} --help".format(name) for name in sorted(PROFILES[profile]["launchers"])
     )
     extra_lines = ""
     if profile == "dashboard":
@@ -327,7 +324,9 @@ def selected_profiles(profile):
 
 def prepare_python_runtime(args, build_root):
     """Resolve, validate, and return a standalone Python executable."""
-    python_archive = Path(args.python_archive).expanduser() if args.python_archive else None
+    python_archive = (
+        Path(args.python_archive).expanduser() if args.python_archive else None
+    )
     python_bin = Path(args.python_bin).expanduser() if args.python_bin else None
 
     if args.download_python:
@@ -335,7 +334,9 @@ def prepare_python_runtime(args, build_root):
 
     if python_archive:
         if not python_archive.is_file():
-            raise SystemExit("Python archive does not exist: {0}".format(python_archive))
+            raise SystemExit(
+                "Python archive does not exist: {0}".format(python_archive)
+            )
         extract_archive(python_archive, build_root / "runtime")
         python_bin = find_python_bin(build_root / "runtime")
 

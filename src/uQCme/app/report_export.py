@@ -34,7 +34,9 @@ def export_dashboard_pdf(options: DashboardPdfExportOptions) -> str:
     port = options.port or _find_free_port()
     process = _start_dashboard_process(options, port)
     try:
-        _wait_for_dashboard(options.host, port, process, options.startup_timeout_seconds)
+        _wait_for_dashboard(
+            options.host, port, process, options.startup_timeout_seconds
+        )
         _capture_pdf(options, port, str(output_path))
         return str(output_path)
     finally:

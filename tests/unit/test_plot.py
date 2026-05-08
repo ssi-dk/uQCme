@@ -101,10 +101,12 @@ def test_quality_metric_catalog_uses_qc_mapping_without_section_names():
             }
         }
     }
-    qc_rules = pd.DataFrame([
-        {"field": "Coverage"},
-        {"field": "coverage_x"},
-    ])
+    qc_rules = pd.DataFrame(
+        [
+            {"field": "Coverage"},
+            {"field": "coverage_x"},
+        ]
+    )
 
     catalog = build_quality_metric_catalog(data, mapping, qc_rules)
 
@@ -141,9 +143,11 @@ def test_quality_metric_catalog_honors_explicit_include_and_exclude():
             },
         }
     }
-    qc_rules = pd.DataFrame([
-        {"field": "ExcludedField"},
-    ])
+    qc_rules = pd.DataFrame(
+        [
+            {"field": "ExcludedField"},
+        ]
+    )
 
     catalog = build_quality_metric_catalog(data, mapping, qc_rules)
 
@@ -153,9 +157,11 @@ def test_quality_metric_catalog_honors_explicit_include_and_exclude():
 
 
 def test_quality_metric_catalog_reports_missing_and_empty_reasons():
-    data = pd.DataFrame({
-        "empty_metric": [None, ""],
-    })
+    data = pd.DataFrame(
+        {
+            "empty_metric": [None, ""],
+        }
+    )
     mapping = {
         "Sections": {
             "Read_QC": {
@@ -170,16 +176,15 @@ def test_quality_metric_catalog_reports_missing_and_empty_reasons():
             }
         }
     }
-    qc_rules = pd.DataFrame([
-        {"field": "MissingField"},
-        {"field": "EmptyField"},
-    ])
+    qc_rules = pd.DataFrame(
+        [
+            {"field": "MissingField"},
+            {"field": "EmptyField"},
+        ]
+    )
 
     catalog = build_quality_metric_catalog(data, mapping, qc_rules)
-    reasons = {
-        entry.label: entry.non_plottable_reason
-        for entry in catalog
-    }
+    reasons = {entry.label: entry.non_plottable_reason for entry in catalog}
 
     assert reasons == {
         "Missing Metric": "missing column",

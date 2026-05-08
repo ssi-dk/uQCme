@@ -39,320 +39,295 @@ class TestQCProcessor(unittest.TestCase):
     def test_apply_operator(self):
         """Test operator application logic."""
         # Test numeric comparisons
-        self.assertTrue(self.processor._apply_operator(5, '>=', 3))
-        self.assertFalse(self.processor._apply_operator(2, '>=', 3))
-        self.assertTrue(self.processor._apply_operator(10, '<=', 15))
-        self.assertFalse(self.processor._apply_operator(20, '<=', 15))
-        self.assertTrue(self.processor._apply_operator(7, '>', 5))
-        self.assertFalse(self.processor._apply_operator(3, '>', 5))
-        self.assertTrue(self.processor._apply_operator(4, '<', 8))
-        self.assertFalse(self.processor._apply_operator(10, '<', 8))
-        
+        self.assertTrue(self.processor._apply_operator(5, ">=", 3))
+        self.assertFalse(self.processor._apply_operator(2, ">=", 3))
+        self.assertTrue(self.processor._apply_operator(10, "<=", 15))
+        self.assertFalse(self.processor._apply_operator(20, "<=", 15))
+        self.assertTrue(self.processor._apply_operator(7, ">", 5))
+        self.assertFalse(self.processor._apply_operator(3, ">", 5))
+        self.assertTrue(self.processor._apply_operator(4, "<", 8))
+        self.assertFalse(self.processor._apply_operator(10, "<", 8))
+
         # Test string equality
-        self.assertTrue(self.processor._apply_operator('test', '=', 'test'))
-        self.assertFalse(self.processor._apply_operator('test', '=', 'other'))
+        self.assertTrue(self.processor._apply_operator("test", "=", "test"))
+        self.assertFalse(self.processor._apply_operator("test", "=", "other"))
 
     def test_get_sample_attributes(self):
         """Test sample attribute extraction."""
-        sample_data = pd.Series({
-            'species': 'Escherichia coli',
-            'assembly_type': 'short',
-            'other_field': 'value'
-        })
-        
+        sample_data = pd.Series(
+            {
+                "species": "Escherichia coli",
+                "assembly_type": "short",
+                "other_field": "value",
+            }
+        )
+
         # Load QC overrides first
         self.processor.load_input_files()
-        
+
         attributes = self.processor._get_sample_attributes(sample_data)
-        
-        self.assertEqual(attributes['species'], 'Escherichia coli')
-        self.assertIn('assembly_type', attributes)
+
+        self.assertEqual(attributes["species"], "Escherichia coli")
+        self.assertIn("assembly_type", attributes)
 
     def test_rule_matches_criteria(self):
         """Test rule matching logic."""
         # Load input files to get QC overrides
         self.processor.load_input_files()
-        
+
         # Test rule that matches all species
-        rule = pd.Series({
-            'species': 'all',
-            'assembly_type': 'all',
-            'software': 'checkm'
-        })
-        
-        sample_attributes = {
-            'species': 'Escherichia coli',
-            'assembly_type': 'short'
-        }
-        
-        self.assertTrue(
-            self.processor._rule_matches_criteria(rule, sample_attributes)
+        rule = pd.Series(
+            {"species": "all", "assembly_type": "all", "software": "checkm"}
         )
-        
+
+        sample_attributes = {"species": "Escherichia coli", "assembly_type": "short"}
+
+        self.assertTrue(self.processor._rule_matches_criteria(rule, sample_attributes))
+
         # Test rule that doesn't match species
-        rule_specific = pd.Series({
-            'species': 'Salmonella enterica',
-            'assembly_type': 'all',
-            'software': 'checkm'
-        })
-        
+        rule_specific = pd.Series(
+            {
+                "species": "Salmonella enterica",
+                "assembly_type": "all",
+                "software": "checkm",
+            }
+        )
+
         self.assertFalse(
-            self.processor._rule_matches_criteria(
-                rule_specific, sample_attributes
-            )
+            self.processor._rule_matches_criteria(rule_specific, sample_attributes)
         )
 
     def test_determine_qc_outcomes(self):
         """Test QC outcome determination logic."""
         # Mock QC tests dataframe with new two-column schema
-        self.processor.qc_tests = pd.DataFrame([
-            {
-                'outcome_id': 'PASS',
-                'passed_rule_conditions': '',
-                'failed_rule_conditions': '',
-                'priority': 1,
-                'action_required': 'none'
-            },
-            {
-                'outcome_id': 'WARN_TEST',
-                'passed_rule_conditions': '',
-                'failed_rule_conditions': 'R1,R2',
-                'priority': 2,
-                'action_required': 'review'
-            },
-            {
-                'outcome_id': 'FAIL_TEST',
-                'passed_rule_conditions': '',
-                'failed_rule_conditions': 'R3',
-                'priority': 3,
-                'action_required': 'reject'
-            }
-        ])
+        self.processor.qc_tests = pd.DataFrame(
+            [
+                {
+                    "outcome_id": "PASS",
+                    "passed_rule_conditions": "",
+                    "failed_rule_conditions": "",
+                    "priority": 1,
+                    "action_required": "none",
+                },
+                {
+                    "outcome_id": "WARN_TEST",
+                    "passed_rule_conditions": "",
+                    "failed_rule_conditions": "R1,R2",
+                    "priority": 2,
+                    "action_required": "review",
+                },
+                {
+                    "outcome_id": "FAIL_TEST",
+                    "passed_rule_conditions": "",
+                    "failed_rule_conditions": "R3",
+                    "priority": 3,
+                    "action_required": "reject",
+                },
+            ]
+        )
 
         # Test no failed rules (both empty = PASS when no failures)
         outcomes = self.processor._determine_qc_outcomes([], [])
-        self.assertIn('PASS', outcomes)
+        self.assertIn("PASS", outcomes)
 
         # Test warning condition (R1 failed)
-        outcomes = self.processor._determine_qc_outcomes(['R1'], [])
-        self.assertIn('WARN_TEST', outcomes)
-        self.assertNotIn('PASS', outcomes)
+        outcomes = self.processor._determine_qc_outcomes(["R1"], [])
+        self.assertIn("WARN_TEST", outcomes)
+        self.assertNotIn("PASS", outcomes)
 
         # Test fail condition (R3 failed)
-        outcomes = self.processor._determine_qc_outcomes(['R3'], [])
-        self.assertIn('FAIL_TEST', outcomes)
+        outcomes = self.processor._determine_qc_outcomes(["R3"], [])
+        self.assertIn("FAIL_TEST", outcomes)
 
         # Test multiple failures
-        outcomes = self.processor._determine_qc_outcomes(['R1', 'R3'], [])
-        self.assertIn('WARN_TEST', outcomes)
-        self.assertIn('FAIL_TEST', outcomes)
+        outcomes = self.processor._determine_qc_outcomes(["R1", "R3"], [])
+        self.assertIn("WARN_TEST", outcomes)
+        self.assertIn("FAIL_TEST", outcomes)
 
         # Test unknown rule failure (should default to FAIL)
-        outcomes = self.processor._determine_qc_outcomes(['R99'], [])
-        self.assertIn('FAIL', outcomes)
+        outcomes = self.processor._determine_qc_outcomes(["R99"], [])
+        self.assertIn("FAIL", outcomes)
 
     def test_passed_rule_conditions_not_applicable(self):
         """Test that tests with passed_rule_conditions are skipped when rules are not evaluated."""
         # Mock QC tests with passed_rule_conditions
-        self.processor.qc_tests = pd.DataFrame([
-            {
-                'outcome_id': 'PASS',
-                'passed_rule_conditions': '',
-                'failed_rule_conditions': '',
-                'priority': 1,
-                'action_required': 'none'
-            },
-            {
-                'outcome_id': 'TEST_WITH_PASSED_CONDITIONS',
-                'passed_rule_conditions': 'R10,R11',  # Rules that won't be evaluated
-                'failed_rule_conditions': '',
-                'priority': 2,
-                'action_required': 'review'
-            },
-            {
-                'outcome_id': 'FAIL_TEST',
-                'passed_rule_conditions': '',
-                'failed_rule_conditions': 'R3',
-                'priority': 3,
-                'action_required': 'reject'
-            }
-        ])
+        self.processor.qc_tests = pd.DataFrame(
+            [
+                {
+                    "outcome_id": "PASS",
+                    "passed_rule_conditions": "",
+                    "failed_rule_conditions": "",
+                    "priority": 1,
+                    "action_required": "none",
+                },
+                {
+                    "outcome_id": "TEST_WITH_PASSED_CONDITIONS",
+                    "passed_rule_conditions": "R10,R11",  # Rules that won't be evaluated
+                    "failed_rule_conditions": "",
+                    "priority": 2,
+                    "action_required": "review",
+                },
+                {
+                    "outcome_id": "FAIL_TEST",
+                    "passed_rule_conditions": "",
+                    "failed_rule_conditions": "R3",
+                    "priority": 3,
+                    "action_required": "reject",
+                },
+            ]
+        )
 
         # Test: When R10 and R11 are not evaluated (not in passed_rules or failed_rules),
         # the test should be skipped (not applicable), not treated as failed
-        outcomes = self.processor._determine_qc_outcomes(['R3'], ['R1', 'R2'])
+        outcomes = self.processor._determine_qc_outcomes(["R3"], ["R1", "R2"])
         # TEST_WITH_PASSED_CONDITIONS should NOT appear in outcomes (skipped, not applicable)
-        self.assertNotIn('TEST_WITH_PASSED_CONDITIONS', outcomes)
+        self.assertNotIn("TEST_WITH_PASSED_CONDITIONS", outcomes)
         # FAIL_TEST should appear because R3 is in failed_rules
-        self.assertIn('FAIL_TEST', outcomes)
+        self.assertIn("FAIL_TEST", outcomes)
         # PASS should NOT appear because there are failed rules
-        self.assertNotIn('PASS', outcomes)
+        self.assertNotIn("PASS", outcomes)
 
     def test_passed_rule_conditions_evaluated_and_passed(self):
         """Test that tests with passed_rule_conditions pass when all required rules pass."""
         # Mock QC tests with passed_rule_conditions
-        self.processor.qc_tests = pd.DataFrame([
-            {
-                'outcome_id': 'PASS',
-                'passed_rule_conditions': '',
-                'failed_rule_conditions': '',
-                'priority': 1,
-                'action_required': 'none'
-            },
-            {
-                'outcome_id': 'TEST_WITH_PASSED_CONDITIONS',
-                'passed_rule_conditions': 'R10,R11',
-                'failed_rule_conditions': '',
-                'priority': 2,
-                'action_required': 'review'
-            }
-        ])
+        self.processor.qc_tests = pd.DataFrame(
+            [
+                {
+                    "outcome_id": "PASS",
+                    "passed_rule_conditions": "",
+                    "failed_rule_conditions": "",
+                    "priority": 1,
+                    "action_required": "none",
+                },
+                {
+                    "outcome_id": "TEST_WITH_PASSED_CONDITIONS",
+                    "passed_rule_conditions": "R10,R11",
+                    "failed_rule_conditions": "",
+                    "priority": 2,
+                    "action_required": "review",
+                },
+            ]
+        )
 
         # Test: When R10 and R11 are evaluated and passed (in passed_rules),
         # the test should pass
-        outcomes = self.processor._determine_qc_outcomes([], ['R10', 'R11', 'R1'])
+        outcomes = self.processor._determine_qc_outcomes([], ["R10", "R11", "R1"])
         # TEST_WITH_PASSED_CONDITIONS should appear (all rules passed)
-        self.assertIn('TEST_WITH_PASSED_CONDITIONS', outcomes)
+        self.assertIn("TEST_WITH_PASSED_CONDITIONS", outcomes)
         # PASS should also appear (no failed rules)
-        self.assertIn('PASS', outcomes)
+        self.assertIn("PASS", outcomes)
 
     def test_passed_rule_conditions_evaluated_and_failed(self):
         """Test that tests with passed_rule_conditions fail when any required rule fails."""
         # Mock QC tests with passed_rule_conditions
-        self.processor.qc_tests = pd.DataFrame([
-            {
-                'outcome_id': 'PASS',
-                'passed_rule_conditions': '',
-                'failed_rule_conditions': '',
-                'priority': 1,
-                'action_required': 'none'
-            },
-            {
-                'outcome_id': 'TEST_WITH_PASSED_CONDITIONS',
-                'passed_rule_conditions': 'R10,R11',
-                'failed_rule_conditions': '',
-                'priority': 2,
-                'action_required': 'review'
-            }
-        ])
+        self.processor.qc_tests = pd.DataFrame(
+            [
+                {
+                    "outcome_id": "PASS",
+                    "passed_rule_conditions": "",
+                    "failed_rule_conditions": "",
+                    "priority": 1,
+                    "action_required": "none",
+                },
+                {
+                    "outcome_id": "TEST_WITH_PASSED_CONDITIONS",
+                    "passed_rule_conditions": "R10,R11",
+                    "failed_rule_conditions": "",
+                    "priority": 2,
+                    "action_required": "review",
+                },
+            ]
+        )
 
         # Test: When R10 passed but R11 failed (in failed_rules),
         # the test should NOT pass (failed)
-        outcomes = self.processor._determine_qc_outcomes(['R11'], ['R10', 'R1'])
+        outcomes = self.processor._determine_qc_outcomes(["R11"], ["R10", "R1"])
         # TEST_WITH_PASSED_CONDITIONS should NOT appear (R11 failed)
-        self.assertNotIn('TEST_WITH_PASSED_CONDITIONS', outcomes)
+        self.assertNotIn("TEST_WITH_PASSED_CONDITIONS", outcomes)
         # PASS should NOT appear (there are failed rules)
-        self.assertNotIn('PASS', outcomes)
+        self.assertNotIn("PASS", outcomes)
         # Should have generic FAIL
-        self.assertIn('FAIL', outcomes)
+        self.assertIn("FAIL", outcomes)
 
     def test_determine_qc_action(self):
         """Test QC action determination logic."""
         # Mock QC tests dataframe
-        self.processor.qc_tests = pd.DataFrame([
-            {
-                'outcome_id': 'PASS',
-                'priority': 1,
-                'action_required': 'none'
-            },
-            {
-                'outcome_id': 'WARN_TEST',
-                'priority': 2,
-                'action_required': 'review'
-            },
-            {
-                'outcome_id': 'FAIL_TEST',
-                'priority': 3,
-                'action_required': 'reject'
-            }
-        ])
+        self.processor.qc_tests = pd.DataFrame(
+            [
+                {"outcome_id": "PASS", "priority": 1, "action_required": "none"},
+                {"outcome_id": "WARN_TEST", "priority": 2, "action_required": "review"},
+                {"outcome_id": "FAIL_TEST", "priority": 3, "action_required": "reject"},
+            ]
+        )
 
         # Test PASS action
-        action = self.processor._determine_qc_action(['PASS'])
-        self.assertEqual(action, 'none')
+        action = self.processor._determine_qc_action(["PASS"])
+        self.assertEqual(action, "none")
 
         # Test WARN action
-        action = self.processor._determine_qc_action(['WARN_TEST'])
-        self.assertEqual(action, 'review')
+        action = self.processor._determine_qc_action(["WARN_TEST"])
+        self.assertEqual(action, "review")
 
         # Test FAIL action (higher priority)
-        action = self.processor._determine_qc_action(['FAIL_TEST'])
-        self.assertEqual(action, 'reject')
+        action = self.processor._determine_qc_action(["FAIL_TEST"])
+        self.assertEqual(action, "reject")
 
         # Test mixed actions (should take highest priority)
-        action = self.processor._determine_qc_action(
-            ['WARN_TEST', 'FAIL_TEST']
-        )
-        self.assertEqual(action, 'reject')
+        action = self.processor._determine_qc_action(["WARN_TEST", "FAIL_TEST"])
+        self.assertEqual(action, "reject")
 
     def test_evaluate_rule(self):
         """Test rule evaluation logic."""
         # Mock field mapping
         self.processor.mapping = {
-            'Sections': {
-                'Test': {
-                    'Metric': {
-                        'QC': {'mapping': 'Test Metric'},
-                        'data': {'mapping': 'test_metric'}
+            "Sections": {
+                "Test": {
+                    "Metric": {
+                        "QC": {"mapping": "Test Metric"},
+                        "data": {"mapping": "test_metric"},
                     }
                 }
             }
         }
-        
-        sample = pd.Series({'test_metric': 10})
-        
+
+        sample = pd.Series({"test_metric": 10})
+
         # Test PASS rule
-        pass_rule = pd.Series({
-            'rule_id': 'R1',
-            'field': 'Test Metric',
-            'operator': '>=',
-            'value': 5
-        })
-        self.assertEqual(
-            self.processor._evaluate_rule(sample, pass_rule), 'PASS'
+        pass_rule = pd.Series(
+            {"rule_id": "R1", "field": "Test Metric", "operator": ">=", "value": 5}
         )
-        
+        self.assertEqual(self.processor._evaluate_rule(sample, pass_rule), "PASS")
+
         # Test FAIL rule
-        fail_rule = pd.Series({
-            'rule_id': 'R2',
-            'field': 'Test Metric',
-            'operator': '>=',
-            'value': 15
-        })
-        self.assertEqual(
-            self.processor._evaluate_rule(sample, fail_rule), 'FAIL'
+        fail_rule = pd.Series(
+            {"rule_id": "R2", "field": "Test Metric", "operator": ">=", "value": 15}
         )
-        
+        self.assertEqual(self.processor._evaluate_rule(sample, fail_rule), "FAIL")
+
         # Test SKIP rule (missing field)
-        skip_rule = pd.Series({
-            'rule_id': 'R3',
-            'field': 'Missing Metric',
-            'operator': '>=',
-            'value': 5
-        })
-        self.assertEqual(
-            self.processor._evaluate_rule(sample, skip_rule), 'SKIP'
+        skip_rule = pd.Series(
+            {"rule_id": "R3", "field": "Missing Metric", "operator": ">=", "value": 5}
         )
-        self.assertIn('R3', self.processor.skipped_rules)
+        self.assertEqual(self.processor._evaluate_rule(sample, skip_rule), "SKIP")
+        self.assertIn("R3", self.processor.skipped_rules)
 
     def test_prepare_run_data_warns_on_duplicate_sample_names(self):
         """Duplicate sample_name values should warn when not marked unique."""
         self.processor.mapping = {
-            'Sections': {
-                'Basic': {
-                    'Name': {
-                        'data': {'mapping': 'sample_name'},
-                        'report': {'id': True}
-                    }
+            "Sections": {
+                "Basic": {
+                    "Name": {"data": {"mapping": "sample_name"}, "report": {"id": True}}
                 }
             }
         }
 
-        duplicate_data = pd.DataFrame([
-            {'sample_name': 'S1', 'species': 'Escherichia coli'},
-            {'sample_name': 'S1', 'species': 'Escherichia coli'},
-            {'sample_name': 'S2', 'species': 'Salmonella enterica'},
-        ])
+        duplicate_data = pd.DataFrame(
+            [
+                {"sample_name": "S1", "species": "Escherichia coli"},
+                {"sample_name": "S1", "species": "Escherichia coli"},
+                {"sample_name": "S2", "species": "Salmonella enterica"},
+            ]
+        )
 
         prepared = self.processor.prepare_run_data(duplicate_data)
 
@@ -367,50 +342,56 @@ class TestQCProcessor(unittest.TestCase):
     def test_prepare_run_data_rejects_duplicate_unique_column(self):
         """Duplicate values should fail when mapping marks the column unique."""
         self.processor.mapping = {
-            'Sections': {
-                'Basic': {
-                    'Name': {
-                        'data': {'mapping': 'sample_name'},
-                        'report': {'id': True, 'unique': True}
+            "Sections": {
+                "Basic": {
+                    "Name": {
+                        "data": {"mapping": "sample_name"},
+                        "report": {"id": True, "unique": True},
                     }
                 }
             }
         }
 
-        duplicate_data = pd.DataFrame([
-            {'sample_name': 'S1', 'species': 'Escherichia coli'},
-            {'sample_name': 'S1', 'species': 'Escherichia coli'},
-        ])
+        duplicate_data = pd.DataFrame(
+            [
+                {"sample_name": "S1", "species": "Escherichia coli"},
+                {"sample_name": "S1", "species": "Escherichia coli"},
+            ]
+        )
 
         with self.assertRaises(ValidationError):
             self.processor.prepare_run_data(duplicate_data)
 
     def test_validate_run_data_allows_missing_sample_name(self):
         """Run data validation should allow datasets without sample_name."""
-        data_without_sample_name = pd.DataFrame([
-            {'species': 'Escherichia coli', 'GC': 50.0, 'N50': 100000},
-            {'species': 'Salmonella enterica', 'GC': 52.0, 'N50': 90000},
-        ])
+        data_without_sample_name = pd.DataFrame(
+            [
+                {"species": "Escherichia coli", "GC": 50.0, "N50": 100000},
+                {"species": "Salmonella enterica", "GC": 52.0, "N50": 90000},
+            ]
+        )
 
         validate_run_data_frame(data_without_sample_name)
 
     def test_prepare_run_data_allows_missing_sample_name(self):
         """Preparing run data should not fail when sample_name is absent."""
         self.processor.mapping = {
-            'Sections': {
-                'Basic': {
-                    'Species': {
-                        'data': {'mapping': 'species'},
-                        'report': {'filter': True}
+            "Sections": {
+                "Basic": {
+                    "Species": {
+                        "data": {"mapping": "species"},
+                        "report": {"filter": True},
                     }
                 }
             }
         }
 
-        data_without_sample_name = pd.DataFrame([
-            {'species': 'Escherichia coli', 'GC': 50.0},
-            {'species': 'Salmonella enterica', 'GC': 52.0},
-        ])
+        data_without_sample_name = pd.DataFrame(
+            [
+                {"species": "Escherichia coli", "GC": 50.0},
+                {"species": "Salmonella enterica", "GC": 52.0},
+            ]
+        )
 
         prepared = self.processor.prepare_run_data(data_without_sample_name)
 
@@ -431,7 +412,7 @@ class TestFieldMapping(unittest.TestCase):
     def test_build_field_mapping(self):
         """Test field mapping construction."""
         field_mapping = self.processor._build_field_mapping()
-        
+
         self.assertIsInstance(field_mapping, dict)
         # Should have some mappings from our test data
         self.assertGreater(len(field_mapping), 0)
@@ -440,15 +421,16 @@ class TestFieldMapping(unittest.TestCase):
         """Test that field mapping is consistent."""
         mapping1 = self.processor._build_field_mapping()
         mapping2 = self.processor._build_field_mapping()
-        
+
         self.assertEqual(mapping1, mapping2)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Change to project root directory so relative paths work
     test_dir = Path(__file__).parent.parent
     import os
+
     os.chdir(test_dir.parent)
-    
+
     # Run tests
     unittest.main(verbosity=2)

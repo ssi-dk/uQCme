@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Breaking Changes
+
+- Data input YAML no longer accepts scalar file paths. Use the structured
+  form instead:
+  ```yaml
+  data:
+    file: "run_data.tsv"
+  ```
+  instead of:
+  ```yaml
+  data: "run_data.tsv"
+  ```
+- Empty strings in data input fields are now treated as explicit configured
+  values, not as absent values. Older placeholder configs that set multiple
+  data fields to `""`, such as both `file: ""` and `api_call: ""`, now fail
+  validation because they configure multiple data sources.
+- Unknown keys under `data` are now rejected. Data input config only accepts
+  the supported keys: `file`, `api_call`, `api_query_params`,
+  `api_bearer_token`, `api_bearer_token_env`, and `api_headers`.
+- `qc.input.data` is now required in YAML. A QC config must explicitly provide
+  either `data.file` or `data.api_call`.
+
 ### Added
 
 - `uqcme-dashboard-smoke` console command for starting a dashboard process,

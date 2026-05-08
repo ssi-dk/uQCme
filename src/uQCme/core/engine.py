@@ -14,7 +14,14 @@ from .loader import (
     load_config_from_file,
     validate_run_data_frame,
 )
-from .config import UQCMeConfig, DataInput, QCConfig
+from .config import (
+    APIDataSource,
+    DataInput,
+    QCConfig,
+    RawDataInput,
+    UQCMeConfig,
+    normalize_data_input,
+)
 from .exceptions import ConfigError, DataLoadError, ProcessingError, ValidationError
 from .logging import setup_logging
 from .schemas import QCRulesSchema, QCTestsSchema
@@ -28,7 +35,7 @@ class QCProcessor:
     def __init__(
         self,
         config_path: Optional[str] = None,
-        data_override: Optional[Dict[str, Any]] = None,
+        data_override: Optional[RawDataInput] = None,
     ):
         """Initialize the QC processor with configuration."""
         self.config = self._load_config(config_path)
@@ -41,20 +48,21 @@ class QCProcessor:
             # Merge with existing data config so auth-related settings are
             # preserved unless explicitly overridden.
             existing_data_config = self.config.qc.input.data
-            if isinstance(existing_data_config, DataInput):
-                merged_override = {
-                    **existing_data_config.model_dump(exclude_none=True),
-                    **data_override,
-                }
-            elif isinstance(existing_data_config, dict):
-                merged_override = {**existing_data_config, **data_override}
-            elif isinstance(existing_data_config, str):
-                merged_override = {"file": existing_data_config, **data_override}
+            override_raw = data_override.model_dump(exclude_none=True)
+            if data_override.file is not None:
+                merged_override = override_raw
             else:
-                merged_override = data_override
+                existing_raw = self._data_config_to_raw_dict(existing_data_config)
+                merged_override = {**existing_raw, **override_raw}
+                merged_override.pop("file", None)
+                if data_override.api_bearer_token is not None:
+                    merged_override.pop("api_bearer_token_env", None)
+                if data_override.api_bearer_token_env is not None:
+                    merged_override.pop("api_bearer_token", None)
 
-            # Convert override dict to DataInput model
-            self.config.qc.input.data = DataInput(**merged_override)
+            self.config.qc.input.data = normalize_data_input(
+                RawDataInput(**merged_override)
+            )
             logger.info(f"Data source overridden: {data_override}")
 
         self.logger = setup_logging(str(self.config.log.file))
@@ -66,6 +74,23 @@ class QCProcessor:
         self.results: pd.DataFrame = pd.DataFrame()
         self.warnings: set = set()  # Collect unique warnings
         self.skipped_rules: set = set()  # Collect unique skipped rules
+
+    def _data_config_to_raw_dict(self, data_config: Any) -> Dict[str, Any]:
+        """Return old YAML-shaped data config for API override merging."""
+        if isinstance(data_config, RawDataInput):
+            return data_config.model_dump(exclude_none=True)
+        if isinstance(data_config, DataInput):
+            source = data_config.source
+            if isinstance(source, APIDataSource):
+                raw_config = {
+                    "api_call": source.call,
+                    "api_query_params": source.query_params,
+                    "api_bearer_token": source.bearer_token,
+                    "api_headers": source.headers,
+                }
+                return raw_config
+            return {"file": str(source.path)}
+        return {}
 
     @property
     def qc_config(self) -> QCConfig:
@@ -105,11 +130,11 @@ class QCProcessor:
             inp = config.qc.input
             # Update mapping, rules, tests to absolute paths in defaults dir
             if not Path(inp.mapping).exists():
-                inp.mapping = str(defaults_dir / Path(inp.mapping).name)
+                inp.mapping = defaults_dir / Path(inp.mapping).name
             if not Path(inp.qc_rules).exists():
-                inp.qc_rules = str(defaults_dir / Path(inp.qc_rules).name)
+                inp.qc_rules = defaults_dir / Path(inp.qc_rules).name
             if not Path(inp.qc_tests).exists():
-                inp.qc_tests = str(defaults_dir / Path(inp.qc_tests).name)
+                inp.qc_tests = defaults_dir / Path(inp.qc_tests).name
 
         return config
 
@@ -124,9 +149,11 @@ class QCProcessor:
 
     def load_run_data(self):
         """Load run data from configuration."""
-        data_config = self.qc_config.input.data
+        data_input = self.qc_config.input.data
+        if not isinstance(data_input, DataInput):
+            data_input = normalize_data_input(data_input)
         # Pass mapping config for column name normalization
-        self.run_data = load_data_from_config(data_config, self.mapping)
+        self.run_data = load_data_from_config(data_input, self.mapping)
         self.run_data = self.prepare_run_data(self.run_data, validate_schema=False)
         self.logger.info("✓ Run data loaded: %d samples", len(self.run_data))
 

@@ -8,6 +8,8 @@ configurable quality control rules and tests.
 
 import argparse
 import sys
+
+from uQCme.core.config import RawDataInput
 from uQCme.core.engine import QCProcessor
 from uQCme.core.exceptions import UQCMeError
 
@@ -49,13 +51,13 @@ def main():
         # Prepare data override if arguments are provided
         data_override = None
         if args.file:
-            data_override = {"file": args.file}
+            data_override = RawDataInput(file=args.file)
         elif args.api_call:
-            data_override = {"api_call": args.api_call}
-            if args.api_bearer_token:
-                data_override["api_bearer_token"] = args.api_bearer_token
-            if args.api_bearer_token_env:
-                data_override["api_bearer_token_env"] = args.api_bearer_token_env
+            data_override = RawDataInput(
+                api_call=args.api_call,
+                api_bearer_token=args.api_bearer_token,
+                api_bearer_token_env=args.api_bearer_token_env,
+            )
 
         # Initialize processor with optional override
         processor = QCProcessor(args.config, data_override=data_override)

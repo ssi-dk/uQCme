@@ -18,3 +18,20 @@ This project is managed by Pixi. Use `pixi reinstall` to re-install and `pixi ru
 
 Distinguish un-validated data at the boundary, such as files loaded from YAML files with validated objects.
 The former should subclass pydantic's BaseModel, the latter should be a dataclass.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub issues in `ssi-dk/uQCme`; keep issues public-safe and link private
+deploy details from the relevant deploy repo. See
+`docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the default triage label vocabulary. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context repo; read root `CONTEXT.md` and `docs/adr/` when present. See
+`docs/agents/domain.md`.

@@ -12,9 +12,10 @@ This is a single-context repo.
 - `CONTEXT.md` at the repo root if it exists.
 - `docs/adr/` for ADRs that touch the area being changed, if present.
 
-If a specific doc does not exist, proceed silently. The producer skill
-`grill-with-docs` creates domain docs lazily when terms or decisions are
-resolved.
+If a specific doc does not exist, proceed silently. The `/domain-modeling`
+skill—reached through `/grill-with-docs` and
+`/improve-codebase-architecture`—creates domain docs lazily when terms or
+decisions are resolved.
 
 ## Use the glossary's vocabulary
 
@@ -22,7 +23,7 @@ When output names a domain concept, use the term as defined in `CONTEXT.md`.
 Do not drift to synonyms the glossary explicitly avoids.
 
 If the concept is missing, either reconsider whether the project uses that
-language or note the gap for `grill-with-docs`.
+language or note the gap for `/domain-modeling`.
 
 ## Flag ADR conflicts
 

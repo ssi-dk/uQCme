@@ -254,7 +254,7 @@ sys.modules["uQCme.plot"] = plot_stub
 # that happens
 from uQCme import app  # noqa: E402
 from uQCme.core import loader  # noqa: E402
-from uQCme.core.config import UQCMeConfig  # noqa: E402
+from uQCme.core.config import RawDataInput, UQCMeConfig  # noqa: E402
 
 dashboard_main = importlib.import_module("uQCme.app.main")
 
@@ -338,7 +338,7 @@ def _bare_dashboard(table_height: int = 3600):
     dashboard.config = UQCMeConfig(
         app={
             "input": {
-                "data": {"file": "output/qc_results.tsv"},
+                "data": RawDataInput(file="output/qc_results.tsv"),
                 "mapping": "config/mapping.yaml",
                 "qc_rules": "config/QC_rules.tsv",
                 "qc_tests": "config/QC_tests.tsv",

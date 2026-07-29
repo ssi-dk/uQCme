@@ -12,31 +12,41 @@ Note: This module requires the 'app' or 'all' extras to be installed:
 
 import os
 import sys
-import streamlit as st
-from streamlit.web import cli as stcli
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
 import pandas as pd
 import requests
+import streamlit as st
 import yaml
-from pathlib import Path
-from typing import Dict, Any, List, Optional, Union
-from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
+from streamlit.web import cli as stcli
+
 from uQCme.app.plot import (
     QCPlotter,
     build_quality_metric_catalog,
     get_plottable_quality_metric_columns,
 )
-from uQCme.core.loader import (
-    collect_duplicate_row_warnings,
-    get_unique_columns_from_mapping,
-    _resolve_api_bearer_token,
-    load_config_from_file,
-    load_data_from_config,
-    load_data_from_api_with_debug,
-    prepare_loaded_data_frame,
+from uQCme.core.config import (
+    APIDataSource,
+    DataInput,
+    RawDataInput,
+    SampleApiAction,
+    TSVDataSource,
+    UQCMeConfig,
+    normalize_data_input,
 )
 from uQCme.core.engine import QCProcessor
-from uQCme.core.config import UQCMeConfig, DataInput, SampleApiAction
 from uQCme.core.exceptions import ConfigError, DataLoadError, ValidationError
+from uQCme.core.loader import (
+    _resolve_api_bearer_token,
+    collect_duplicate_row_warnings,
+    get_unique_columns_from_mapping,
+    load_config_from_file,
+    load_data_from_api_with_debug,
+    load_data_from_config,
+    prepare_loaded_data_frame,
+)
 
 
 class QCDashboard:
@@ -69,77 +79,47 @@ class QCDashboard:
             return False
         return bool(self.config.app.dashboard.debug_api)
 
-    def _resolve_data_config_for_runtime(
-        self, data_config: Union[str, DataInput, Dict[str, Any]]
-    ) -> Union[str, DataInput, Dict[str, Any]]:
+    def _resolve_data_config_for_runtime(self, data_config: RawDataInput) -> DataInput:
         """Resolve runtime data config, including forwarded query params."""
-        resolved_data_config = data_config
+        resolved_data_config = normalize_data_input(data_config)
+        source = resolved_data_config.source
 
-        if isinstance(resolved_data_config, DataInput):
-            api_query_params = resolved_data_config.api_query_params
-            if resolved_data_config.api_call and api_query_params:
-                dynamic_url = self._build_api_url_with_query_params(
-                    resolved_data_config.api_call, api_query_params
+        if isinstance(source, APIDataSource) and source.query_params:
+            dynamic_url = self._build_api_url_with_query_params(
+                source.call, source.query_params
+            )
+            return DataInput(
+                source=APIDataSource(
+                    call=dynamic_url,
+                    query_params=source.query_params,
+                    bearer_token=source.bearer_token,
+                    headers=source.headers,
                 )
-                resolved_data_config = DataInput(
-                    file=resolved_data_config.file,
-                    api_call=dynamic_url,
-                    api_query_params=api_query_params,
-                    api_bearer_token=resolved_data_config.api_bearer_token,
-                    api_bearer_token_env=(resolved_data_config.api_bearer_token_env),
-                    api_headers=resolved_data_config.api_headers,
-                )
-        elif isinstance(resolved_data_config, dict) and resolved_data_config.get(
-            "api_call"
-        ):
-            api_query_params = resolved_data_config.get("api_query_params")
-            if api_query_params:
-                dynamic_url = self._build_api_url_with_query_params(
-                    resolved_data_config["api_call"], api_query_params
-                )
-                resolved_data_config = {**resolved_data_config, "api_call": dynamic_url}
+            )
 
         return resolved_data_config
 
-    def _is_api_data_config(
-        self, data_config: Union[str, DataInput, Dict[str, Any]]
-    ) -> bool:
+    def _is_api_data_input(self, data_input: DataInput) -> bool:
         """Return True when the runtime data source is API-based."""
-        if isinstance(data_config, DataInput):
-            return bool(data_config.api_call)
-        if isinstance(data_config, dict):
-            return bool(data_config.get("api_call"))
-        return False
+        return isinstance(data_input.source, APIDataSource)
 
-    def _load_data_with_optional_api_debug(
-        self, data_config: Union[str, DataInput, Dict[str, Any]]
-    ) -> pd.DataFrame:
+    def _load_data_with_optional_api_debug(self, data_input: DataInput) -> pd.DataFrame:
         """Load data, capturing raw API results when debug mode is enabled."""
-        if not self._is_api_debug_enabled() or not self._is_api_data_config(
-            data_config
-        ):
-            return load_data_from_config(data_config, self.mapping)
+        if not self._is_api_debug_enabled() or not self._is_api_data_input(data_input):
+            return load_data_from_config(data_input, self.mapping)
 
-        if isinstance(data_config, DataInput):
-            bearer_token = _resolve_api_bearer_token(
-                api_bearer_token=data_config.api_bearer_token,
-                api_bearer_token_env=data_config.api_bearer_token_env,
-            )
-            raw_df, debug_info = load_data_from_api_with_debug(
-                data_config.api_call,
-                bearer_token=bearer_token,
-                custom_headers=data_config.api_headers,
-            )
-        else:
-            bearer_token = _resolve_api_bearer_token(
-                api_bearer_token=data_config.get("api_bearer_token"),
-                api_bearer_token_env=data_config.get("api_bearer_token_env"),
-            )
-            raw_df, debug_info = load_data_from_api_with_debug(
-                data_config["api_call"],
-                bearer_token=bearer_token,
-                custom_headers=data_config.get("api_headers"),
-            )
+        source = data_input.source
+        if not isinstance(source, APIDataSource):
+            return load_data_from_config(data_input, self.mapping)
+
+        bearer_token = _resolve_api_bearer_token(
+            api_bearer_token=source.bearer_token,
+        )
+        raw_df, debug_info = load_data_from_api_with_debug(
+            source.call,
+            bearer_token=bearer_token,
+            custom_headers=source.headers,
+        )
 
         self.api_debug_info = debug_info
         prepared_df = prepare_loaded_data_frame(raw_df, self.mapping)
@@ -287,21 +267,21 @@ class QCDashboard:
             inp = config.app.input
             # Update mapping, rules, tests to absolute paths in defaults dir
             if not os.path.exists(inp.mapping):
-                inp.mapping = str(defaults_dir / Path(inp.mapping).name)
+                inp.mapping = defaults_dir / Path(inp.mapping).name
             if not os.path.exists(inp.qc_rules):
-                inp.qc_rules = str(defaults_dir / Path(inp.qc_rules).name)
+                inp.qc_rules = defaults_dir / Path(inp.qc_rules).name
             if not os.path.exists(inp.qc_tests):
-                inp.qc_tests = str(defaults_dir / Path(inp.qc_tests).name)
+                inp.qc_tests = defaults_dir / Path(inp.qc_tests).name
 
         if config.qc and config.qc.input:
             inp = config.qc.input
             # Update mapping, rules, tests to absolute paths in defaults dir
             if not os.path.exists(inp.mapping):
-                inp.mapping = str(defaults_dir / Path(inp.mapping).name)
+                inp.mapping = defaults_dir / Path(inp.mapping).name
             if not os.path.exists(inp.qc_rules):
-                inp.qc_rules = str(defaults_dir / Path(inp.qc_rules).name)
+                inp.qc_rules = defaults_dir / Path(inp.qc_rules).name
             if not os.path.exists(inp.qc_tests):
-                inp.qc_tests = str(defaults_dir / Path(inp.qc_tests).name)
+                inp.qc_tests = defaults_dir / Path(inp.qc_tests).name
 
         return config
 
@@ -397,18 +377,13 @@ class QCDashboard:
             # Load processed QC results - check if API or file
             data_config = self.config.app.input.data
 
-            # Check if data source is configured (file or api_call)
-            has_configured_source = False
-            if isinstance(data_config, DataInput):
-                if data_config.file or data_config.api_call:
-                    has_configured_source = True
-            elif isinstance(data_config, dict):
-                if data_config.get("file") or data_config.get("api_call"):
-                    has_configured_source = True
-            elif isinstance(data_config, str) and data_config:
+            try:
+                data_config = self._resolve_data_config_for_runtime(data_config)
                 has_configured_source = True
-
-            data_config = self._resolve_data_config_for_runtime(data_config)
+            except ConfigError as e:
+                if "must specify either 'file' or 'api_call'" not in str(e):
+                    raise
+                has_configured_source = False
 
             # Only attempt to load if a source is configured
             if has_configured_source:
@@ -2310,18 +2285,15 @@ class QCDashboard:
                     and self.config.app.input.data
                 ):
                     data_config = self.config.app.input.data
-                    if isinstance(data_config, DataInput):
-                        if data_config.api_call:
-                            source_desc = f"API: {data_config.api_call}"
-                        elif data_config.file:
-                            source_desc = f"File: {data_config.file}"
-                    elif isinstance(data_config, dict):
-                        if data_config.get("api_call"):
-                            source_desc = f"API: {data_config['api_call']}"
-                        elif data_config.get("file"):
-                            source_desc = f"File: {data_config['file']}"
-                    elif isinstance(data_config, str):
-                        source_desc = f"File: {data_config}"
+                    try:
+                        data_input = self._resolve_data_config_for_runtime(data_config)
+                        source = data_input.source
+                        if isinstance(source, APIDataSource):
+                            source_desc = f"API: {source.call}"
+                        elif isinstance(source, TSVDataSource):
+                            source_desc = f"File: {source.path}"
+                    except ConfigError:
+                        source_desc = "Unknown"
 
                 if not self.data.empty:
                     source_info_placeholder = st.empty()

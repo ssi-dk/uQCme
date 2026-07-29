@@ -3,7 +3,8 @@ version: "0.9.2"
 
 qc:
   input:
-    data: "./tests/data/example_run_data.tsv"
+    data:
+      file: "./tests/data/example_run_data.tsv"
     mapping: "./tests/data/mapping.yaml"
     qc_rules: "./tests/data/QC_rules.tsv"
     qc_tests: "./tests/data/QC_tests.tsv"
@@ -15,7 +16,8 @@ app:
     host: "127.0.0.1"
     port: 3838
   input:
-    data: "./tests/uQCme_example_run_data.tsv"
+    data:
+      file: "./tests/uQCme_example_run_data.tsv"
     mapping: "./tests/data/mapping.yaml"
     qc_rules: "./tests/data/QC_rules.tsv"
     qc_tests: "./tests/data/QC_tests.tsv"

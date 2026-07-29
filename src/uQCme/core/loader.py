@@ -1,16 +1,23 @@
 """Data loading utilities for uQCme."""
 
 import copy
+import logging
 import os
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
 import pandas as pd
 import requests
 import urllib3
 import yaml
-from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
-from typing import Union, Dict, Any, Optional, List, Tuple
-import logging
 from pandera.errors import SchemaError
-from .config import UQCMeConfig, DataInput
+
+from .config import (
+    APIDataSource,
+    DataInput,
+    TSVDataSource,
+    UQCMeConfig,
+)
 from .exceptions import ConfigError, DataLoadError, ValidationError
 from .schemas import RunDataSchema
 
@@ -94,7 +101,8 @@ def _resolve_project_scope_request(
 
 
 def _resolve_api_bearer_token(
-    api_bearer_token: Optional[str] = None, api_bearer_token_env: Optional[str] = None
+    api_bearer_token: Optional[str] = None,
+    api_bearer_token_env: Optional[str] = None,
 ) -> Optional[str]:
     """Resolve bearer token from explicit config value or environment."""
     if api_bearer_token:
@@ -548,15 +556,14 @@ def load_config_from_file(config_path: str) -> UQCMeConfig:
 
 
 def load_data_from_config(
-    data_config: Union[str, Dict[str, Any], DataInput],
+    data_input: DataInput,
     mapping_config: Optional[Dict[str, Any]] = None,
 ) -> pd.DataFrame:
     """
     Load data from a file or API based on configuration.
 
     Args:
-        data_config: Configuration for data source. Can be a string
-                    (file path), a dictionary, or a DataInput model.
+        data_input: Normalized runtime data source.
         mapping_config: Optional mapping configuration that defines
                        column name mappings (e.g., QC.mapping -> sample_name).
 
@@ -568,51 +575,21 @@ def load_data_from_config(
         DataLoadError: If data cannot be loaded.
     """
     try:
-        df = None
-        if isinstance(data_config, DataInput):
-            if data_config.api_call:
-                bearer_token = _resolve_api_bearer_token(
-                    api_bearer_token=data_config.api_bearer_token,
-                    api_bearer_token_env=data_config.api_bearer_token_env,
-                )
-                df = load_data_from_api(
-                    data_config.api_call,
-                    bearer_token=bearer_token,
-                    custom_headers=data_config.api_headers,
-                )
-            elif data_config.file:
-                df = pd.read_csv(data_config.file, sep="\t")
-            else:
-                # If both are None, check if it was initialized empty
-                # For now, raise error if neither is set
-                error_msg = "Either 'file' or 'api_call' must be specified"
-                raise ConfigError(error_msg)
+        source = data_input.source
 
-        elif isinstance(data_config, dict):
-            # New structure with file/api_call options
-            if data_config.get("api_call"):
-                # Load data from API
-                api_url = data_config["api_call"]
-                bearer_token = _resolve_api_bearer_token(
-                    api_bearer_token=data_config.get("api_bearer_token"),
-                    api_bearer_token_env=data_config.get("api_bearer_token_env"),
-                )
-                df = load_data_from_api(
-                    api_url,
-                    bearer_token=bearer_token,
-                    custom_headers=data_config.get("api_headers"),
-                )
-            elif data_config.get("file"):
-                # Load data from file
-                df = pd.read_csv(data_config["file"], sep="\t")
-            else:
-                error_msg = (
-                    "Either 'file' or 'api_call' must be specified for data input"
-                )
-                raise ConfigError(error_msg)
+        if isinstance(source, APIDataSource):
+            bearer_token = _resolve_api_bearer_token(
+                api_bearer_token=source.bearer_token,
+            )
+            df = load_data_from_api(
+                source.call,
+                bearer_token=bearer_token,
+                custom_headers=source.headers,
+            )
+        elif isinstance(source, TSVDataSource):
+            df = pd.read_csv(source.path, sep="\t")
         else:
-            # Legacy structure - direct file path
-            df = pd.read_csv(data_config, sep="\t")
+            raise ConfigError(f"Unsupported data source type: {type(source)!r}")
 
         df = prepare_loaded_data_frame(df, mapping_config)
 

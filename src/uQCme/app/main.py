@@ -37,6 +37,7 @@ from uQCme.core.loader import (
 from uQCme.core.engine import QCProcessor
 from uQCme.core.config import UQCMeConfig, DataInput, SampleApiAction
 from uQCme.core.exceptions import ConfigError, DataLoadError, ValidationError
+from uQCme.core.mapping import FilteringSectionsConfig, parse_filtering_sections
 
 
 class QCDashboard:
@@ -48,6 +49,7 @@ class QCDashboard:
         self.config: UQCMeConfig = self._load_config(config_path)
         self.data: pd.DataFrame = pd.DataFrame()
         self.mapping: Dict[str, Any] = {}
+        self.filtering_sections = FilteringSectionsConfig()
         self.qc_rules: pd.DataFrame = pd.DataFrame()
         self.qc_tests: pd.DataFrame = pd.DataFrame()
         self.plotter: QCPlotter = QCPlotter(self.config)
@@ -393,6 +395,7 @@ class QCDashboard:
             mapping_path = self.config.app.input.mapping
             with open(mapping_path, "r", encoding="utf-8") as f:
                 self.mapping = yaml.safe_load(f)
+            self.filtering_sections = parse_filtering_sections(self.mapping)
 
             # Load processed QC results - check if API or file
             data_config = self.config.app.input.data
@@ -474,6 +477,9 @@ class QCDashboard:
             else:
                 self.warnings = None
 
+        except ConfigError as e:
+            st.error(f"Configuration error: {e}")
+            st.stop()
         except Exception as e:
             st.error(f"Error loading configuration files: {e}")
             st.stop()

@@ -353,6 +353,72 @@ def _bare_dashboard(table_height: int = 3600):
     return dashboard
 
 
+def test_load_data_parses_filtering_sections_after_loading_mapping(
+    monkeypatch, tmp_path, test_data_paths
+):
+    """Dashboard mapping loading should initialize typed FilteringSections."""
+    streamlit_stub.reset()
+    mapping_path = tmp_path / "mapping_with_filtering_sections.yaml"
+    mapping_path.write_text(
+        yaml.safe_dump(
+            {
+                "Sections": {
+                    "Basic": {
+                        "Name": {
+                            "data": {"mapping": "sample_name"},
+                            "report": {"id": True},
+                        },
+                        "QC outcome": {
+                            "data": {"mapping": "qc_outcome"},
+                        },
+                    }
+                },
+                "FilteringSections": {
+                    "Local group": {
+                        "columns": {
+                            "Sample": {"data": {"mapping": "sample_name"}},
+                        },
+                        "filters": {
+                            "Status": {
+                                "data": {"mapping": "qc_outcome"},
+                                "operator": "equals",
+                                "value": "PASS",
+                            }
+                        },
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    config_path = tmp_path / "config_filtering_sections.yaml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "app": {
+                    "input": {
+                        "data": {"file": "unused.tsv"},
+                        "mapping": str(mapping_path),
+                        "qc_rules": str(test_data_paths["qc_rules"]),
+                        "qc_tests": str(test_data_paths["qc_tests"]),
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    dashboard = app.QCDashboard(str(config_path))
+    monkeypatch.setattr(
+        dashboard,
+        "_load_data_with_optional_api_debug",
+        lambda _data_config: pd.DataFrame(),
+    )
+
+    dashboard.load_data()
+
+    assert list(dashboard.filtering_sections.sections) == ["Local group"]
+
+
 def test_load_data_from_api(monkeypatch, tmp_path, test_data_paths):
     """QCDashboard.load_data should populate data from an API endpoint."""
     streamlit_stub.reset()

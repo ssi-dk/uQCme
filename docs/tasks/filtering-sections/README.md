@@ -41,7 +41,7 @@ until both user-interface paths are settled, and FS-07 is the final gate.
 | --- | --- | --- | --- | --- |
 | FS-01 | [Mapping contract](01-mapping-contract.md) | Complete | None | FS-02 |
 | FS-02 | [Resolution and filter engine](02-resolution-and-filter-engine.md) | Complete | FS-01 | FS-03 |
-| FS-03 | [URL and reset state](03-url-and-reset-state.md) | Not started | FS-01, FS-02 | FS-04, FS-05 |
+| FS-03 | [URL and reset state](03-url-and-reset-state.md) | Complete | FS-01, FS-02 | FS-04, FS-05 |
 | FS-04 | [Sidebar filter composition](04-sidebar-filter-composition.md) | Not started | FS-02, FS-03 | FS-06, FS-07 |
 | FS-05 | [Data Preview and selection](05-data-preview-and-selection.md) | Not started | FS-02, FS-03 | FS-06, FS-07 |
 | FS-06 | [Examples and documentation](06-examples-and-documentation.md) | Not started | FS-04, FS-05 | FS-07 |

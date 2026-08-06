@@ -57,6 +57,7 @@ class StreamlitStub(types.ModuleType):
         self.json_calls = []
         self.dataframe_calls = []
         self.data_editor_calls = []
+        self.rerun_calls = 0
         self.session_state = _SessionStateStub()
         self.query_params = _QueryParamsStub()
 
@@ -168,7 +169,8 @@ class StreamlitStub(types.ModuleType):
         raise AssertionError("st.stop called unexpectedly")
 
     def rerun(self):
-        raise AssertionError("st.rerun called unexpectedly")
+        self.events.append("rerun")
+        self.rerun_calls += 1
 
     @property
     def runtime(self):
@@ -255,6 +257,12 @@ sys.modules["uQCme.plot"] = plot_stub
 from uQCme import app  # noqa: E402
 from uQCme.core import loader  # noqa: E402
 from uQCme.core.config import UQCMeConfig  # noqa: E402
+from uQCme.core.filtering import (  # noqa: E402
+    ResolvedField,
+    ResolvedFilter,
+    ResolvedFilteringSection,
+)
+from uQCme.core.mapping import FilteringCondition  # noqa: E402
 
 dashboard_main = importlib.import_module("uQCme.app.main")
 
@@ -351,6 +359,66 @@ def _bare_dashboard(table_height: int = 3600):
     dashboard.data = pd.DataFrame()
     dashboard.qc_rules = pd.DataFrame()
     return dashboard
+
+
+def _dashboard_state_section(name="Local group"):
+    """Build a resolved preset for dashboard state wrapper tests."""
+    condition = FilteringCondition(
+        data={"mapping": "sample_name"}, operator="equals", value="S1"
+    )
+    return ResolvedFilteringSection(
+        name=name,
+        columns=(ResolvedField("Sample", "sample_name"),),
+        filters=(ResolvedFilter("Sample", "sample_name", condition),),
+        available=True,
+        warnings=(),
+    )
+
+
+def test_dashboard_activation_wrapper_updates_url_and_reruns():
+    """Dashboard activation should use built-in query params and rerun once."""
+    streamlit_stub.reset()
+    dashboard = _bare_dashboard()
+    dashboard.mapping = {
+        "Sections": {
+            "Basic": {
+                "Name": {
+                    "data": {"mapping": "sample_name"},
+                    "report": {"id": True},
+                }
+            }
+        }
+    }
+    streamlit_stub.session_state["filter_sample_name"] = "S2"
+
+    dashboard._activate_filtering_section(_dashboard_state_section())
+
+    assert streamlit_stub.query_params["filtering_section"] == "Local group"
+    assert "filter_sample_name" not in streamlit_stub.session_state
+    assert streamlit_stub.rerun_calls == 1
+
+
+def test_dashboard_clear_view_wrapper_preserves_unrelated_url_state():
+    """Dashboard reset should clear feature state and preserve other URL values."""
+    streamlit_stub.reset()
+    dashboard = _bare_dashboard()
+    streamlit_stub.query_params.update(
+        {"filtering_section": "Local group", "debug": "true"}
+    )
+    streamlit_stub.session_state.update(
+        {
+            "search_sample_name": "S1",
+            "selected_samples": {"S1"},
+            "data_preview_table": {"edited": True},
+            "data_preview_visible_sections": ["Basic"],
+        }
+    )
+
+    dashboard._clear_view_and_filters()
+
+    assert streamlit_stub.query_params == {"debug": "true"}
+    assert streamlit_stub.session_state == {}
+    assert streamlit_stub.rerun_calls == 1
 
 
 def test_load_data_parses_filtering_sections_after_loading_mapping(

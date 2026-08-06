@@ -1,6 +1,6 @@
 # FS-03: Manage URL selection and reset state
 
-Status: **Not started**
+Status: **Complete**
 
 ## Dependency and blocker contract
 

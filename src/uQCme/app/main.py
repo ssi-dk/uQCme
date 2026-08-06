@@ -25,6 +25,11 @@ from uQCme.app.plot import (
     build_quality_metric_catalog,
     get_plottable_quality_metric_columns,
 )
+from uQCme.app.filtering_state import (
+    activate_filtering_section,
+    clear_filtering_section_state,
+    resolve_active_filtering_section,
+)
 from uQCme.core.loader import (
     collect_duplicate_row_warnings,
     get_unique_columns_from_mapping,
@@ -37,6 +42,7 @@ from uQCme.core.loader import (
 from uQCme.core.engine import QCProcessor
 from uQCme.core.config import UQCMeConfig, DataInput, SampleApiAction
 from uQCme.core.exceptions import ConfigError, DataLoadError, ValidationError
+from uQCme.core.filtering import ResolvedFilteringSection
 from uQCme.core.mapping import FilteringSectionsConfig, parse_filtering_sections
 
 
@@ -855,17 +861,33 @@ class QCDashboard:
 
         return filtered_data
 
-    def _clear_all_filters(self):
-        """Clear all filter-related session state values and selections."""
-        # Set a reset flag instead of trying to modify widget values directly
-        st.session_state["filters_reset"] = True
+    def _get_active_filtering_section(
+        self, sections: Dict[str, ResolvedFilteringSection]
+    ):
+        # Resolve the URL preset once per dashboard rerun.
+        query_params = getattr(st, "query_params", {})
+        return resolve_active_filtering_section(query_params, sections)
 
-        # Clear sample selections
-        if "selected_samples" in st.session_state:
-            st.session_state.selected_samples.clear()
-
-        # Force a rerun to refresh the interface
+    def _activate_filtering_section(self, section: ResolvedFilteringSection):
+        # Activate a preset and refresh the derived dashboard view.
+        query_params = getattr(st, "query_params", {})
+        activate_filtering_section(
+            query_params,
+            st.session_state,
+            section,
+            id_column=self._get_id_field(),
+        )
         st.rerun()
+
+    def _clear_view_and_filters(self):
+        # Clear the preset, manual widgets, selections, editor, and visibility.
+        query_params = getattr(st, "query_params", {})
+        clear_filtering_section_state(query_params, st.session_state)
+        st.rerun()
+
+    def _clear_all_filters(self):
+        # Keep the existing method name as a compatibility alias for the UI.
+        self._clear_view_and_filters()
 
     def render_sidebar_filters(self):
         """Render sidebar filters for data exploration."""

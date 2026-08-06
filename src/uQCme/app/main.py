@@ -60,6 +60,7 @@ class QCDashboard:
         self.data: pd.DataFrame = pd.DataFrame()
         self.mapping: Dict[str, Any] = {}
         self.filtering_sections = FilteringSectionsConfig()
+        self._active_filtering_section: Optional[ResolvedFilteringSection] = None
         self.qc_rules: pd.DataFrame = pd.DataFrame()
         self.qc_tests: pd.DataFrame = pd.DataFrame()
         self.plotter: QCPlotter = QCPlotter(self.config)
@@ -964,6 +965,7 @@ class QCDashboard:
 
         resolved_sections = self._resolve_runtime_filtering_sections()
         active_section = self._get_active_filtering_section(resolved_sections)
+        self._active_filtering_section = active_section.section
         self._render_filtering_section_buttons(resolved_sections, active_section)
 
         filtered_data = self.data.copy()
@@ -1356,28 +1358,69 @@ class QCDashboard:
         natural_height = header_height + (visible_rows * row_height) + frame_padding
         return min(max_height, natural_height)
 
+    def _selected_ids_from_editor(
+        self,
+        edited_data: pd.DataFrame,
+        selection_source: pd.DataFrame,
+        id_column: str,
+    ) -> set[str]:
+        # Map checked editor rows to source IDs only through stable indexes.
+        if not selection_source.index.is_unique:
+            return set()
+
+        selected_ids = set()
+        for index, row in edited_data.iterrows():
+            checked = row.get("Select", False)
+            if pd.isna(checked) or not bool(checked):
+                continue
+            if index not in selection_source.index:
+                continue
+
+            sample_id = selection_source.at[index, id_column]
+            if pd.isna(sample_id):
+                continue
+            selected_ids.add(str(sample_id))
+        return selected_ids
+
     def _render_styled_dataframe(
-        self, filtered_data: pd.DataFrame, column_order: list, key: str
+        self,
+        display_data: pd.DataFrame,
+        column_order: list,
+        key: str,
+        selection_source: Optional[pd.DataFrame] = None,
     ):
         """Helper method to render dataframe with selection checkboxes."""
         # Initialize session state for selected samples
         if "selected_samples" not in st.session_state:
             st.session_state.selected_samples = set()
 
-        # Get the ID column for sample selection
-        id_column = self._get_id_column(filtered_data)
+        # Keep the full filtered rows separate from the visible table columns.
+        selection_source = (
+            display_data if selection_source is None else selection_source
+        )
+
+        # Get the ID column for sample selection from the complete source.
+        id_column = self._get_id_column(selection_source)
 
         # Create a working copy of the data
-        display_data = filtered_data.copy()
+        display_data = display_data.copy()
 
-        # Add selection checkbox column if ID column exists
-        if id_column and id_column in filtered_data.columns:
+        # Add selection checkbox column even when the ID is not displayed.
+        if id_column and id_column in selection_source.columns:
             # Add a checkbox column for selection
-            display_data["Select"] = display_data[id_column].apply(
-                lambda x: x in st.session_state.selected_samples
+            selected_ids = {
+                str(sample_id) for sample_id in st.session_state.selected_samples
+            }
+            selection_flags = selection_source[id_column].astype(str).isin(selected_ids)
+            display_data.insert(
+                0,
+                "Select",
+                selection_flags.reindex(display_data.index, fill_value=False),
             )
             # Put the select column first
-            column_order = ["Select"] + column_order
+            column_order = ["Select"] + [
+                column for column in column_order if column != "Select"
+            ]
 
         # Configure columns
         column_config = {}
@@ -1430,12 +1473,9 @@ class QCDashboard:
 
         # Update selected samples based on checkbox changes
         if "Select" in edited_data.columns and id_column:
-            # Get current selections from the edited data
-            current_selections = set()
-            for idx, row in edited_data.iterrows():
-                if row["Select"]:
-                    sample_id = str(row[id_column])
-                    current_selections.add(sample_id)
+            current_selections = self._selected_ids_from_editor(
+                edited_data, selection_source, id_column
+            )
 
             # Update session state if there are changes
             if current_selections != st.session_state.selected_samples:
@@ -1572,43 +1612,68 @@ class QCDashboard:
         st.header("📊 Data")
 
         sections_columns = self._get_columns_by_section(filtered_data)
-        visible_sections = {}
-        section_names = list(sections_columns.keys())
-        section_defaults, visible_col_counts = self._get_visible_section_defaults(
-            sections_columns
+        active_filtering_section = getattr(self, "_active_filtering_section", None)
+        preset_active = bool(
+            active_filtering_section is not None and active_filtering_section.available
         )
 
-        if self.report_mode:
-            report_cfg = self._get_report_mode_config()
-            default_sections = report_cfg.get("default_visible_sections", {})
-            for section_name in section_names:
-                visible_sections[section_name] = bool(
-                    default_sections.get(section_name, section_defaults[section_name])
-                )
+        if preset_active:
+            # Surface partial display-column warnings from the resolved preset.
+            for warning in active_filtering_section.warnings:
+                st.warning(warning)
+
+            visible_sections = {}
+            section_names = []
+            section_defaults = {}
+            visible_col_counts = {}
+            ordered_columns = [
+                field.column
+                for field in active_filtering_section.columns
+                if field.column in filtered_data.columns
+            ]
+            active_sections = []
         else:
-            default_active_sections = [
-                name for name in section_names if section_defaults[name]
-            ]
-            selected_sections = st.session_state.get(
-                "data_preview_visible_sections", default_active_sections
+            visible_sections = {}
+            section_names = list(sections_columns.keys())
+            section_defaults, visible_col_counts = self._get_visible_section_defaults(
+                sections_columns
             )
-            selected_sections = [
-                name for name in selected_sections if name in section_names
+
+            if self.report_mode:
+                report_cfg = self._get_report_mode_config()
+                default_sections = report_cfg.get("default_visible_sections", {})
+                for section_name in section_names:
+                    visible_sections[section_name] = bool(
+                        default_sections.get(
+                            section_name, section_defaults[section_name]
+                        )
+                    )
+            else:
+                default_active_sections = [
+                    name for name in section_names if section_defaults[name]
+                ]
+                selected_sections = st.session_state.get(
+                    "data_preview_visible_sections", default_active_sections
+                )
+                selected_sections = [
+                    name for name in selected_sections if name in section_names
+                ]
+                selected_section_set = set(selected_sections)
+
+                for section_name in section_names:
+                    visible_sections[section_name] = (
+                        section_name in selected_section_set
+                    )
+
+            # Get ordered columns based on visible sections for reference.
+            ordered_columns = self._get_ordered_columns_with_sections(
+                filtered_data, visible_sections
+            )
+
+            # Show active sections info.
+            active_sections = [
+                name for name, visible in visible_sections.items() if visible
             ]
-            selected_section_set = set(selected_sections)
-
-            for section_name in section_names:
-                visible_sections[section_name] = section_name in selected_section_set
-
-        # Get ordered columns based on visible sections for reference
-        ordered_columns = self._get_ordered_columns_with_sections(
-            filtered_data, visible_sections
-        )
-
-        # Show active sections info
-        active_sections = [
-            name for name, visible in visible_sections.items() if visible
-        ]
 
         # Reorder dataframe columns to put important ones first
         # Only show columns from visible sections
@@ -1639,10 +1704,13 @@ class QCDashboard:
             )
         else:
             self._render_styled_dataframe(
-                display_data, column_order, "data_preview_table"
+                display_data,
+                column_order,
+                "data_preview_table",
+                selection_source=filtered_data,
             )
 
-        if not self.report_mode:
+        if not self.report_mode and not preset_active:
             st.subheader("Section Visibility")
             self._render_section_visibility_control(
                 section_names, active_sections, visible_col_counts

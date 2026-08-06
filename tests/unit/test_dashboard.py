@@ -66,6 +66,7 @@ class StreamlitStub(types.ModuleType):
         self.selectbox_values = {}
         self.text_input_calls = []
         self.text_input_values = {}
+        self.data_editor_transform = None
         self.session_state = _SessionStateStub()
         self.query_params = _QueryParamsStub()
 
@@ -183,8 +184,17 @@ class StreamlitStub(types.ModuleType):
         self.events.append("data_editor")
         self.data_editor_calls.append((data, kwargs))
         if hasattr(data, "data") and not hasattr(data, "columns"):
-            return data.data.copy()
-        return data.copy()
+            edited_data = data.data.copy()
+        else:
+            edited_data = data.copy()
+        if self.data_editor_transform is not None:
+            return self.data_editor_transform(edited_data)
+        return edited_data
+
+    def button(self, label, **kwargs):
+        self.events.append(f"button:{label}")
+        self.button_calls.append((label, kwargs))
+        return self.button_values.get(label, False)
 
     def expander(self, *args, **kwargs):
         self.events.append("expander")
@@ -467,6 +477,55 @@ def _dashboard_with_sidebar_filters():
     return dashboard
 
 
+def _dashboard_with_preview_preset():
+    # Build a preset whose display columns intentionally omit the sample ID.
+    dashboard = _bare_dashboard()
+    dashboard.mapping = {
+        "Sections": {
+            "Basic": {
+                "Sample ID": {
+                    "data": {"mapping": "sample_id"},
+                    "report": {"id": True},
+                },
+                "Display A": {"data": {"mapping": "display_a"}},
+                "Display B": {"data": {"mapping": "display_b"}},
+                "Secret": {"data": {"mapping": "secret_value"}},
+                "API value": {"data": {"mapping": "api_value"}},
+            }
+        }
+    }
+    dashboard.data = pd.DataFrame(
+        [
+            {
+                "sample_id": "S1",
+                "display_a": "A1",
+                "display_b": "B1",
+                "secret_value": "hidden-1",
+                "api_value": "value-1",
+            },
+            {
+                "sample_id": "S2",
+                "display_a": "A2",
+                "display_b": "B2",
+                "secret_value": "hidden-2",
+                "api_value": "value-2",
+            },
+        ],
+        index=[4, 9],
+    )
+    dashboard._active_filtering_section = ResolvedFilteringSection(
+        name="Preset",
+        columns=(
+            ResolvedField("Second", "display_b"),
+            ResolvedField("First", "display_a"),
+        ),
+        filters=(),
+        available=True,
+        warnings=(),
+    )
+    return dashboard
+
+
 def test_dashboard_activation_wrapper_updates_url_and_reruns():
     """Dashboard activation should use built-in query params and rerun once."""
     streamlit_stub.reset()
@@ -615,6 +674,93 @@ def test_missing_filtering_sections_preserves_existing_manual_pipeline():
         if label != "🗑️ Clear All Filters"
     ] == []
     assert filtered_data["sample_name"].tolist() == ["S3"]
+
+
+def test_active_preset_limits_preview_to_ordered_display_columns():
+    # Preset display columns are the maximum table schema in configured order.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_preview_preset()
+
+    dashboard.render_data_tab(dashboard.data)
+
+    rendered_data, kwargs = streamlit_stub.data_editor_calls[0]
+    rendered_frame = (
+        rendered_data.data if hasattr(rendered_data, "data") else rendered_data
+    )
+    assert list(rendered_frame.columns) == ["Select", "display_b", "display_a"]
+    assert kwargs["column_order"] == ["Select", "display_b", "display_a"]
+    assert "secret_value" not in rendered_frame.columns
+    assert "api_value" not in rendered_frame.columns
+
+
+def test_active_preset_bypasses_section_visibility_controls():
+    # Preset-owned visibility must not render the legacy section selector.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_preview_preset()
+
+    dashboard.render_data_tab(dashboard.data)
+
+    assert "subheader:Section Visibility" not in streamlit_stub.events
+    assert "pills:Visible sections" not in streamlit_stub.events
+    assert "data_preview_visible_sections" not in streamlit_stub.session_state
+
+
+def test_selection_maps_hidden_id_back_to_full_row_by_index():
+    # Selection uses the stable source index even when the ID is not displayed.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_preview_preset()
+
+    def check_first_row(edited_data):
+        edited_data.loc[4, "Select"] = True
+        return edited_data
+
+    streamlit_stub.data_editor_transform = check_first_row
+    dashboard.render_data_tab(dashboard.data)
+
+    assert streamlit_stub.session_state["selected_samples"] == {"S1"}
+
+
+def test_selection_ignores_editor_rows_not_in_source_dataframe():
+    # An unexpected editor index must not select an unrelated source row.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_preview_preset()
+
+    def add_unknown_selected_row(edited_data):
+        edited_data.loc[999, "Select"] = True
+        return edited_data
+
+    streamlit_stub.data_editor_transform = add_unknown_selected_row
+    dashboard.render_data_tab(dashboard.data)
+
+    assert streamlit_stub.session_state["selected_samples"] == set()
+
+
+def test_sample_actions_receive_full_filtered_rows_when_columns_are_hidden():
+    # Downstream actions retain API values and IDs omitted from the preview.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_preview_preset()
+    captured = {}
+
+    def capture_rows(filtered_data):
+        captured["data"] = filtered_data
+
+    dashboard.render_sample_api_actions = capture_rows
+    dashboard.render_data_tab(dashboard.data)
+
+    assert list(captured["data"].columns) == list(dashboard.data.columns)
+    pd.testing.assert_frame_equal(captured["data"], dashboard.data)
+
+
+def test_selected_rows_retain_hidden_api_values_for_downstream_actions():
+    # Selection lookup uses the full filtered dataframe, not preview columns.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_preview_preset()
+    streamlit_stub.session_state["selected_samples"] = {"S2"}
+
+    selected_rows = dashboard._get_selected_sample_rows(dashboard.data)
+
+    assert selected_rows["sample_id"].tolist() == ["S2"]
+    assert selected_rows["api_value"].tolist() == ["value-2"]
 
 
 def test_dashboard_clear_view_wrapper_preserves_unrelated_url_state():

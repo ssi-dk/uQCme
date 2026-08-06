@@ -1,6 +1,6 @@
 # FS-05: Lock Data Preview columns and preserve row selection
 
-Status: **Not started**
+Status: **Complete**
 
 ## Dependency and blocker contract
 

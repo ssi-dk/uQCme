@@ -16,6 +16,8 @@ While a preset is active, Data Preview receives only the preset's ordered
 display columns and does not render Section Visibility controls. Row selection
 and configured sample API actions continue to use the complete row-filtered
 dataframe even when its ID or action columns are not displayed.
+The explicit full-data CSV action exports those same filtered rows with all
+available dataframe columns.
 
 ## Likely code and test locations
 
@@ -45,6 +47,7 @@ Write tests first for:
   hidden table column;
 - API actions receiving complete selected rows, including configured
   `value_field` data absent from the display columns;
+- an explicit CSV action exporting all columns from the current filtered rows;
 - non-Data tabs continuing to receive all filtered columns; and
 - clearing the view restoring normal section defaults and editor state.
 

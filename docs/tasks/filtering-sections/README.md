@@ -45,7 +45,7 @@ until both user-interface paths are settled, and FS-07 is the final gate.
 | FS-04 | [Sidebar filter composition](04-sidebar-filter-composition.md) | Complete | FS-02, FS-03 | FS-06, FS-07 |
 | FS-05 | [Data Preview and selection](05-data-preview-and-selection.md) | Complete | FS-02, FS-03 | FS-06, FS-07 |
 | FS-06 | [Examples and documentation](06-examples-and-documentation.md) | Complete | FS-04, FS-05 | FS-07 |
-| FS-07 | [Integration and regression gate](07-integration-and-regression.md) | Not started | FS-04, FS-05, FS-06 | Feature handoff |
+| FS-07 | [Integration and regression gate](07-integration-and-regression.md) | Complete | FS-04, FS-05, FS-06 | Feature handoff |
 
 ## Shared boundaries
 

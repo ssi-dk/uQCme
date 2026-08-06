@@ -958,6 +958,10 @@ class QCDashboard:
         active_section,
     ) -> None:
         # Render mapping-defined preset controls before manual filters.
+        if not sections:
+            return
+
+        st.sidebar.subheader("Presets")
         unavailable_warnings = set()
         if active_section.warning:
             st.warning(active_section.warning)
@@ -1727,8 +1731,7 @@ class QCDashboard:
         ]
         display_data = filtered_data[visible_columns]
 
-        # Display the dataframe with built-in controls and QC action styling
-        # Only show columns from visible sections
+        # Display the dataframe with built-in controls and QC action styling.
         if self.report_mode:
             st.dataframe(
                 display_data,
@@ -1743,6 +1746,15 @@ class QCDashboard:
                 "data_preview_table",
                 selection_source=filtered_data,
             )
+
+        # Export the same filtered rows with every available dataframe column.
+        st.download_button(
+            "Download all filtered columns (CSV)",
+            filtered_data.to_csv(index=False).encode("utf-8"),
+            file_name="uqcme_filtered_all_columns.csv",
+            mime="text/csv",
+            key="download_filtered_all_columns",
+        )
 
         if not self.report_mode and not preset_active:
             st.subheader("Section Visibility")

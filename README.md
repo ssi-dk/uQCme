@@ -318,6 +318,11 @@ the table's built-in controls may hide one of those columns, but cannot reveal
 columns outside the view. Other dashboard tabs and configured sample actions
 continue to receive every column in the row-filtered dataframe.
 
+The Data Preview table's built-in CSV download contains the columns currently
+shown by the table. The **Download all filtered columns (CSV)** button exports
+the same row-filtered result with every available dataframe column, including
+columns hidden by the active preset.
+
 Filtering conditions support four operators:
 
 ```yaml

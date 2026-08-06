@@ -1,6 +1,6 @@
 # FS-07: Complete integration and regression verification
 
-Status: **Not started**
+Status: **Complete**
 
 ## Dependency and blocker contract
 
@@ -60,19 +60,19 @@ tests as well as the high-level scenario.
 
 ## Final acceptance checklist
 
-- [ ] Valid config parsing and YAML order are covered.
-- [ ] All malformed operator/value combinations are rejected.
-- [ ] Field fallback and every operator are covered.
-- [ ] Multiple filters use AND and preserve the source dataframe.
-- [ ] Buttons, URL activation, switching, refresh, and unknown keys are covered.
-- [ ] Overlapping and unrelated manual filter state behaves as specified.
-- [ ] Full reset removes all owned state and preserves unrelated URL state.
-- [ ] Preset columns are exact and ordered, and section controls are hidden.
-- [ ] Missing-column safety behavior is covered.
-- [ ] Selection and API actions work without a displayed ID column.
-- [ ] Absence of FilteringSections retains existing behavior.
-- [ ] Examples and README match the tested public interface.
-- [ ] No private or deployment details are present.
+- [x] Valid config parsing and YAML order are covered.
+- [x] All malformed operator/value combinations are rejected.
+- [x] Field fallback and every operator are covered.
+- [x] Multiple filters use AND and preserve the source dataframe.
+- [x] Buttons, URL activation, switching, refresh, and unknown keys are covered.
+- [x] Overlapping and unrelated manual filter state behaves as specified.
+- [x] Full reset removes all owned state and preserves unrelated URL state.
+- [x] Preset columns are exact and ordered, and section controls are hidden.
+- [x] Missing-column safety behavior is covered.
+- [x] Selection and API actions work without a displayed ID column.
+- [x] Absence of FilteringSections retains existing behavior.
+- [x] Examples and README match the tested public interface.
+- [x] No private or deployment details are present.
 
 ## Required verification order
 

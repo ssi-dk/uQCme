@@ -35,6 +35,10 @@ app:
     max_displayed_rules: 10           # Max rules shown in sample details
     table_height: 3600                # Main table height in pixels (~100 rows)
   ui_styling:
+    unsupported_species_color_light: "#1D4ED8"
+    unsupported_species_color_dark: "#60A5FA"
+    missing_species_color: "#808080"
+    missing_species_opacity: 0.15
   priority_colors:
     1: "#90EE90"
     2: "#FFFFE0"

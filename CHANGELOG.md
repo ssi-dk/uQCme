@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Rule-aware species styling that distinguishes supported, unsupported,
+  and missing species via `app.ui_styling`.
 - `uqcme-dashboard-smoke` console command for starting a dashboard process,
   probing HTTP, and cleaning it up for deployment validation.
 - Python standalone bundle builder with separate CLI and dashboard profiles:
@@ -35,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Bumped application version to `0.9.2` (`src/uQCme/__init__.py`) and aligned config version defaults to `0.9.2`.
 - Dashboard summary metrics now render at the top of the sidebar, and Data tab
-  section visibility controls now render below the sample table.
+  section visibility controls now render above the sample table.
 - Data tab section visibility now uses a compact Streamlit multi-select control
   instead of a checkbox grid.
 - Dashboard tables now shrink below `app.dashboard.table_height` when fewer

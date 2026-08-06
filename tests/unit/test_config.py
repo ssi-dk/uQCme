@@ -117,6 +117,73 @@ class TestConfigModels(unittest.TestCase):
         self.assertEqual(default_config.app.dashboard.table_height, 3600)
         self.assertEqual(custom_config.app.dashboard.table_height, 4200)
 
+    def test_ui_styling_defaults_for_omitted_and_null_config(self):
+        """Missing and null UI styling should use rule-state defaults."""
+        base_input = {
+            "data": {"file": "output/qc_results.tsv"},
+            "mapping": "config/mapping.yaml",
+            "qc_rules": "config/QC_rules.tsv",
+            "qc_tests": "config/QC_tests.tsv",
+        }
+
+        omitted_config = UQCMeConfig(app={"input": base_input})
+        null_config = UQCMeConfig(app={"input": base_input, "ui_styling": None})
+
+        for config in (omitted_config, null_config):
+            styling = config.app.ui_styling
+            self.assertEqual(styling.unsupported_species_color_light, "#1D4ED8")
+            self.assertEqual(styling.unsupported_species_color_dark, "#60A5FA")
+            self.assertEqual(styling.missing_species_color, "#808080")
+            self.assertEqual(styling.missing_species_opacity, 0.15)
+
+    def test_ui_styling_parses_species_support_colors(self):
+        """Custom rule-support colors and opacity should be retained."""
+        config = UQCMeConfig(
+            app={
+                "input": {
+                    "data": {"file": "output/qc_results.tsv"},
+                    "mapping": "config/mapping.yaml",
+                    "qc_rules": "config/QC_rules.tsv",
+                    "qc_tests": "config/QC_tests.tsv",
+                },
+                "ui_styling": {
+                    "unsupported_species_color_light": "#123456",
+                    "unsupported_species_color_dark": "#654321",
+                    "missing_species_color": "#ABCDEF",
+                    "missing_species_opacity": 0.25,
+                },
+            }
+        )
+
+        styling = config.app.ui_styling
+        self.assertEqual(styling.unsupported_species_color_light, "#123456")
+        self.assertEqual(styling.unsupported_species_color_dark, "#654321")
+        self.assertEqual(styling.missing_species_color, "#ABCDEF")
+        self.assertEqual(styling.missing_species_opacity, 0.25)
+
+    def test_ui_styling_rejects_invalid_species_support_styles(self):
+        """Invalid colors and out-of-range opacity should fail."""
+        base_input = {
+            "data": {"file": "output/qc_results.tsv"},
+            "mapping": "config/mapping.yaml",
+            "qc_rules": "config/QC_rules.tsv",
+            "qc_tests": "config/QC_tests.tsv",
+        }
+        invalid_styles = [
+            {"unsupported_species_color_light": "blue"},
+            {"unsupported_species_color_dark": "#123"},
+            {"missing_species_color": "#123"},
+            {"missing_species_opacity": -0.1},
+            {"missing_species_opacity": 1.1},
+        ]
+
+        for ui_styling in invalid_styles:
+            with (
+                self.subTest(ui_styling=ui_styling),
+                self.assertRaises(ValidationError),
+            ):
+                UQCMeConfig(app={"input": base_input, "ui_styling": ui_styling})
+
     def test_data_input_supports_api_bearer_token_fields(self):
         """Data input config should parse bearer token auth fields."""
         config = UQCMeConfig(

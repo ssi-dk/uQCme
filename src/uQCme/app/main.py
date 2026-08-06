@@ -11,7 +11,9 @@ Note: This module requires the 'app' or 'all' extras to be installed:
 """
 
 import os
+import re
 import sys
+from html import escape
 import streamlit as st
 from streamlit.web import cli as stcli
 import pandas as pd
@@ -25,6 +27,7 @@ from uQCme.app.plot import (
     build_quality_metric_catalog,
     get_plottable_quality_metric_columns,
 )
+from uQCme.app.styling import SpeciesSupportStyling
 from uQCme.core.loader import (
     collect_duplicate_row_warnings,
     get_unique_columns_from_mapping,
@@ -256,6 +259,28 @@ class QCDashboard:
                 filtered_data = filtered_data[filtered_data[column] == filter_value]
 
         return filtered_data
+
+    # Return a copy with canonical sample names in stable natural-sort order.
+    def _sort_samples_naturally(self, data: pd.DataFrame) -> pd.DataFrame:
+        if "sample_name" not in data.columns:
+            return data.copy()
+
+        def sort_key(value):
+            if value is None or pd.isna(value):
+                return (1, ())
+
+            chunks = re.split(r"(\d+)", str(value))
+            natural_chunks = tuple(
+                (1, int(chunk)) if chunk.isdigit() else (0, chunk.casefold())
+                for chunk in chunks
+            )
+            return (0, natural_chunks)
+
+        positions = sorted(
+            range(len(data)),
+            key=lambda position: sort_key(data.iloc[position]["sample_name"]),
+        )
+        return data.iloc[positions].copy()
 
     def _load_config(self, config_path: Optional[str]) -> UQCMeConfig:
         """Load configuration from YAML file or use defaults."""
@@ -639,7 +664,7 @@ class QCDashboard:
 
     def render_header(self):
         """Render the application header."""
-        st.title("🔬 uQCme - Microbial Quality Control Dashboard")
+        st.title("🔬 uQCme - Microbial HEYA Quality Control Dashboard")
 
     def render_sidebar_metrics(self, filtered_data: pd.DataFrame, target=None):
         """Render summary metrics at the top of the sidebar."""
@@ -1055,7 +1080,7 @@ class QCDashboard:
         active_sections: list,
         visible_col_counts: Dict[str, int],
     ):
-        """Render compact section visibility controls below the data table."""
+        """Render compact section visibility controls above the data table."""
         label = "Visible sections"
 
         def format_section(section_name):
@@ -1208,6 +1233,30 @@ class QCDashboard:
         action_lower = str(action).lower()
         return action_colors.get(action_lower, "#000000")
 
+    def _get_supported_species(self) -> set[str]:
+        # Only explicit species rules indicate support; the special "all" rules
+        # apply generally and do not make an otherwise unknown species supported.
+        qc_rules = getattr(self, "qc_rules", pd.DataFrame())
+        if qc_rules.empty or "species" not in qc_rules.columns:
+            return set()
+
+        supported_species = set()
+        for value in qc_rules["species"]:
+            if pd.isna(value):
+                continue
+            species_name = str(value).strip()
+            if species_name != "" and species_name.casefold() != "all":
+                supported_species.add(species_name)
+        return supported_species
+
+    def _get_species_styling(self) -> SpeciesSupportStyling:
+        # Construct from current rules so configuration or uploaded rule changes
+        # are reflected without maintaining a second support list.
+        return SpeciesSupportStyling(
+            self.config.app.ui_styling,
+            self._get_supported_species(),
+        )
+
     def _get_ordered_columns_with_sections(
         self, data: pd.DataFrame, visible_sections: Dict[str, bool]
     ) -> list:
@@ -1295,6 +1344,9 @@ class QCDashboard:
                 "Select", help="Select this sample"
             )
 
+        styled_data = display_data.style
+        has_styling = False
+
         # Apply QC action styling if the column exists
         action_field = self._get_action_field()
         if action_field and action_field in display_data.columns:
@@ -1307,10 +1359,24 @@ class QCDashboard:
                     f"color: {color}; font-weight: bold; text-shadow: 0 0 3px {color};"
                 )
 
-            styled_data = display_data.style.map(
+            styled_data = styled_data.map(
                 highlight_action_values, subset=[action_field]
             )
-        else:
+            has_styling = True
+
+        species_field = self._get_species_field()
+        if species_field and species_field in display_data.columns:
+            species_styling = self._get_species_styling()
+            styled_data = styled_data.map(
+                species_styling.cell_style_for,
+                subset=[species_field],
+            )
+            styled_data = styled_data.format(
+                {species_field: species_styling.table_label_for}
+            )
+            has_styling = True
+
+        if not has_styling:
             styled_data = display_data
 
         # Disable all columns except Select to prevent accidental editing
@@ -1528,20 +1594,6 @@ class QCDashboard:
         ]
         display_data = filtered_data[visible_columns]
 
-        # Display the dataframe with built-in controls and QC action styling
-        # Only show columns from visible sections
-        if self.report_mode:
-            st.dataframe(
-                display_data,
-                width="stretch",
-                height=self._get_table_height(len(display_data)),
-                hide_index=True,
-            )
-        else:
-            self._render_styled_dataframe(
-                display_data, column_order, "data_preview_table"
-            )
-
         if not self.report_mode:
             st.subheader("Section Visibility")
             self._render_section_visibility_control(
@@ -1556,6 +1608,20 @@ class QCDashboard:
                     f"sections: {', '.join(active_sections)}"
                 )
                 st.info(tip_msg)
+
+        # Display the dataframe with built-in controls and QC action styling
+        # Only show columns from visible sections
+        if self.report_mode:
+            st.dataframe(
+                display_data,
+                width="stretch",
+                height=self._get_table_height(len(display_data)),
+                hide_index=True,
+            )
+        else:
+            self._render_styled_dataframe(
+                display_data, column_order, "data_preview_table"
+            )
 
         # Optional config-driven API actions for selected samples.
         self.render_sample_api_actions(filtered_data)
@@ -1634,8 +1700,21 @@ class QCDashboard:
 
         # Use static HTML table in report mode so all rows are rendered
         # in the DOM (st.dataframe virtualizes and truncates to viewport).
-        report_table_html = display_data.to_html(
-            index=False, escape=False, border=0, classes=["uqcme-report-table"]
+        report_table = display_data.style
+        species_field = self._get_species_field()
+        if species_field and species_field in display_data.columns:
+            species_styling = self._get_species_styling()
+            report_table = report_table.map(
+                species_styling.cell_style_for,
+                subset=[species_field],
+            )
+            report_table = report_table.format(
+                {species_field: species_styling.table_label_for}
+            )
+        report_table_html = (
+            report_table.hide(axis="index")
+            .set_table_attributes('class="uqcme-report-table"')
+            .to_html()
         )
         st.markdown(
             """
@@ -1780,36 +1859,41 @@ class QCDashboard:
                     warning_msg = "No additional metrics available for scatter plot."
                     st.warning(warning_msg)
 
-    def render_sample_details_tab(self, filtered_data: pd.DataFrame):
-        """Render detailed sample information."""
-        st.header("🔬 Sample Details")
+    # Build readable, unique HTML fragment IDs for the sample rows.
+    def _build_sample_anchors(self, sample_values: list) -> list[str]:
+        base_slugs = []
+        for value in sample_values:
+            value_text = "sample" if value is None or pd.isna(value) else str(value)
+            slug = re.sub(r"[^a-z0-9]+", "-", value_text.casefold()).strip("-")
+            base_slugs.append(f"sample-{slug or 'sample'}")
 
-        # Get field names from mapping
-        id_field = self._get_id_field()
-        outcome_field = self._get_outcome_field()
-        action_field = self._get_action_field()
-        species_field = self._get_species_field()
+        base_counts = {}
+        for base_slug in base_slugs:
+            base_counts[base_slug] = base_counts.get(base_slug, 0) + 1
 
-        # Sample selection - use ID field from mapping
-        if id_field and id_field in filtered_data.columns:
-            sample_options = filtered_data[id_field].tolist()
-        else:
-            st.warning("No ID field configured in mapping.")
-            return
+        seen_counts = {}
+        anchors = []
+        for base_slug in base_slugs:
+            if base_counts[base_slug] == 1:
+                anchors.append(base_slug)
+                continue
 
-        if not sample_options:
-            st.warning("No samples match the current filters.")
-            return
+            occurrence = seen_counts.get(base_slug, 0) + 1
+            seen_counts[base_slug] = occurrence
+            anchors.append(f"{base_slug}-{occurrence}")
 
-        selected_sample = st.selectbox(
-            "Select Sample (based on filtered data)", sample_options
-        )
+        return anchors
 
-        # Get sample data
-        selected_filter = filtered_data[id_field] == selected_sample
-        sample_data = filtered_data[selected_filter].iloc[0]
-
-        # Display sample information
+    # Render one sample's existing detail presentation.
+    def _render_single_sample_details(
+        self,
+        filtered_data: pd.DataFrame,
+        sample_data: pd.Series,
+        id_field: str,
+        outcome_field: Optional[str],
+        action_field: Optional[str],
+        species_field: Optional[str],
+    ):
         col1, col2 = st.columns(2)
 
         with col1:
@@ -1820,12 +1904,10 @@ class QCDashboard:
                 species_val = sample_data.get(species_field, "N/A")
                 st.write(f"**{species_field}:** {species_val}")
 
-            # Display QC outcome
             if outcome_field and outcome_field in sample_data:
                 outcome = sample_data[outcome_field]
                 st.write(f"**{outcome_field}:** {outcome}")
 
-            # Display QC action with color highlighting if available
             if (
                 action_field
                 and action_field in sample_data
@@ -1833,9 +1915,10 @@ class QCDashboard:
             ):
                 action = sample_data[action_field]
                 action_color = self._get_qc_action_color(action)
+                escaped_action = escape(str(action), quote=True)
                 st.markdown(
                     f"**{action_field}:** <span style='color: {action_color}; "
-                    f"font-weight: bold;'>{action}</span>",
+                    f"font-weight: bold;'>{escaped_action}</span>",
                     unsafe_allow_html=True,
                 )
 
@@ -1851,38 +1934,111 @@ class QCDashboard:
             else:
                 st.info("No quality metric values available for this sample.")
 
-        # Failed and passed rules
         st.subheader("QC Rules Analysis")
+        failed_rules_val = sample_data.get("failed_rules")
+        if (
+            failed_rules_val
+            and pd.notna(failed_rules_val)
+            and isinstance(failed_rules_val, str)
+        ):
+            st.write("**Failed Rules:**")
+            failed_rules = failed_rules_val.split(",")
+            st.write("❌ " + ", ".join([rule.strip() for rule in failed_rules]))
+        else:
+            st.write("✅ No failed rules")
 
-        col1, col2 = st.columns(2)
+    def render_sample_details_tab(self, filtered_data: pd.DataFrame):
+        """Render detailed sample information."""
+        st.header("🔬 Sample Details")
 
-        with col1:
-            failed_rules_val = sample_data.get("failed_rules")
-            if (
-                failed_rules_val
-                and pd.notna(failed_rules_val)
-                and isinstance(failed_rules_val, str)
-            ):
-                st.write("**Failed Rules:**")
-                failed_rules = failed_rules_val.split(",")
-                # Display all failed rules, each on one row
-                st.write("❌ " + ", ".join([rule.strip() for rule in failed_rules]))
-            else:
-                st.write("✅ No failed rules")
+        id_field = self._get_id_field()
+        outcome_field = self._get_outcome_field()
+        action_field = self._get_action_field()
+        species_field = self._get_species_field()
 
-        with col2:
-            passed_rules_val = sample_data.get("passed_rules")
-            if (
-                passed_rules_val
-                and pd.notna(passed_rules_val)
-                and isinstance(passed_rules_val, str)
-            ):
-                st.write("**Passed Rules:**")
-                passed_rules = passed_rules_val.split(",")
-                # Display all passed rules, all on one row
-                st.write("✅ " + ", ".join([rule.strip() for rule in passed_rules]))
-            else:
-                st.write("No passed rules data available")
+        if id_field is None or id_field not in filtered_data.columns:
+            st.warning("No ID field configured in mapping.")
+            return
+
+        sample_values = filtered_data[id_field].tolist()
+        if not sample_values:
+            st.warning("No samples match the current filters.")
+            return
+
+        anchors = self._build_sample_anchors(sample_values)
+        navigation_rows = []
+
+        def display_value(sample_data, field_name: Optional[str]) -> str:
+            if field_name is None or field_name not in sample_data:
+                return "—"
+            value = sample_data[field_name]
+            if value is None or pd.isna(value):
+                return "—"
+            return escape(str(value), quote=True)
+
+        for sample_data, anchor in zip(filtered_data.to_dict("records"), anchors):
+            sample_label = display_value(sample_data, id_field)
+            navigation_rows.append(
+                "<tr>"
+                f'<td><a href="#{anchor}">{sample_label}</a></td>'
+                f"<td>{display_value(sample_data, species_field)}</td>"
+                f"<td>{display_value(sample_data, outcome_field)}</td>"
+                f"<td>{display_value(sample_data, action_field)}</td>"
+                "</tr>"
+            )
+
+        st.markdown('<a id="sample-index"></a>', unsafe_allow_html=True)
+        navigation_html = "\n".join(
+            [
+                "<style>",
+                ".uqcme-sample-index {",
+                "    border-collapse: collapse;",
+                "    width: 100%;",
+                "    margin-bottom: 1rem;",
+                "}",
+                ".uqcme-sample-index th, .uqcme-sample-index td {",
+                "    border: 1px solid rgba(128, 128, 128, 0.35);",
+                "    padding: 4px 6px;",
+                "    text-align: left;",
+                "    vertical-align: top;",
+                "}",
+                ".uqcme-sample-index th {",
+                "    background-color: rgba(128, 128, 128, 0.14);",
+                "    color: inherit;",
+                "    font-weight: 600;",
+                "}",
+                "</style>",
+                '<table class="uqcme-sample-index">',
+                "<thead>",
+                "<tr>",
+                "<th>Sample</th>",
+                "<th>Species</th>",
+                "<th>QC outcome</th>",
+                "<th>QC action</th>",
+                "</tr>",
+                "</thead>",
+                "<tbody>",
+                *navigation_rows,
+                "</tbody>",
+                "</table>",
+            ]
+        )
+        st.markdown(navigation_html, unsafe_allow_html=True)
+
+        for (_, sample_data), anchor in zip(filtered_data.iterrows(), anchors):
+            st.markdown(f'<a id="{anchor}"></a>', unsafe_allow_html=True)
+            self._render_single_sample_details(
+                filtered_data,
+                sample_data,
+                id_field,
+                outcome_field,
+                action_field,
+                species_field,
+            )
+            st.markdown(
+                '<p><a href="#sample-index">Back to sample index</a></p><hr>',
+                unsafe_allow_html=True,
+            )
 
     def render_qc_tests_tab(self):
         """Render the QC tests configuration tab."""
@@ -2395,6 +2551,7 @@ class QCDashboard:
 
         # Get filtered data from sidebar controls
         filtered_data = self.render_sidebar_filters()
+        filtered_data = self._sort_samples_naturally(filtered_data)
 
         # Main content tabs
         if self.report_mode:

@@ -559,7 +559,7 @@ def test_sidebar_preset_buttons_follow_mapping_order_before_manual_filters():
     preset_buttons = [
         (label, kwargs)
         for label, kwargs in streamlit_stub.button_calls
-        if label != "🗑️ Clear All Filters"
+        if label != "🧹 Clear View & Filters"
     ]
     assert [label for label, _ in preset_buttons] == [
         "Pass only",
@@ -584,7 +584,7 @@ def test_sidebar_active_preset_uses_primary_button_type():
     button_types = {
         label: kwargs.get("type")
         for label, kwargs in streamlit_stub.button_calls
-        if label != "🗑️ Clear All Filters"
+        if label != "🧹 Clear View & Filters"
     }
     assert button_types == {"Pass only": "secondary", "Local group": "primary"}
 
@@ -659,6 +659,38 @@ def test_manual_widget_options_use_full_data_after_preset_filtering():
     assert outcome_call[1] == ["All", "FAIL", "PASS"]
 
 
+def test_qc_outcome_fail_option_matches_composite_failure_outcomes():
+    # The semantic FAIL choice should match every failure outcome token.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_sidebar_filters()
+    dashboard.data = pd.DataFrame(
+        [
+            {"sample_name": "S1", "qc_outcome": "PASS", "group": "local"},
+            {
+                "sample_name": "S2",
+                "qc_outcome": "FAIL_CONTAMINATION",
+                "group": "remote",
+            },
+            {
+                "sample_name": "S3",
+                "qc_outcome": "FAIL,FAIL_SIZE",
+                "group": "remote",
+            },
+        ]
+    )
+    streamlit_stub.selectbox_values["filter_qc_outcome"] = "FAIL"
+
+    filtered_data = dashboard.render_sidebar_filters()
+
+    assert filtered_data["sample_name"].tolist() == ["S2", "S3"]
+    outcome_call = next(
+        call
+        for call in streamlit_stub.selectbox_calls
+        if call[2].get("key") == "filter_qc_outcome"
+    )
+    assert "FAIL" in outcome_call[1]
+
+
 def test_missing_filtering_sections_preserves_existing_manual_pipeline():
     # Without the optional config, no preset UI or preset mask is introduced.
     streamlit_stub.reset()
@@ -671,7 +703,7 @@ def test_missing_filtering_sections_preserves_existing_manual_pipeline():
     assert [
         label
         for label, _ in streamlit_stub.button_calls
-        if label != "🗑️ Clear All Filters"
+        if label != "🧹 Clear View & Filters"
     ] == []
     assert filtered_data["sample_name"].tolist() == ["S3"]
 

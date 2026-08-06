@@ -1,6 +1,6 @@
 # FS-06: Publish examples and user documentation
 
-Status: **Not started**
+Status: **Complete**
 
 ## Dependency and blocker contract
 
@@ -13,9 +13,9 @@ Status: **Not started**
 
 ## Outcome
 
-Bundled and repository examples demonstrate a working, synthetic
-FilteringSection, and public documentation explains the schema and user-visible
-behavior accurately.
+Bundled and repository examples demonstrate working, synthetic lab-specific
+FilteringSections, and public documentation explains the schema and
+user-visible behavior accurately.
 
 ## Likely file locations
 
@@ -45,11 +45,13 @@ section.
 ### Green: update examples and docs
 
 - Add at least one useful FilteringSection to both maintained mapping examples.
-- Use columns that exist in the corresponding public/bundled data contract so
-  the default app does not immediately present a disabled example.
-- Keep sample names and values synthetic and public-safe. A view such as
-  “Passing samples,” based on existing QC outcome fields, is preferable to a
-  site-specific or private group.
+- Use a clearly named synthetic `lab_group` field in the public example
+  contract, so deployments can replace it with their own lab/group mapping.
+  Keep the remaining display mappings tied to the dashboard's generated QC
+  columns and ordinary sample metrics.
+- Keep sample names and values synthetic and public-safe. Use lab-specific
+  examples such as `LabA view` and `LabB view`, with a synthetic `lab_group`
+  field and different display-column sets; do not include private lab data.
 - Document all four operators with compact YAML examples.
 - Explain `data.mapping` precedence and ordered `QC.mapping` fallback.
 - Explain that all preset filters use AND and are applied before manual filters.
@@ -84,7 +86,7 @@ section.
 ## Verification
 
 ```bash
-pixi run pytest tests/unit/test_filtering_sections_config.py tests/unit/test_filtering_sections.py
+pixi run pytest tests/unit/test_filtering_sections_config.py tests/unit/test_filtering_sections.py tests/unit/test_filtering_sections_examples.py
 pixi run ruff check .
 pixi run ruff format --check .
 git diff --check

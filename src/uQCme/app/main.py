@@ -822,6 +822,12 @@ class QCDashboard:
 
         unique_sorted = sorted(unique_values.unique())
 
+        # Add a semantic FAIL choice for comma-separated QC outcome IDs.
+        if self._is_qc_outcome_column(column) and self._has_failure_outcome(
+            unique_values
+        ):
+            unique_sorted = sorted(set(unique_sorted) | {"FAIL"})
+
         # Only create filter if we have reasonable number of options
         threshold = self._get_dashboard_config("categorical_filter_threshold", 20)
         if len(unique_sorted) > threshold:
@@ -846,11 +852,39 @@ class QCDashboard:
             key=f"filter_{column}",
         )
 
+        if selected_value == "FAIL" and self._is_qc_outcome_column(column):
+            outcome_tokens = filtered_data[column].astype("string").str.split(",")
+            failure_mask = outcome_tokens.map(
+                lambda tokens: (
+                    any(token.strip().upper().startswith("FAIL") for token in tokens)
+                    if isinstance(tokens, list)
+                    else False
+                )
+            )
+            return filtered_data[failure_mask.fillna(False)]
+
         if selected_value != "All":
             filter_condition = filtered_data[column] == selected_value
             return filtered_data[filter_condition]
 
         return filtered_data
+
+    def _is_qc_outcome_column(self, column: str) -> bool:
+        # Identify the configured final QC verdict column.
+        return column == self._get_outcome_field()
+
+    def _has_failure_outcome(self, values: pd.Series) -> bool:
+        # Detect any comma-separated outcome token beginning with FAIL.
+        outcome_tokens = values.astype("string").str.split(",")
+        return bool(
+            outcome_tokens.map(
+                lambda tokens: (
+                    any(token.strip().upper().startswith("FAIL") for token in tokens)
+                    if isinstance(tokens, list)
+                    else False
+                )
+            ).any()
+        )
 
     def _create_text_search_filter(
         self,
@@ -976,8 +1010,8 @@ class QCDashboard:
 
         st.sidebar.header("🔍 Filters")
 
-        # Add Clear All Filters button
-        if st.sidebar.button("🗑️ Clear All Filters", type="secondary"):
+        # Add the combined preset, filter, selection, and preview reset button.
+        if st.sidebar.button("🧹 Clear View & Filters", type="secondary"):
             self._clear_all_filters()
 
         # Get filterable fields from mapping configuration

@@ -1,6 +1,6 @@
 # FS-02: Resolve fields and apply preset filters
 
-Status: **Not started**
+Status: **Complete**
 
 ## Dependency and blocker contract
 

@@ -42,7 +42,11 @@ from uQCme.core.loader import (
 from uQCme.core.engine import QCProcessor
 from uQCme.core.config import UQCMeConfig, DataInput, SampleApiAction
 from uQCme.core.exceptions import ConfigError, DataLoadError, ValidationError
-from uQCme.core.filtering import ResolvedFilteringSection
+from uQCme.core.filtering import (
+    ResolvedFilteringSection,
+    apply_filtering_section,
+    resolve_filtering_sections,
+)
 from uQCme.core.mapping import FilteringSectionsConfig, parse_filtering_sections
 
 
@@ -742,10 +746,18 @@ class QCDashboard:
         return filterable_fields
 
     def _create_numerical_filter(
-        self, filtered_data: pd.DataFrame, column: str, field_name: str
+        self,
+        filtered_data: pd.DataFrame,
+        column: str,
+        field_name: str,
+        widget_data: Optional[pd.DataFrame] = None,
     ) -> pd.DataFrame:
         """Create and apply numerical range filter."""
-        unique_values = filtered_data[column].dropna()
+        widget_data = self.data if widget_data is None else widget_data
+        if column not in widget_data.columns or column not in filtered_data.columns:
+            return filtered_data
+
+        unique_values = widget_data[column].dropna()
 
         if len(unique_values) == 0:
             return filtered_data
@@ -791,10 +803,18 @@ class QCDashboard:
             return filtered_data[range_condition]
 
     def _create_categorical_filter(
-        self, filtered_data: pd.DataFrame, column: str, field_name: str
+        self,
+        filtered_data: pd.DataFrame,
+        column: str,
+        field_name: str,
+        widget_data: Optional[pd.DataFrame] = None,
     ) -> pd.DataFrame:
         """Create and apply categorical dropdown filter."""
-        unique_values = filtered_data[column].dropna()
+        widget_data = self.data if widget_data is None else widget_data
+        if column not in widget_data.columns or column not in filtered_data.columns:
+            return filtered_data
+
+        unique_values = widget_data[column].dropna()
 
         if len(unique_values) == 0:
             return filtered_data
@@ -832,9 +852,17 @@ class QCDashboard:
         return filtered_data
 
     def _create_text_search_filter(
-        self, filtered_data: pd.DataFrame, column: str, field_name: str
+        self,
+        filtered_data: pd.DataFrame,
+        column: str,
+        field_name: str,
+        widget_data: Optional[pd.DataFrame] = None,
     ) -> pd.DataFrame:
         """Create and apply text search filter."""
+        widget_data = self.data if widget_data is None else widget_data
+        if column not in widget_data.columns or column not in filtered_data.columns:
+            return filtered_data
+
         # Check if filters should be reset
         reset_filters = st.session_state.get("filters_reset", False)
         default_value = ""
@@ -889,12 +917,61 @@ class QCDashboard:
         # Keep the existing method name as a compatibility alias for the UI.
         self._clear_view_and_filters()
 
+    def _render_filtering_section_buttons(
+        self,
+        sections: Dict[str, ResolvedFilteringSection],
+        active_section,
+    ) -> None:
+        # Render mapping-defined preset controls before manual filters.
+        unavailable_warnings = set()
+        if active_section.warning:
+            st.warning(active_section.warning)
+            if active_section.key is not None:
+                unavailable_warnings.add(active_section.key)
+
+        for name, section in sections.items():
+            if not section.available and name not in unavailable_warnings:
+                details = " ".join(section.warnings)
+                warning = f"FilteringSection '{name}' is unavailable."
+                if details:
+                    warning = f"{warning} {details}"
+                st.warning(warning)
+                unavailable_warnings.add(name)
+
+            is_active = active_section.section is section
+            if (
+                st.sidebar.button(
+                    name,
+                    key=f"filtering_section_{name}",
+                    type="primary" if is_active else "secondary",
+                    disabled=not section.available,
+                )
+                and section.available
+            ):
+                self._activate_filtering_section(section)
+
+    def _resolve_runtime_filtering_sections(self):
+        # Resolve all presets once against the complete loaded dataframe.
+        config = getattr(self, "filtering_sections", FilteringSectionsConfig())
+        return resolve_filtering_sections(config, self.data)
+
     def render_sidebar_filters(self):
         """Render sidebar filters for data exploration."""
         if self.report_mode:
             return self._apply_report_filters(self.data)
 
         summary_container = st.sidebar.container()
+
+        resolved_sections = self._resolve_runtime_filtering_sections()
+        active_section = self._get_active_filtering_section(resolved_sections)
+        self._render_filtering_section_buttons(resolved_sections, active_section)
+
+        filtered_data = self.data.copy()
+        if active_section.section is not None:
+            preset_data = apply_filtering_section(filtered_data, active_section.section)
+            if preset_data is not None:
+                filtered_data = preset_data
+
         st.sidebar.header("🔍 Filters")
 
         # Add Clear All Filters button
@@ -904,17 +981,14 @@ class QCDashboard:
         # Get filterable fields from mapping configuration
         filterable_fields = self._get_filterable_fields(self.data)
 
-        # Apply filters
-        filtered_data = self.data.copy()
-
         # Generate dynamic filters based on mapping configuration
         for field_info in filterable_fields:
             column = field_info["column"]
             field_name = field_info["field_name"]
 
-            if column in filtered_data.columns:
-                # Get unique values for this column
-                unique_values = filtered_data[column].dropna()
+            if column in self.data.columns and column in filtered_data.columns:
+                # Get widget choices from complete data, then filter current rows.
+                unique_values = self.data[column].dropna()
 
                 if len(unique_values) > 0:
                     # Check if column is numerical
@@ -923,7 +997,7 @@ class QCDashboard:
                     if is_numeric:
                         # Use extracted numerical filter method
                         filtered_data = self._create_numerical_filter(
-                            filtered_data, column, field_name
+                            filtered_data, column, field_name, widget_data=self.data
                         )
                     else:
                         # Categorical or text filters for non-numerical columns
@@ -936,20 +1010,18 @@ class QCDashboard:
                         if len(unique_sorted) <= threshold:
                             # Use extracted categorical filter method
                             filtered_data = self._create_categorical_filter(
-                                filtered_data, column, field_name
+                                filtered_data, column, field_name, widget_data=self.data
                             )
                         else:
                             # Use extracted text search filter method
                             filtered_data = self._create_text_search_filter(
-                                filtered_data, column, field_name
+                                filtered_data, column, field_name, widget_data=self.data
                             )
 
         # Add sample name search (always available)
         # Get the ID field from mapping
         id_field = self._get_id_field()
-        search_field = (
-            id_field if id_field and id_field in filtered_data.columns else None
-        )
+        search_field = id_field if id_field and id_field in self.data.columns else None
 
         # Check if filters should be reset
         reset_filters = st.session_state.get("filters_reset", False)
@@ -961,7 +1033,7 @@ class QCDashboard:
             if key in st.session_state:
                 del st.session_state[key]
 
-        if search_field:
+        if search_field and search_field in filtered_data.columns:
             sample_filter = st.sidebar.text_input(
                 f"Search {search_field}",
                 placeholder=f"Enter {search_field}...",

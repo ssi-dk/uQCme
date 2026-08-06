@@ -37,7 +37,7 @@ class StreamlitStub(types.ModuleType):
         self.sidebar.header = self._sidebar_header
         self.sidebar.subheader = self._sidebar_subheader
         self.sidebar.markdown = self._sidebar_markdown
-        self.sidebar.button = lambda *args, **kwargs: False
+        self.sidebar.button = self._sidebar_button
         self.sidebar.slider = self._sidebar_slider
         self.sidebar.selectbox = self._sidebar_selectbox
         self.sidebar.text_input = self._sidebar_text_input
@@ -58,6 +58,14 @@ class StreamlitStub(types.ModuleType):
         self.dataframe_calls = []
         self.data_editor_calls = []
         self.rerun_calls = 0
+        self.button_calls = []
+        self.button_values = {}
+        self.slider_calls = []
+        self.slider_values = {}
+        self.selectbox_calls = []
+        self.selectbox_values = {}
+        self.text_input_calls = []
+        self.text_input_values = {}
         self.session_state = _SessionStateStub()
         self.query_params = _QueryParamsStub()
 
@@ -130,17 +138,37 @@ class StreamlitStub(types.ModuleType):
     def _sidebar_markdown(self, *args, **kwargs):
         self.events.append("sidebar.markdown")
 
+    def _sidebar_button(self, label, **kwargs):
+        self.events.append(f"sidebar.button:{label}")
+        self.button_calls.append((label, kwargs))
+        return self.button_values.get(label, False)
+
     def _sidebar_container(self):
         return _InsertedContextStub(self.events, "sidebar.container", len(self.events))
 
     def _sidebar_slider(self, *args, **kwargs):
-        return kwargs.get("value")
+        key = kwargs.get("key")
+        self.slider_calls.append((args, kwargs))
+        value = self.slider_values.get(key, kwargs.get("value"))
+        if key:
+            self.session_state[key] = value
+        return value
 
     def _sidebar_selectbox(self, label, options, index=0, **kwargs):
-        return options[index]
+        key = kwargs.get("key")
+        self.selectbox_calls.append((label, list(options), kwargs))
+        value = self.selectbox_values.get(key, options[index])
+        if key:
+            self.session_state[key] = value
+        return value
 
     def _sidebar_text_input(self, *args, **kwargs):
-        return kwargs.get("value", "")
+        key = kwargs.get("key")
+        self.text_input_calls.append((args, kwargs))
+        value = self.text_input_values.get(key, kwargs.get("value", ""))
+        if key:
+            self.session_state[key] = value
+        return value
 
     def json(self, payload):
         self.events.append("json")
@@ -262,7 +290,7 @@ from uQCme.core.filtering import (  # noqa: E402
     ResolvedFilter,
     ResolvedFilteringSection,
 )
-from uQCme.core.mapping import FilteringCondition  # noqa: E402
+from uQCme.core.mapping import FilteringCondition, FilteringSectionsConfig  # noqa: E402
 
 dashboard_main = importlib.import_module("uQCme.app.main")
 
@@ -375,6 +403,70 @@ def _dashboard_state_section(name="Local group"):
     )
 
 
+def _dashboard_filtering_config():
+    # Build ordered preset definitions for sidebar composition tests.
+    return FilteringSectionsConfig(
+        sections={
+            "Pass only": {
+                "columns": {
+                    "Sample": {"data": {"mapping": "sample_name"}},
+                },
+                "filters": {
+                    "Outcome": {
+                        "data": {"mapping": "qc_outcome"},
+                        "operator": "equals",
+                        "value": "PASS",
+                    },
+                },
+            },
+            "Local group": {
+                "columns": {
+                    "Sample": {"data": {"mapping": "sample_name"}},
+                },
+                "filters": {
+                    "Group": {
+                        "data": {"mapping": "group"},
+                        "operator": "equals",
+                        "value": "local",
+                    },
+                },
+            },
+        }
+    )
+
+
+def _dashboard_with_sidebar_filters():
+    # Build a dashboard with filterable mapped columns and deterministic rows.
+    dashboard = _bare_dashboard()
+    dashboard.mapping = {
+        "Sections": {
+            "Basic": {
+                "Name": {
+                    "data": {"mapping": "sample_name"},
+                    "report": {"id": True},
+                },
+                "Outcome": {
+                    "data": {"mapping": "qc_outcome"},
+                    "report": {"filter": True},
+                },
+                "Group": {
+                    "data": {"mapping": "group"},
+                    "report": {"filter": True},
+                },
+            }
+        }
+    }
+    dashboard.filtering_sections = _dashboard_filtering_config()
+    dashboard.data = pd.DataFrame(
+        [
+            {"sample_name": "S1", "qc_outcome": "PASS", "group": "local"},
+            {"sample_name": "S2", "qc_outcome": "PASS", "group": "remote"},
+            {"sample_name": "S3", "qc_outcome": "FAIL", "group": "remote"},
+        ]
+    )
+    return dashboard
+
+
 def test_dashboard_activation_wrapper_updates_url_and_reruns():
     """Dashboard activation should use built-in query params and rerun once."""
     streamlit_stub.reset()
@@ -396,6 +488,133 @@ def test_dashboard_activation_wrapper_updates_url_and_reruns():
     assert streamlit_stub.query_params["filtering_section"] == "Local group"
     assert "filter_sample_name" not in streamlit_stub.session_state
     assert streamlit_stub.rerun_calls == 1
+
+
+def test_sidebar_preset_buttons_follow_mapping_order_before_manual_filters():
+    # Preset buttons should be emitted in declaration order before the header.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_sidebar_filters()
+
+    dashboard.render_sidebar_filters()
+
+    preset_buttons = [
+        (label, kwargs)
+        for label, kwargs in streamlit_stub.button_calls
+        if label != "🗑️ Clear All Filters"
+    ]
+    assert [label for label, _ in preset_buttons] == [
+        "Pass only",
+        "Local group",
+    ]
+    button_positions = [
+        streamlit_stub.events.index("sidebar.button:Pass only"),
+        streamlit_stub.events.index("sidebar.button:Local group"),
+    ]
+    header_position = streamlit_stub.events.index("sidebar.header:🔍 Filters")
+    assert button_positions[0] < button_positions[1] < header_position
+
+
+def test_sidebar_active_preset_uses_primary_button_type():
+    # The active preset is visually identified through Streamlit's button type.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_sidebar_filters()
+    streamlit_stub.query_params["filtering_section"] = "Local group"
+
+    dashboard.render_sidebar_filters()
+
+    button_types = {
+        label: kwargs.get("type")
+        for label, kwargs in streamlit_stub.button_calls
+        if label != "🗑️ Clear All Filters"
+    }
+    assert button_types == {"Pass only": "secondary", "Local group": "primary"}
+
+
+def test_sidebar_preset_button_delegates_activation_and_reruns():
+    # Clicking a usable preset uses the FS-03 transition helper.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_sidebar_filters()
+    streamlit_stub.button_values["Pass only"] = True
+
+    dashboard.render_sidebar_filters()
+
+    assert streamlit_stub.query_params["filtering_section"] == "Pass only"
+    assert streamlit_stub.rerun_calls == 1
+
+
+def test_unavailable_preset_is_disabled_and_warned_once():
+    # A missing filter column must not be activatable.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_sidebar_filters()
+    dashboard.filtering_sections = FilteringSectionsConfig(
+        sections={
+            "Missing data": {
+                "columns": {"Sample": {"data": {"mapping": "sample_name"}}},
+                "filters": {
+                    "Missing": {
+                        "data": {"mapping": "not_loaded"},
+                        "operator": "equals",
+                        "value": "x",
+                    }
+                },
+            }
+        }
+    )
+
+    dashboard.render_sidebar_filters()
+
+    preset_button = next(
+        call for call in streamlit_stub.button_calls if call[0] == "Missing data"
+    )
+    assert preset_button[1]["disabled"] is True
+    assert len(streamlit_stub.warning_calls) == 1
+    assert "could not resolve" in streamlit_stub.warning_calls[0]
+
+
+def test_preset_filter_runs_before_manual_sample_search_with_and_logic():
+    # A manual filter further narrows the rows selected by the preset.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_sidebar_filters()
+    streamlit_stub.query_params["filtering_section"] = "Pass only"
+    streamlit_stub.text_input_values["search_sample_name"] = "S1"
+
+    filtered_data = dashboard.render_sidebar_filters()
+
+    assert filtered_data["sample_name"].tolist() == ["S1"]
+    assert dashboard.data["sample_name"].tolist() == ["S1", "S2", "S3"]
+
+
+def test_manual_widget_options_use_full_data_after_preset_filtering():
+    # Manual choices remain discoverable even when the preset excludes rows.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_sidebar_filters()
+    streamlit_stub.query_params["filtering_section"] = "Pass only"
+
+    dashboard.render_sidebar_filters()
+
+    outcome_call = next(
+        call
+        for call in streamlit_stub.selectbox_calls
+        if call[2].get("key") == "filter_qc_outcome"
+    )
+    assert outcome_call[1] == ["All", "FAIL", "PASS"]
+
+
+def test_missing_filtering_sections_preserves_existing_manual_pipeline():
+    # Without the optional config, no preset UI or preset mask is introduced.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_sidebar_filters()
+    dashboard.filtering_sections = FilteringSectionsConfig()
+    streamlit_stub.text_input_values["search_sample_name"] = "S3"
+
+    filtered_data = dashboard.render_sidebar_filters()
+
+    assert [
+        label
+        for label, _ in streamlit_stub.button_calls
+        if label != "🗑️ Clear All Filters"
+    ] == []
+    assert filtered_data["sample_name"].tolist() == ["S3"]
 
 
 def test_dashboard_clear_view_wrapper_preserves_unrelated_url_state():

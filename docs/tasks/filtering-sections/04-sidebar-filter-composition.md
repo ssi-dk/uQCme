@@ -1,6 +1,6 @@
 # FS-04: Compose preset and manual sidebar filters
 
-Status: **Not started**
+Status: **Complete**
 
 ## Dependency and blocker contract
 

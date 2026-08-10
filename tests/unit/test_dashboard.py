@@ -50,6 +50,7 @@ class StreamlitStub(types.ModuleType):
 
     def reset(self):
         self.events = []
+        self.columns_calls = []
         self.info_calls = []
         self.warning_calls = []
         self.success_calls = []
@@ -90,9 +91,11 @@ class StreamlitStub(types.ModuleType):
     def metric(self, *args, **kwargs):
         self.events.append("metric")
 
-    def columns(self, n):
+    def columns(self, spec, **kwargs):
         self.events.append("columns")
-        return [_ContextStub() for _ in range(n)]
+        self.columns_calls.append((spec, kwargs))
+        column_count = spec if isinstance(spec, int) else len(spec)
+        return [_ContextStub() for _ in range(column_count)]
 
     def selectbox(self, label, options, index=0, **kwargs):
         self.events.append(f"selectbox:{label}")
@@ -1236,8 +1239,13 @@ def test_sample_details_renders_navigation_and_every_filtered_sample():
     assert streamlit_stub.write_calls.count("**sample_name:** Sample-10") == 1
     assert "**Passed Rules:**" not in streamlit_stub.write_calls
     assert "✅ rule-1" not in streamlit_stub.write_calls
-    assert "**Failed Rules:**" in streamlit_stub.write_calls
+    assert streamlit_stub.columns_calls == [
+        ([1, 1, 1], {"gap": "large"}),
+        ([1, 1, 1], {"gap": "large"}),
+    ]
+    assert streamlit_stub.events.count("subheader:Failed Rules") == 2
     assert "❌ rule-2" in streamlit_stub.write_calls
+    assert "✅ No failed rules" in streamlit_stub.write_calls
 
 
 def test_sample_details_navigation_columns_come_from_mapping():

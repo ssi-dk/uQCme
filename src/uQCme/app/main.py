@@ -1976,9 +1976,12 @@ class QCDashboard:
         action_field: Optional[str],
         species_field: Optional[str],
     ):
-        col1, col2 = st.columns(2)
+        basic_col, metrics_col, rules_col = st.columns(
+            [1, 1, 1],
+            gap="large",
+        )
 
-        with col1:
+        with basic_col:
             st.subheader("Basic Information")
             st.write(f"**{id_field}:** {sample_data[id_field]}")
 
@@ -2004,7 +2007,7 @@ class QCDashboard:
                     unsafe_allow_html=True,
                 )
 
-        with col2:
+        with metrics_col:
             st.subheader("Quality Metrics")
             metric_entries = self._get_sample_quality_metric_entries(
                 filtered_data, sample_data
@@ -2016,18 +2019,18 @@ class QCDashboard:
             else:
                 st.info("No quality metric values available for this sample.")
 
-        st.subheader("QC Rules Analysis")
-        failed_rules_val = sample_data.get("failed_rules")
-        if (
-            failed_rules_val
-            and pd.notna(failed_rules_val)
-            and isinstance(failed_rules_val, str)
-        ):
-            st.write("**Failed Rules:**")
-            failed_rules = failed_rules_val.split(",")
-            st.write("❌ " + ", ".join([rule.strip() for rule in failed_rules]))
-        else:
-            st.write("✅ No failed rules")
+        with rules_col:
+            st.subheader("Failed Rules")
+            failed_rules_val = sample_data.get("failed_rules")
+            if (
+                failed_rules_val
+                and pd.notna(failed_rules_val)
+                and isinstance(failed_rules_val, str)
+            ):
+                failed_rules = failed_rules_val.split(",")
+                st.write("❌ " + ", ".join([rule.strip() for rule in failed_rules]))
+            else:
+                st.write("✅ No failed rules")
 
     def render_sample_details_tab(self, filtered_data: pd.DataFrame):
         """Render detailed sample information."""

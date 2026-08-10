@@ -301,6 +301,13 @@ Detailed log of rule evaluation issues:
 - Summary statistics and sample counts
 
 ### Sample Details
+
+- Config-driven navigation index of filtered samples
+- Mapping fields marked with `report.sample_details_index: true` appear in the
+  index; `report.sample_details_order` controls their order and `report.label`
+  optionally overrides the heading
+- The field marked with `report.id: true` links to each sample's detail section
+- Mappings without index flags retain the four-column legacy index
 - Detailed view of individual sample QC results
 - Failed rules and thresholds
 - Interactive metric exploration

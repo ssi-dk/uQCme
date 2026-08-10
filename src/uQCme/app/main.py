@@ -1062,6 +1062,88 @@ class QCDashboard:
 
         return sections_columns
 
+    # Resolve Sample Details index columns from mapping metadata, with the
+    # original four-column layout as a compatibility fallback.
+    def _get_sample_index_columns(self, data: pd.DataFrame) -> List[Dict[str, Any]]:
+        configured_columns = []
+        identity_column = None
+        mapping_position = 0
+        id_field = self._get_id_field()
+
+        for section_data in self.mapping.get("Sections", {}).values():
+            for field_name, field_config in section_data.items():
+                if not isinstance(field_config, dict):
+                    continue
+
+                report_config = field_config.get("report", {})
+                data_mapping = field_config.get("data", {}).get("mapping")
+                qc_mapping = field_config.get("QC", {}).get("mapping")
+                column = data_mapping
+                if column is None and isinstance(qc_mapping, str):
+                    column = qc_mapping
+                elif column is None and isinstance(qc_mapping, list):
+                    column = next(
+                        (candidate for candidate in qc_mapping if candidate in data),
+                        None,
+                    )
+
+                column_info = {
+                    "column": column,
+                    "label": report_config.get("label") or field_name,
+                    "id": bool(report_config.get("id")) or column == id_field,
+                }
+                if report_config.get("id"):
+                    identity_column = column_info
+
+                if not report_config.get("sample_details_index"):
+                    mapping_position += 1
+                    continue
+
+                configured_order = report_config.get("sample_details_order")
+                has_numeric_order = isinstance(configured_order, (int, float))
+                has_numeric_order = has_numeric_order and not isinstance(
+                    configured_order, bool
+                )
+                order_key = (
+                    0 if has_numeric_order else 1,
+                    configured_order if has_numeric_order else mapping_position,
+                    mapping_position,
+                )
+                configured_columns.append({**column_info, "order_key": order_key})
+                mapping_position += 1
+
+        if configured_columns:
+            configured_columns.sort(key=lambda column_info: column_info["order_key"])
+            columns = [
+                {
+                    key: value
+                    for key, value in column_info.items()
+                    if key != "order_key"
+                }
+                for column_info in configured_columns
+            ]
+            if identity_column is not None and not any(
+                column_info["id"] for column_info in columns
+            ):
+                columns.insert(0, identity_column)
+            return columns
+
+        fallback_columns = [
+            {"column": id_field, "label": "Sample", "id": True},
+            {"column": self._get_species_field(), "label": "Species", "id": False},
+            {
+                "column": self._get_outcome_field(),
+                "label": "QC outcome",
+                "id": False,
+            },
+            {
+                "column": self._get_action_field(),
+                "label": "QC action",
+                "id": False,
+            },
+        ]
+        return fallback_columns
+
     def _get_visible_section_defaults(self, sections_columns: Dict[str, list]):
         """Return section default visibility and visible column counts."""
         defaults = {}
@@ -1966,6 +2048,7 @@ class QCDashboard:
             return
 
         anchors = self._build_sample_anchors(sample_values)
+        index_columns = self._get_sample_index_columns(filtered_data)
         navigation_rows = []
 
         def display_value(sample_data, field_name: Optional[str]) -> str:
@@ -1977,15 +2060,19 @@ class QCDashboard:
             return escape(str(value), quote=True)
 
         for sample_data, anchor in zip(filtered_data.to_dict("records"), anchors):
-            sample_label = display_value(sample_data, id_field)
-            navigation_rows.append(
-                "<tr>"
-                f'<td><a href="#{anchor}">{sample_label}</a></td>'
-                f"<td>{display_value(sample_data, species_field)}</td>"
-                f"<td>{display_value(sample_data, outcome_field)}</td>"
-                f"<td>{display_value(sample_data, action_field)}</td>"
-                "</tr>"
-            )
+            cells = []
+            for column_info in index_columns:
+                cell_value = display_value(sample_data, column_info["column"])
+                if column_info["id"]:
+                    cells.append(f'<td><a href="#{anchor}">{cell_value}</a></td>')
+                else:
+                    cells.append(f"<td>{cell_value}</td>")
+            navigation_rows.append("<tr>" + "".join(cells) + "</tr>")
+
+        navigation_headers = [
+            f"<th>{escape(str(column_info['label']), quote=True)}</th>"
+            for column_info in index_columns
+        ]
 
         st.markdown('<a id="sample-index"></a>', unsafe_allow_html=True)
         navigation_html = "\n".join(
@@ -2011,10 +2098,7 @@ class QCDashboard:
                 '<table class="uqcme-sample-index">',
                 "<thead>",
                 "<tr>",
-                "<th>Sample</th>",
-                "<th>Species</th>",
-                "<th>QC outcome</th>",
-                "<th>QC action</th>",
+                *navigation_headers,
                 "</tr>",
                 "</thead>",
                 "<tbody>",
@@ -2035,10 +2119,8 @@ class QCDashboard:
                 action_field,
                 species_field,
             )
-            st.markdown(
-                '<p><a href="#sample-index">Back to sample index</a></p><hr>',
-                unsafe_allow_html=True,
-            )
+            st.markdown("[Back to sample index](#sample-index)")
+            st.markdown("---")
 
     def render_qc_tests_tab(self):
         """Render the QC tests configuration tab."""

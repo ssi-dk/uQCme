@@ -1230,7 +1230,7 @@ def test_sample_details_renders_navigation_and_every_filtered_sample():
     assert "Details" not in markdown
     assert 'href="#sample-sample-2"' in markdown
     assert 'href="#sample-sample-10"' in markdown
-    assert 'href="#sample-index"' in markdown
+    assert "[Back to sample index](#sample-index)" in markdown
     assert "<select" not in markdown
     assert streamlit_stub.write_calls.count("**sample_name:** Sample-2") == 1
     assert streamlit_stub.write_calls.count("**sample_name:** Sample-10") == 1
@@ -1238,6 +1238,74 @@ def test_sample_details_renders_navigation_and_every_filtered_sample():
     assert "✅ rule-1" not in streamlit_stub.write_calls
     assert "**Failed Rules:**" in streamlit_stub.write_calls
     assert "❌ rule-2" in streamlit_stub.write_calls
+
+
+def test_sample_details_navigation_columns_come_from_mapping():
+    # Mapping metadata should control index columns, labels, and order.
+    streamlit_stub.reset()
+    dashboard = _bare_dashboard()
+    dashboard.mapping = {
+        "Sections": {
+            "Basic": {
+                "Sample Name": {
+                    "data": {"mapping": "sample_name"},
+                    "report": {
+                        "id": True,
+                        "sample_details_index": True,
+                        "sample_details_order": 1,
+                        "label": "Configured <sample>",
+                    },
+                }
+            },
+            "Read_QC": {
+                "Action": {
+                    "data": {"mapping": "qc_action"},
+                    "report": {
+                        "sample_details_index": True,
+                        "sample_details_order": 3,
+                        "label": "Disposition",
+                    },
+                },
+                "Coverage": {
+                    "data": {"mapping": "coverage_x"},
+                    "report": {
+                        "sample_details_index": True,
+                        "sample_details_order": 2,
+                        "label": "Read depth",
+                    },
+                },
+            },
+        }
+    }
+    data = pd.DataFrame(
+        [
+            {
+                "sample_name": "S1",
+                "qc_action": "review",
+                "species": "Not indexed",
+                "qc_outcome": "FAIL",
+            }
+        ]
+    )
+
+    dashboard.render_sample_details_tab(data)
+
+    navigation_html = next(
+        message
+        for message, _ in streamlit_stub.markdown_calls
+        if 'class="uqcme-sample-index"' in message
+    )
+    assert "Configured <sample>" not in navigation_html
+    assert navigation_html.index(
+        "Configured &lt;sample&gt;</th>"
+    ) < navigation_html.index("Read depth</th>")
+    assert navigation_html.index("Read depth</th>") < navigation_html.index(
+        "Disposition</th>"
+    )
+    assert "<th>Species</th>" not in navigation_html
+    assert "<th>QC outcome</th>" not in navigation_html
+    assert '<a href="#sample-s1">S1</a>' in navigation_html
+    assert "<td>—</td>" in navigation_html
 
 
 def test_sample_details_escapes_values_and_disambiguates_duplicate_anchors():

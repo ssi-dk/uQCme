@@ -664,7 +664,7 @@ class QCDashboard:
 
     def render_header(self):
         """Render the application header."""
-        st.title("🔬 uQCme - Microbial HEYA Quality Control Dashboard")
+        st.title("🔬 uQCme - Microbial Quality Control Dashboard")
 
     def render_sidebar_metrics(self, filtered_data: pd.DataFrame, target=None):
         """Render summary metrics at the top of the sidebar."""

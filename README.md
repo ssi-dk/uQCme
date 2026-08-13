@@ -278,6 +278,131 @@ between `0` and `1`. Species names are matched after trimming whitespace and
 without regard to case. Null, empty, or whitespace-only table values display as
 an em dash and appear as `Missing species` in the distribution chart.
 
+### Mapping-driven FilteringSection views
+
+The dashboard can expose named, reusable views from a top-level
+`FilteringSections` object in `mapping.yaml`. Each named view defines the
+columns shown in Data Preview and the row conditions applied before the normal
+manual sidebar filters:
+
+```yaml
+FilteringSections:
+  LabA view:
+    columns:
+      Sample:
+        data:
+          mapping: sample_name
+      QC outcome:
+        data:
+          mapping: qc_outcome
+      Species:
+        data:
+          mapping: species
+    filters:
+      Lab group:
+        data:
+          mapping: lab_group
+        operator: equals
+        value: LabA
+
+  LabB view:
+    columns:
+      Sample:
+        data:
+          mapping: sample_name
+      QC action:
+        data:
+          mapping: qc_action
+      Coverage:
+        data:
+          mapping: coverage_x
+    filters:
+      Lab group:
+        data:
+          mapping: lab_group
+        operator: equals
+        value: LabB
+```
+
+These examples represent two lab-specific saved views. `LabA view` and
+`LabB view` filter on a synthetic `lab_group` field and intentionally expose
+different Data Preview columns; deployments can replace that field and the
+column mappings with the names used by their own lab-group data.
+The examples deliberately do not encode PASS/FAIL as separate presets; use the
+manual QC outcome filter when an ad-hoc outcome view is needed.
+The bundled example input includes synthetic `LabA` and `LabB` assignments for
+this field.
+
+The mapping keys are user-facing labels and are kept in YAML declaration
+order. `columns` controls the ordered maximum set of Data Preview columns;
+the table's built-in controls may hide one of those columns, but cannot reveal
+columns outside the view. Other dashboard tabs and configured sample actions
+continue to receive every column in the row-filtered dataframe.
+
+The Data Preview table's built-in CSV download contains the columns currently
+shown by the table. The **Download all filtered columns (CSV)** button exports
+the same row-filtered result with every available dataframe column, including
+columns hidden by the active preset.
+
+Filtering conditions support four operators:
+
+```yaml
+# Scalar equality
+operator: equals
+value: PASS
+
+# Membership in an explicit list
+operator: in
+values: [PASS, WARNING]
+
+# Case-insensitive literal substring search
+operator: contains
+value: coli
+
+# Inclusive numeric bounds; at least one bound is required
+operator: range
+min: 10
+max: 100
+```
+
+All conditions inside one `FilteringSection` are combined with AND logic.
+The selected view is applied first, followed by any manual sidebar filters.
+Manual widget choices continue to come from the complete dataset, so valid
+choices do not disappear when a view currently has no matching rows. An empty
+result is valid and remains visible as a zero-row result.
+
+When the configured QC outcome column contains failure identifiers, its manual
+dropdown also offers a semantic `FAIL` choice. Selecting it matches any
+comma-separated outcome token whose name begins with `FAIL`, such as
+`FAIL_CONTAMINATION` or `FAIL_SIZE`, rather than requiring an exact value.
+
+Field mappings use the same fallback rules as the rest of the dashboard:
+`data.mapping` candidates are tried before `QC.mapping` candidates. A mapping
+may be a string or an ordered list; the first candidate present in the loaded
+data wins. Missing filter columns disable the view and show a warning. Missing
+display columns are omitted with a warning, and a view with no remaining
+display columns cannot be activated.
+
+The complete maintained examples are available in
+[`input/example/mapping.yaml`](input/example/mapping.yaml) and
+[`src/uQCme/defaults/mapping.yaml`](src/uQCme/defaults/mapping.yaml).
+
+#### Sharing and resetting a view
+
+Activating a view stores its exact name in the URL as
+`?filtering_section=<name>`. Spaces and special characters are URL-encoded by
+the browser, so a shared link or hard refresh can restore a valid named view.
+Manual filters and sample selections remain session-only; they are not encoded
+in the URL. An unknown or unavailable URL name falls back safely to the normal
+view with a warning.
+
+When switching views, manual controls for columns controlled by the newly
+selected view are cleared to prevent contradictory state. Unrelated manual
+filters and unrelated URL parameters are preserved. The **Clear View &
+Filters** action removes the URL view, manual widget state, selected samples,
+Data Preview editor state, and section visibility state. The normal section
+defaults are restored on the next rerun.
+
 ## Output Files
 
 ### 1. QC Results (`qc_results.tsv`)

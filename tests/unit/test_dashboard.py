@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+from io import StringIO
 import sys
 import types
 from pathlib import Path
@@ -37,7 +38,7 @@ class StreamlitStub(types.ModuleType):
         self.sidebar.header = self._sidebar_header
         self.sidebar.subheader = self._sidebar_subheader
         self.sidebar.markdown = self._sidebar_markdown
-        self.sidebar.button = lambda *args, **kwargs: False
+        self.sidebar.button = self._sidebar_button
         self.sidebar.slider = self._sidebar_slider
         self.sidebar.selectbox = self._sidebar_selectbox
         self.sidebar.text_input = self._sidebar_text_input
@@ -59,6 +60,17 @@ class StreamlitStub(types.ModuleType):
         self.markdown_calls = []
         self.dataframe_calls = []
         self.data_editor_calls = []
+        self.download_button_calls = []
+        self.rerun_calls = 0
+        self.button_calls = []
+        self.button_values = {}
+        self.slider_calls = []
+        self.slider_values = {}
+        self.selectbox_calls = []
+        self.selectbox_values = {}
+        self.text_input_calls = []
+        self.text_input_values = {}
+        self.data_editor_transform = None
         self.session_state = _SessionStateStub()
         self.query_params = _QueryParamsStub()
 
@@ -134,17 +146,37 @@ class StreamlitStub(types.ModuleType):
     def _sidebar_markdown(self, *args, **kwargs):
         self.events.append("sidebar.markdown")
 
+    def _sidebar_button(self, label, **kwargs):
+        self.events.append(f"sidebar.button:{label}")
+        self.button_calls.append((label, kwargs))
+        return self.button_values.get(label, False)
+
     def _sidebar_container(self):
         return _InsertedContextStub(self.events, "sidebar.container", len(self.events))
 
     def _sidebar_slider(self, *args, **kwargs):
-        return kwargs.get("value")
+        key = kwargs.get("key")
+        self.slider_calls.append((args, kwargs))
+        value = self.slider_values.get(key, kwargs.get("value"))
+        if key:
+            self.session_state[key] = value
+        return value
 
     def _sidebar_selectbox(self, label, options, index=0, **kwargs):
-        return options[index]
+        key = kwargs.get("key")
+        self.selectbox_calls.append((label, list(options), kwargs))
+        value = self.selectbox_values.get(key, options[index])
+        if key:
+            self.session_state[key] = value
+        return value
 
     def _sidebar_text_input(self, *args, **kwargs):
-        return kwargs.get("value", "")
+        key = kwargs.get("key")
+        self.text_input_calls.append((args, kwargs))
+        value = self.text_input_values.get(key, kwargs.get("value", ""))
+        if key:
+            self.session_state[key] = value
+        return value
 
     def json(self, payload):
         self.events.append("json")
@@ -159,8 +191,24 @@ class StreamlitStub(types.ModuleType):
         self.events.append("data_editor")
         self.data_editor_calls.append((data, kwargs))
         if data.__class__.__name__ == "Styler":
-            return data.data.copy()
-        return data.copy()
+            edited_data = data.data.copy()
+        elif hasattr(data, "data") and not hasattr(data, "columns"):
+            edited_data = data.data.copy()
+        else:
+            edited_data = data.copy()
+        if self.data_editor_transform is not None:
+            return self.data_editor_transform(edited_data)
+        return edited_data
+
+    def download_button(self, label, data, **kwargs):
+        self.events.append(f"download_button:{label}")
+        self.download_button_calls.append((label, data, kwargs))
+        return False
+
+    def button(self, label, **kwargs):
+        self.events.append(f"button:{label}")
+        self.button_calls.append((label, kwargs))
+        return self.button_values.get(label, False)
 
     def expander(self, *args, **kwargs):
         self.events.append("expander")
@@ -173,7 +221,8 @@ class StreamlitStub(types.ModuleType):
         raise AssertionError("st.stop called unexpectedly")
 
     def rerun(self):
-        raise AssertionError("st.rerun called unexpectedly")
+        self.events.append("rerun")
+        self.rerun_calls += 1
 
     @property
     def runtime(self):
@@ -260,6 +309,12 @@ sys.modules["uQCme.plot"] = plot_stub
 from uQCme import app  # noqa: E402
 from uQCme.core import loader  # noqa: E402
 from uQCme.core.config import UQCMeConfig  # noqa: E402
+from uQCme.core.filtering import (  # noqa: E402
+    ResolvedField,
+    ResolvedFilter,
+    ResolvedFilteringSection,
+)
+from uQCme.core.mapping import FilteringCondition, FilteringSectionsConfig  # noqa: E402
 
 dashboard_main = importlib.import_module("uQCme.app.main")
 
@@ -357,6 +412,738 @@ def _bare_dashboard(table_height: int = 3600, ui_styling=None):
     dashboard.data = pd.DataFrame()
     dashboard.qc_rules = pd.DataFrame()
     return dashboard
+
+
+def _dashboard_state_section(name="Local group"):
+    """Build a resolved preset for dashboard state wrapper tests."""
+    condition = FilteringCondition(
+        data={"mapping": "sample_name"}, operator="equals", value="S1"
+    )
+    return ResolvedFilteringSection(
+        name=name,
+        columns=(ResolvedField("Sample", "sample_name"),),
+        filters=(ResolvedFilter("Sample", "sample_name", condition),),
+        available=True,
+        warnings=(),
+    )
+
+
+def _dashboard_filtering_config():
+    # Build ordered preset definitions for sidebar composition tests.
+    return FilteringSectionsConfig(
+        sections={
+            "Pass only": {
+                "columns": {
+                    "Sample": {"data": {"mapping": "sample_name"}},
+                },
+                "filters": {
+                    "Outcome": {
+                        "data": {"mapping": "qc_outcome"},
+                        "operator": "equals",
+                        "value": "PASS",
+                    },
+                },
+            },
+            "Local group": {
+                "columns": {
+                    "Sample": {"data": {"mapping": "sample_name"}},
+                },
+                "filters": {
+                    "Group": {
+                        "data": {"mapping": "group"},
+                        "operator": "equals",
+                        "value": "local",
+                    },
+                },
+            },
+        }
+    )
+
+
+def _dashboard_with_sidebar_filters():
+    # Build a dashboard with filterable mapped columns and deterministic rows.
+    dashboard = _bare_dashboard()
+    dashboard.mapping = {
+        "Sections": {
+            "Basic": {
+                "Name": {
+                    "data": {"mapping": "sample_name"},
+                    "report": {"id": True},
+                },
+                "Outcome": {
+                    "data": {"mapping": "qc_outcome"},
+                    "report": {"filter": True},
+                },
+                "Group": {
+                    "data": {"mapping": "group"},
+                    "report": {"filter": True},
+                },
+            }
+        }
+    }
+    dashboard.filtering_sections = _dashboard_filtering_config()
+    dashboard.data = pd.DataFrame(
+        [
+            {"sample_name": "S1", "qc_outcome": "PASS", "group": "local"},
+            {"sample_name": "S2", "qc_outcome": "PASS", "group": "remote"},
+            {"sample_name": "S3", "qc_outcome": "FAIL", "group": "remote"},
+        ]
+    )
+    return dashboard
+
+
+def _dashboard_with_preview_preset():
+    # Build a preset whose display columns intentionally omit the sample ID.
+    dashboard = _bare_dashboard()
+    dashboard.mapping = {
+        "Sections": {
+            "Basic": {
+                "Sample ID": {
+                    "data": {"mapping": "sample_id"},
+                    "report": {"id": True},
+                },
+                "Display A": {"data": {"mapping": "display_a"}},
+                "Display B": {"data": {"mapping": "display_b"}},
+                "Secret": {"data": {"mapping": "secret_value"}},
+                "API value": {"data": {"mapping": "api_value"}},
+            }
+        }
+    }
+    dashboard.data = pd.DataFrame(
+        [
+            {
+                "sample_id": "S1",
+                "display_a": "A1",
+                "display_b": "B1",
+                "secret_value": "hidden-1",
+                "api_value": "value-1",
+            },
+            {
+                "sample_id": "S2",
+                "display_a": "A2",
+                "display_b": "B2",
+                "secret_value": "hidden-2",
+                "api_value": "value-2",
+            },
+        ],
+        index=[4, 9],
+    )
+    dashboard._active_filtering_section = ResolvedFilteringSection(
+        name="Preset",
+        columns=(
+            ResolvedField("Second", "display_b"),
+            ResolvedField("First", "display_a"),
+        ),
+        filters=(),
+        available=True,
+        warnings=(),
+    )
+    return dashboard
+
+
+def _dashboard_with_integrated_filtering_sections():
+    # Build two lab views with different columns and one manual filter.
+    dashboard = _bare_dashboard()
+    dashboard.mapping = {
+        "Sections": {
+            "Basic": {
+                "Sample ID": {
+                    "data": {"mapping": "sample_id"},
+                    "report": {"id": True},
+                },
+                "Group": {
+                    "data": {"mapping": "group"},
+                    "report": {"filter": True},
+                },
+                "QC outcome": {
+                    "data": {"mapping": "qc_outcome"},
+                    "report": {"filter": True},
+                },
+                "Display A": {"data": {"mapping": "display_a"}},
+                "Display B": {"data": {"mapping": "display_b"}},
+                "Coverage": {"data": {"mapping": "coverage_x"}},
+                "Secret": {"data": {"mapping": "secret_value"}},
+            }
+        }
+    }
+    dashboard.filtering_sections = FilteringSectionsConfig(
+        sections={
+            "LabA view": {
+                "columns": {
+                    "Display A": {"data": {"mapping": "display_a"}},
+                    "QC outcome": {"data": {"mapping": "qc_outcome"}},
+                },
+                "filters": {
+                    "Lab group": {
+                        "data": {"mapping": "lab_group"},
+                        "operator": "equals",
+                        "value": "LabA",
+                    }
+                },
+            },
+            "LabB view": {
+                "columns": {
+                    "Display B": {"data": {"mapping": "display_b"}},
+                    "Coverage": {"data": {"mapping": "coverage_x"}},
+                },
+                "filters": {
+                    "Lab group": {
+                        "data": {"mapping": "lab_group"},
+                        "operator": "equals",
+                        "value": "LabB",
+                    }
+                },
+            },
+        }
+    )
+    dashboard.data = pd.DataFrame(
+        [
+            {
+                "sample_id": "S1",
+                "lab_group": "LabA",
+                "group": "local",
+                "qc_outcome": "PASS",
+                "display_a": "A1",
+                "display_b": "B1",
+                "coverage_x": 10,
+                "secret_value": "hidden-1",
+            },
+            {
+                "sample_id": "S2",
+                "lab_group": "LabA",
+                "group": "remote",
+                "qc_outcome": "FAIL",
+                "display_a": "A2",
+                "display_b": "B2",
+                "coverage_x": 20,
+                "secret_value": "hidden-2",
+            },
+            {
+                "sample_id": "S3",
+                "lab_group": "LabB",
+                "group": "remote",
+                "qc_outcome": "FAIL_CONTAMINATION",
+                "display_a": "A3",
+                "display_b": "B3",
+                "coverage_x": 30,
+                "secret_value": "hidden-3",
+            },
+            {
+                "sample_id": "S4",
+                "lab_group": "LabB",
+                "group": "local",
+                "qc_outcome": "PASS",
+                "display_a": "A4",
+                "display_b": "B4",
+                "coverage_x": 40,
+                "secret_value": "hidden-4",
+            },
+        ],
+        index=[10, 12, 14, 16],
+    )
+    return dashboard
+
+
+def test_dashboard_activation_wrapper_updates_url_and_reruns():
+    """Dashboard activation should use built-in query params and rerun once."""
+    streamlit_stub.reset()
+    dashboard = _bare_dashboard()
+    dashboard.mapping = {
+        "Sections": {
+            "Basic": {
+                "Name": {
+                    "data": {"mapping": "sample_name"},
+                    "report": {"id": True},
+                }
+            }
+        }
+    }
+    streamlit_stub.session_state["filter_sample_name"] = "S2"
+
+    dashboard._activate_filtering_section(_dashboard_state_section())
+
+    assert streamlit_stub.query_params["filtering_section"] == "Local group"
+    assert "filter_sample_name" not in streamlit_stub.session_state
+    assert streamlit_stub.rerun_calls == 1
+
+
+def test_sidebar_preset_buttons_follow_mapping_order_before_manual_filters():
+    # Preset buttons should be emitted in declaration order before the header.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_sidebar_filters()
+
+    dashboard.render_sidebar_filters()
+
+    preset_buttons = [
+        (label, kwargs)
+        for label, kwargs in streamlit_stub.button_calls
+        if label != "🧹 Clear View & Filters"
+    ]
+    assert [label for label, _ in preset_buttons] == [
+        "Pass only",
+        "Local group",
+    ]
+    button_positions = [
+        streamlit_stub.events.index("sidebar.button:Pass only"),
+        streamlit_stub.events.index("sidebar.button:Local group"),
+    ]
+    presets_header_position = streamlit_stub.events.index("sidebar.subheader:Presets")
+    header_position = streamlit_stub.events.index("sidebar.header:🔍 Filters")
+    assert presets_header_position < button_positions[0] < button_positions[1]
+    assert button_positions[1] < header_position
+
+
+def test_sidebar_active_preset_uses_primary_button_type():
+    # The active preset is visually identified through Streamlit's button type.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_sidebar_filters()
+    streamlit_stub.query_params["filtering_section"] = "Local group"
+
+    dashboard.render_sidebar_filters()
+
+    button_types = {
+        label: kwargs.get("type")
+        for label, kwargs in streamlit_stub.button_calls
+        if label != "🧹 Clear View & Filters"
+    }
+    assert button_types == {"Pass only": "secondary", "Local group": "primary"}
+
+
+def test_sidebar_preset_button_delegates_activation_and_reruns():
+    # Clicking a usable preset uses the FS-03 transition helper.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_sidebar_filters()
+    streamlit_stub.button_values["Pass only"] = True
+
+    dashboard.render_sidebar_filters()
+
+    assert streamlit_stub.query_params["filtering_section"] == "Pass only"
+    assert streamlit_stub.rerun_calls == 1
+
+
+def test_unavailable_preset_is_disabled_and_warned_once():
+    # A missing filter column must not be activatable.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_sidebar_filters()
+    dashboard.filtering_sections = FilteringSectionsConfig(
+        sections={
+            "Missing data": {
+                "columns": {"Sample": {"data": {"mapping": "sample_name"}}},
+                "filters": {
+                    "Missing": {
+                        "data": {"mapping": "not_loaded"},
+                        "operator": "equals",
+                        "value": "x",
+                    }
+                },
+            }
+        }
+    )
+
+    dashboard.render_sidebar_filters()
+
+    preset_button = next(
+        call for call in streamlit_stub.button_calls if call[0] == "Missing data"
+    )
+    assert preset_button[1]["disabled"] is True
+    assert len(streamlit_stub.warning_calls) == 1
+    assert "could not resolve" in streamlit_stub.warning_calls[0]
+
+
+def test_preset_filter_runs_before_manual_sample_search_with_and_logic():
+    # A manual filter further narrows the rows selected by the preset.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_sidebar_filters()
+    streamlit_stub.query_params["filtering_section"] = "Pass only"
+    streamlit_stub.text_input_values["search_sample_name"] = "S1"
+
+    filtered_data = dashboard.render_sidebar_filters()
+
+    assert filtered_data["sample_name"].tolist() == ["S1"]
+    assert dashboard.data["sample_name"].tolist() == ["S1", "S2", "S3"]
+
+
+def test_integrated_activation_replaces_overlap_and_preserves_manual_filter():
+    # Activation clears the preset-owned widget while retaining other filters.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_sidebar_filters()
+    streamlit_stub.session_state.update(
+        {
+            "filter_qc_outcome": "FAIL",
+            "filter_group": "remote",
+        }
+    )
+
+    pass_section = dashboard._resolve_runtime_filtering_sections()["Pass only"]
+    dashboard._activate_filtering_section(pass_section)
+    assert "filter_qc_outcome" not in streamlit_stub.session_state
+    streamlit_stub.selectbox_values["filter_group"] = "remote"
+
+    filtered_data = dashboard.render_sidebar_filters()
+
+    assert streamlit_stub.session_state["filter_qc_outcome"] == "All"
+    assert streamlit_stub.session_state["filter_group"] == "remote"
+    assert filtered_data["sample_name"].tolist() == ["S2"]
+    pd.testing.assert_frame_equal(
+        dashboard.data,
+        pd.DataFrame(
+            [
+                {"sample_name": "S1", "qc_outcome": "PASS", "group": "local"},
+                {"sample_name": "S2", "qc_outcome": "PASS", "group": "remote"},
+                {"sample_name": "S3", "qc_outcome": "FAIL", "group": "remote"},
+            ]
+        ),
+    )
+
+
+def test_manual_widget_options_use_full_data_after_preset_filtering():
+    # Manual choices remain discoverable even when the preset excludes rows.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_sidebar_filters()
+    streamlit_stub.query_params["filtering_section"] = "Pass only"
+
+    dashboard.render_sidebar_filters()
+
+    outcome_call = next(
+        call
+        for call in streamlit_stub.selectbox_calls
+        if call[2].get("key") == "filter_qc_outcome"
+    )
+    assert outcome_call[1] == ["All", "FAIL", "PASS"]
+
+
+def test_qc_outcome_fail_option_matches_composite_failure_outcomes():
+    # The semantic FAIL choice should match every failure outcome token.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_sidebar_filters()
+    dashboard.data = pd.DataFrame(
+        [
+            {"sample_name": "S1", "qc_outcome": "PASS", "group": "local"},
+            {
+                "sample_name": "S2",
+                "qc_outcome": "FAIL_CONTAMINATION",
+                "group": "remote",
+            },
+            {
+                "sample_name": "S3",
+                "qc_outcome": "FAIL,FAIL_SIZE",
+                "group": "remote",
+            },
+        ]
+    )
+    streamlit_stub.selectbox_values["filter_qc_outcome"] = "FAIL"
+
+    filtered_data = dashboard.render_sidebar_filters()
+
+    assert filtered_data["sample_name"].tolist() == ["S2", "S3"]
+    outcome_call = next(
+        call
+        for call in streamlit_stub.selectbox_calls
+        if call[2].get("key") == "filter_qc_outcome"
+    )
+    assert "FAIL" in outcome_call[1]
+
+
+def test_missing_filtering_sections_preserves_existing_manual_pipeline():
+    # Without the optional config, no preset UI or preset mask is introduced.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_sidebar_filters()
+    dashboard.filtering_sections = FilteringSectionsConfig()
+    streamlit_stub.text_input_values["search_sample_name"] = "S3"
+
+    filtered_data = dashboard.render_sidebar_filters()
+
+    assert [
+        label
+        for label, _ in streamlit_stub.button_calls
+        if label != "🧹 Clear View & Filters"
+    ] == []
+    assert "sidebar.subheader:Presets" not in streamlit_stub.events
+    assert filtered_data["sample_name"].tolist() == ["S3"]
+
+
+def test_active_preset_limits_preview_to_ordered_display_columns():
+    # Preset display columns are the maximum table schema in configured order.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_preview_preset()
+
+    dashboard.render_data_tab(dashboard.data)
+
+    rendered_data, kwargs = streamlit_stub.data_editor_calls[0]
+    rendered_frame = (
+        rendered_data.data if hasattr(rendered_data, "data") else rendered_data
+    )
+    assert list(rendered_frame.columns) == ["Select", "display_b", "display_a"]
+    assert kwargs["column_order"] == ["Select", "display_b", "display_a"]
+    assert "secret_value" not in rendered_frame.columns
+    assert "api_value" not in rendered_frame.columns
+
+
+def test_full_filtered_csv_download_keeps_rows_and_all_columns():
+    # The explicit export keeps all filtered columns, unlike the preview table.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_preview_preset()
+    filtered_data = dashboard.data.loc[[9]]
+
+    dashboard.render_data_tab(filtered_data)
+
+    download = next(
+        call
+        for call in streamlit_stub.download_button_calls
+        if call[0] == "Download all filtered columns (CSV)"
+    )
+    exported_data = pd.read_csv(StringIO(download[1].decode("utf-8")))
+
+    assert download[2] == {
+        "file_name": "uqcme_filtered_all_columns.csv",
+        "mime": "text/csv",
+        "key": "download_filtered_all_columns",
+    }
+    assert list(exported_data.columns) == list(filtered_data.columns)
+    assert exported_data["sample_id"].tolist() == ["S2"]
+    assert "secret_value" in exported_data.columns
+    assert "api_value" in exported_data.columns
+    assert streamlit_stub.events.index("data_editor") < streamlit_stub.events.index(
+        "download_button:Download all filtered columns (CSV)"
+    )
+
+
+def test_active_preset_bypasses_section_visibility_controls():
+    # Preset-owned visibility must not render the legacy section selector.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_preview_preset()
+
+    dashboard.render_data_tab(dashboard.data)
+
+    assert "subheader:Section Visibility" not in streamlit_stub.events
+    assert "pills:Visible sections" not in streamlit_stub.events
+    assert "data_preview_visible_sections" not in streamlit_stub.session_state
+
+
+def test_integrated_url_view_filters_tabs_and_locks_preview_columns():
+    # A shared URL drives one row result through the preview and dashboard tabs.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_integrated_filtering_sections()
+    dashboard.plotter = types.SimpleNamespace(
+        create_quality_overview_dashboard=lambda data, metrics: {}
+    )
+    streamlit_stub.query_params["filtering_section"] = "LabB view"
+    streamlit_stub.selectbox_values["filter_group"] = "local"
+    original_data = dashboard.data.copy(deep=True)
+
+    filtered_data = dashboard.render_sidebar_filters()
+
+    assert filtered_data["sample_id"].tolist() == ["S4"]
+    dashboard.render_data_tab(filtered_data)
+    rendered_data, kwargs = streamlit_stub.data_editor_calls[0]
+    rendered_frame = (
+        rendered_data.data if hasattr(rendered_data, "data") else rendered_data
+    )
+    assert list(rendered_frame.columns) == ["Select", "display_b", "coverage_x"]
+    assert kwargs["column_order"] == ["Select", "display_b", "coverage_x"]
+    assert "subheader:Section Visibility" not in streamlit_stub.events
+    assert "secret_value" not in rendered_frame.columns
+
+    received_frames = []
+
+    def capture_quality_catalog(data):
+        received_frames.append(data.copy())
+        return []
+
+    dashboard._get_quality_metric_catalog = capture_quality_catalog
+    dashboard.render_overview_tab(filtered_data)
+    dashboard.render_quality_metrics_tab(filtered_data)
+    dashboard.render_sample_details_tab(filtered_data)
+
+    assert len(received_frames) == 3
+    for received_data in received_frames:
+        pd.testing.assert_frame_equal(received_data, filtered_data)
+        assert set(received_data.columns) == set(original_data.columns)
+    pd.testing.assert_frame_equal(dashboard.data, original_data)
+
+
+def test_integrated_switch_empty_result_and_full_reset():
+    # Switching views supports extra filters, empty results, and full reset.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_integrated_filtering_sections()
+    streamlit_stub.query_params.update(
+        {"filtering_section": "LabA view", "debug": "true"}
+    )
+    streamlit_stub.selectbox_values["filter_group"] = "remote"
+
+    lab_a_data = dashboard.render_sidebar_filters()
+    assert lab_a_data["sample_id"].tolist() == ["S2"]
+
+    lab_b_section = dashboard._resolve_runtime_filtering_sections()["LabB view"]
+    dashboard._activate_filtering_section(lab_b_section)
+    streamlit_stub.selectbox_values["filter_group"] = "local"
+    lab_b_data = dashboard.render_sidebar_filters()
+    assert lab_b_data["sample_id"].tolist() == ["S4"]
+
+    streamlit_stub.text_input_values["search_sample_name"] = "missing"
+    empty_data = dashboard.render_sidebar_filters()
+    assert empty_data.empty
+    assert not dashboard.data.empty
+
+    streamlit_stub.session_state.update(
+        {
+            "selected_samples": {"S4"},
+            "data_preview_table": {"edited": True},
+            "data_preview_visible_sections": ["Basic"],
+        }
+    )
+    dashboard._clear_view_and_filters()
+
+    assert streamlit_stub.query_params == {"debug": "true"}
+    assert streamlit_stub.session_state == {}
+    assert streamlit_stub.rerun_calls == 2
+
+
+def test_selection_maps_hidden_id_back_to_full_row_by_index():
+    # Selection uses the stable source index even when the ID is not displayed.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_preview_preset()
+
+    def check_first_row(edited_data):
+        edited_data.loc[4, "Select"] = True
+        return edited_data
+
+    streamlit_stub.data_editor_transform = check_first_row
+    dashboard.render_data_tab(dashboard.data)
+
+    assert streamlit_stub.session_state["selected_samples"] == {"S1"}
+
+
+def test_selection_ignores_editor_rows_not_in_source_dataframe():
+    # An unexpected editor index must not select an unrelated source row.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_preview_preset()
+
+    def add_unknown_selected_row(edited_data):
+        edited_data.loc[999, "Select"] = True
+        return edited_data
+
+    streamlit_stub.data_editor_transform = add_unknown_selected_row
+    dashboard.render_data_tab(dashboard.data)
+
+    assert streamlit_stub.session_state["selected_samples"] == set()
+
+
+def test_sample_actions_receive_full_filtered_rows_when_columns_are_hidden():
+    # Downstream actions retain API values and IDs omitted from the preview.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_preview_preset()
+    captured = {}
+
+    def capture_rows(filtered_data):
+        captured["data"] = filtered_data
+
+    dashboard.render_sample_api_actions = capture_rows
+    dashboard.render_data_tab(dashboard.data)
+
+    assert list(captured["data"].columns) == list(dashboard.data.columns)
+    pd.testing.assert_frame_equal(captured["data"], dashboard.data)
+
+
+def test_selected_rows_retain_hidden_api_values_for_downstream_actions():
+    # Selection lookup uses the full filtered dataframe, not preview columns.
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_preview_preset()
+    streamlit_stub.session_state["selected_samples"] = {"S2"}
+
+    selected_rows = dashboard._get_selected_sample_rows(dashboard.data)
+
+    assert selected_rows["sample_id"].tolist() == ["S2"]
+    assert selected_rows["api_value"].tolist() == ["value-2"]
+
+
+def test_dashboard_clear_view_wrapper_preserves_unrelated_url_state():
+    """Dashboard reset should clear feature state and preserve other URL values."""
+    streamlit_stub.reset()
+    dashboard = _bare_dashboard()
+    streamlit_stub.query_params.update(
+        {"filtering_section": "Local group", "debug": "true"}
+    )
+    streamlit_stub.session_state.update(
+        {
+            "search_sample_name": "S1",
+            "selected_samples": {"S1"},
+            "data_preview_table": {"edited": True},
+            "data_preview_visible_sections": ["Basic"],
+        }
+    )
+
+    dashboard._clear_view_and_filters()
+
+    assert streamlit_stub.query_params == {"debug": "true"}
+    assert streamlit_stub.session_state == {}
+    assert streamlit_stub.rerun_calls == 1
+
+
+def test_load_data_parses_filtering_sections_after_loading_mapping(
+    monkeypatch, tmp_path, test_data_paths
+):
+    """Dashboard mapping loading should initialize typed FilteringSections."""
+    streamlit_stub.reset()
+    mapping_path = tmp_path / "mapping_with_filtering_sections.yaml"
+    mapping_path.write_text(
+        yaml.safe_dump(
+            {
+                "Sections": {
+                    "Basic": {
+                        "Name": {
+                            "data": {"mapping": "sample_name"},
+                            "report": {"id": True},
+                        },
+                        "QC outcome": {
+                            "data": {"mapping": "qc_outcome"},
+                        },
+                    }
+                },
+                "FilteringSections": {
+                    "Local group": {
+                        "columns": {
+                            "Sample": {"data": {"mapping": "sample_name"}},
+                        },
+                        "filters": {
+                            "Status": {
+                                "data": {"mapping": "qc_outcome"},
+                                "operator": "equals",
+                                "value": "PASS",
+                            }
+                        },
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    config_path = tmp_path / "config_filtering_sections.yaml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "app": {
+                    "input": {
+                        "data": {"file": "unused.tsv"},
+                        "mapping": str(mapping_path),
+                        "qc_rules": str(test_data_paths["qc_rules"]),
+                        "qc_tests": str(test_data_paths["qc_tests"]),
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    dashboard = app.QCDashboard(str(config_path))
+    monkeypatch.setattr(
+        dashboard,
+        "_load_data_with_optional_api_debug",
+        lambda _data_config: pd.DataFrame(),
+    )
+
+    dashboard.load_data()
+
+    assert list(dashboard.filtering_sections.sections) == ["Local group"]
 
 
 def test_load_data_from_api(monkeypatch, tmp_path, test_data_paths):
@@ -800,8 +1587,8 @@ def test_explicit_other_section_mappings_are_preserved_with_unmapped_columns():
     )
 
 
-def test_data_tab_renders_section_visibility_above_table():
-    """Section visibility controls should render before the main table."""
+def test_data_tab_renders_section_visibility_below_table():
+    """Section visibility controls should render after the main table."""
     streamlit_stub.reset()
     dashboard = _bare_dashboard(table_height=4200)
     data = pd.DataFrame(
@@ -814,12 +1601,15 @@ def test_data_tab_renders_section_visibility_above_table():
 
     dashboard.render_data_tab(data)
 
-    heading_index = streamlit_stub.events.index("subheader:Section Visibility")
-    pills_index = streamlit_stub.events.index("pills:Visible sections")
-    info_index = streamlit_stub.events.index("info")
-    table_index = streamlit_stub.events.index("data_editor")
-
-    assert heading_index < pills_index < info_index < table_index
+    assert "data_editor" in streamlit_stub.events
+    assert "subheader:Section Visibility" in streamlit_stub.events
+    assert "pills:Visible sections" in streamlit_stub.events
+    assert streamlit_stub.events.index("data_editor") < streamlit_stub.events.index(
+        "subheader:Section Visibility"
+    )
+    assert streamlit_stub.events.index(
+        "subheader:Section Visibility"
+    ) < streamlit_stub.events.index("pills:Visible sections")
 
 
 def test_data_tab_omits_section_visibility_in_report_mode():

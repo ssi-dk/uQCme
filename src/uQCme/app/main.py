@@ -28,6 +28,11 @@ from uQCme.app.plot import (
     get_plottable_quality_metric_columns,
 )
 from uQCme.app.styling import SpeciesSupportStyling
+from uQCme.app.filtering_state import (
+    activate_filtering_section,
+    clear_filtering_section_state,
+    resolve_active_filtering_section,
+)
 from uQCme.core.loader import (
     collect_duplicate_row_warnings,
     get_unique_columns_from_mapping,
@@ -40,6 +45,12 @@ from uQCme.core.loader import (
 from uQCme.core.engine import QCProcessor
 from uQCme.core.config import UQCMeConfig, DataInput, SampleApiAction
 from uQCme.core.exceptions import ConfigError, DataLoadError, ValidationError
+from uQCme.core.filtering import (
+    ResolvedFilteringSection,
+    apply_filtering_section,
+    resolve_filtering_sections,
+)
+from uQCme.core.mapping import FilteringSectionsConfig, parse_filtering_sections
 
 
 class QCDashboard:
@@ -51,6 +62,8 @@ class QCDashboard:
         self.config: UQCMeConfig = self._load_config(config_path)
         self.data: pd.DataFrame = pd.DataFrame()
         self.mapping: Dict[str, Any] = {}
+        self.filtering_sections = FilteringSectionsConfig()
+        self._active_filtering_section: Optional[ResolvedFilteringSection] = None
         self.qc_rules: pd.DataFrame = pd.DataFrame()
         self.qc_tests: pd.DataFrame = pd.DataFrame()
         self.plotter: QCPlotter = QCPlotter(self.config)
@@ -418,6 +431,7 @@ class QCDashboard:
             mapping_path = self.config.app.input.mapping
             with open(mapping_path, "r", encoding="utf-8") as f:
                 self.mapping = yaml.safe_load(f)
+            self.filtering_sections = parse_filtering_sections(self.mapping)
 
             # Load processed QC results - check if API or file
             data_config = self.config.app.input.data
@@ -499,6 +513,9 @@ class QCDashboard:
             else:
                 self.warnings = None
 
+        except ConfigError as e:
+            st.error(f"Configuration error: {e}")
+            st.stop()
         except Exception as e:
             st.error(f"Error loading configuration files: {e}")
             st.stop()
@@ -755,10 +772,18 @@ class QCDashboard:
         return filterable_fields
 
     def _create_numerical_filter(
-        self, filtered_data: pd.DataFrame, column: str, field_name: str
+        self,
+        filtered_data: pd.DataFrame,
+        column: str,
+        field_name: str,
+        widget_data: Optional[pd.DataFrame] = None,
     ) -> pd.DataFrame:
         """Create and apply numerical range filter."""
-        unique_values = filtered_data[column].dropna()
+        widget_data = self.data if widget_data is None else widget_data
+        if column not in widget_data.columns or column not in filtered_data.columns:
+            return filtered_data
+
+        unique_values = widget_data[column].dropna()
 
         if len(unique_values) == 0:
             return filtered_data
@@ -804,15 +829,29 @@ class QCDashboard:
             return filtered_data[range_condition]
 
     def _create_categorical_filter(
-        self, filtered_data: pd.DataFrame, column: str, field_name: str
+        self,
+        filtered_data: pd.DataFrame,
+        column: str,
+        field_name: str,
+        widget_data: Optional[pd.DataFrame] = None,
     ) -> pd.DataFrame:
         """Create and apply categorical dropdown filter."""
-        unique_values = filtered_data[column].dropna()
+        widget_data = self.data if widget_data is None else widget_data
+        if column not in widget_data.columns or column not in filtered_data.columns:
+            return filtered_data
+
+        unique_values = widget_data[column].dropna()
 
         if len(unique_values) == 0:
             return filtered_data
 
         unique_sorted = sorted(unique_values.unique())
+
+        # Add a semantic FAIL choice for comma-separated QC outcome IDs.
+        if self._is_qc_outcome_column(column) and self._has_failure_outcome(
+            unique_values
+        ):
+            unique_sorted = sorted(set(unique_sorted) | {"FAIL"})
 
         # Only create filter if we have reasonable number of options
         threshold = self._get_dashboard_config("categorical_filter_threshold", 20)
@@ -838,16 +877,52 @@ class QCDashboard:
             key=f"filter_{column}",
         )
 
+        if selected_value == "FAIL" and self._is_qc_outcome_column(column):
+            outcome_tokens = filtered_data[column].astype("string").str.split(",")
+            failure_mask = outcome_tokens.map(
+                lambda tokens: (
+                    any(token.strip().upper().startswith("FAIL") for token in tokens)
+                    if isinstance(tokens, list)
+                    else False
+                )
+            )
+            return filtered_data[failure_mask.fillna(False)]
+
         if selected_value != "All":
             filter_condition = filtered_data[column] == selected_value
             return filtered_data[filter_condition]
 
         return filtered_data
 
+    def _is_qc_outcome_column(self, column: str) -> bool:
+        # Identify the configured final QC verdict column.
+        return column == self._get_outcome_field()
+
+    def _has_failure_outcome(self, values: pd.Series) -> bool:
+        # Detect any comma-separated outcome token beginning with FAIL.
+        outcome_tokens = values.astype("string").str.split(",")
+        return bool(
+            outcome_tokens.map(
+                lambda tokens: (
+                    any(token.strip().upper().startswith("FAIL") for token in tokens)
+                    if isinstance(tokens, list)
+                    else False
+                )
+            ).any()
+        )
+
     def _create_text_search_filter(
-        self, filtered_data: pd.DataFrame, column: str, field_name: str
+        self,
+        filtered_data: pd.DataFrame,
+        column: str,
+        field_name: str,
+        widget_data: Optional[pd.DataFrame] = None,
     ) -> pd.DataFrame:
         """Create and apply text search filter."""
+        widget_data = self.data if widget_data is None else widget_data
+        if column not in widget_data.columns or column not in filtered_data.columns:
+            return filtered_data
+
         # Check if filters should be reset
         reset_filters = st.session_state.get("filters_reset", False)
         default_value = ""
@@ -874,17 +949,75 @@ class QCDashboard:
 
         return filtered_data
 
-    def _clear_all_filters(self):
-        """Clear all filter-related session state values and selections."""
-        # Set a reset flag instead of trying to modify widget values directly
-        st.session_state["filters_reset"] = True
+    def _get_active_filtering_section(
+        self, sections: Dict[str, ResolvedFilteringSection]
+    ):
+        # Resolve the URL preset once per dashboard rerun.
+        query_params = getattr(st, "query_params", {})
+        return resolve_active_filtering_section(query_params, sections)
 
-        # Clear sample selections
-        if "selected_samples" in st.session_state:
-            st.session_state.selected_samples.clear()
-
-        # Force a rerun to refresh the interface
+    def _activate_filtering_section(self, section: ResolvedFilteringSection):
+        # Activate a preset and refresh the derived dashboard view.
+        query_params = getattr(st, "query_params", {})
+        activate_filtering_section(
+            query_params,
+            st.session_state,
+            section,
+            id_column=self._get_id_field(),
+        )
         st.rerun()
+
+    def _clear_view_and_filters(self):
+        # Clear the preset, manual widgets, selections, editor, and visibility.
+        query_params = getattr(st, "query_params", {})
+        clear_filtering_section_state(query_params, st.session_state)
+        st.rerun()
+
+    def _clear_all_filters(self):
+        # Keep the existing method name as a compatibility alias for the UI.
+        self._clear_view_and_filters()
+
+    def _render_filtering_section_buttons(
+        self,
+        sections: Dict[str, ResolvedFilteringSection],
+        active_section,
+    ) -> None:
+        # Render mapping-defined preset controls before manual filters.
+        if not sections:
+            return
+
+        st.sidebar.subheader("Presets")
+        unavailable_warnings = set()
+        if active_section.warning:
+            st.warning(active_section.warning)
+            if active_section.key is not None:
+                unavailable_warnings.add(active_section.key)
+
+        for name, section in sections.items():
+            if not section.available and name not in unavailable_warnings:
+                details = " ".join(section.warnings)
+                warning = f"FilteringSection '{name}' is unavailable."
+                if details:
+                    warning = f"{warning} {details}"
+                st.warning(warning)
+                unavailable_warnings.add(name)
+
+            is_active = active_section.section is section
+            if (
+                st.sidebar.button(
+                    name,
+                    key=f"filtering_section_{name}",
+                    type="primary" if is_active else "secondary",
+                    disabled=not section.available,
+                )
+                and section.available
+            ):
+                self._activate_filtering_section(section)
+
+    def _resolve_runtime_filtering_sections(self):
+        # Resolve all presets once against the complete loaded dataframe.
+        config = getattr(self, "filtering_sections", FilteringSectionsConfig())
+        return resolve_filtering_sections(config, self.data)
 
     def render_sidebar_filters(self):
         """Render sidebar filters for data exploration."""
@@ -892,26 +1025,35 @@ class QCDashboard:
             return self._apply_report_filters(self.data)
 
         summary_container = st.sidebar.container()
+
+        resolved_sections = self._resolve_runtime_filtering_sections()
+        active_section = self._get_active_filtering_section(resolved_sections)
+        self._active_filtering_section = active_section.section
+        self._render_filtering_section_buttons(resolved_sections, active_section)
+
+        filtered_data = self.data.copy()
+        if active_section.section is not None:
+            preset_data = apply_filtering_section(filtered_data, active_section.section)
+            if preset_data is not None:
+                filtered_data = preset_data
+
         st.sidebar.header("🔍 Filters")
 
-        # Add Clear All Filters button
-        if st.sidebar.button("🗑️ Clear All Filters", type="secondary"):
+        # Add the combined preset, filter, selection, and preview reset button.
+        if st.sidebar.button("🧹 Clear View & Filters", type="secondary"):
             self._clear_all_filters()
 
         # Get filterable fields from mapping configuration
         filterable_fields = self._get_filterable_fields(self.data)
-
-        # Apply filters
-        filtered_data = self.data.copy()
 
         # Generate dynamic filters based on mapping configuration
         for field_info in filterable_fields:
             column = field_info["column"]
             field_name = field_info["field_name"]
 
-            if column in filtered_data.columns:
-                # Get unique values for this column
-                unique_values = filtered_data[column].dropna()
+            if column in self.data.columns and column in filtered_data.columns:
+                # Get widget choices from complete data, then filter current rows.
+                unique_values = self.data[column].dropna()
 
                 if len(unique_values) > 0:
                     # Check if column is numerical
@@ -920,7 +1062,7 @@ class QCDashboard:
                     if is_numeric:
                         # Use extracted numerical filter method
                         filtered_data = self._create_numerical_filter(
-                            filtered_data, column, field_name
+                            filtered_data, column, field_name, widget_data=self.data
                         )
                     else:
                         # Categorical or text filters for non-numerical columns
@@ -933,20 +1075,18 @@ class QCDashboard:
                         if len(unique_sorted) <= threshold:
                             # Use extracted categorical filter method
                             filtered_data = self._create_categorical_filter(
-                                filtered_data, column, field_name
+                                filtered_data, column, field_name, widget_data=self.data
                             )
                         else:
                             # Use extracted text search filter method
                             filtered_data = self._create_text_search_filter(
-                                filtered_data, column, field_name
+                                filtered_data, column, field_name, widget_data=self.data
                             )
 
         # Add sample name search (always available)
         # Get the ID field from mapping
         id_field = self._get_id_field()
-        search_field = (
-            id_field if id_field and id_field in filtered_data.columns else None
-        )
+        search_field = id_field if id_field and id_field in self.data.columns else None
 
         # Check if filters should be reset
         reset_filters = st.session_state.get("filters_reset", False)
@@ -958,7 +1098,7 @@ class QCDashboard:
             if key in st.session_state:
                 del st.session_state[key]
 
-        if search_field:
+        if search_field and search_field in filtered_data.columns:
             sample_filter = st.sidebar.text_input(
                 f"Search {search_field}",
                 placeholder=f"Enter {search_field}...",
@@ -1387,28 +1527,69 @@ class QCDashboard:
         natural_height = header_height + (visible_rows * row_height) + frame_padding
         return min(max_height, natural_height)
 
+    def _selected_ids_from_editor(
+        self,
+        edited_data: pd.DataFrame,
+        selection_source: pd.DataFrame,
+        id_column: str,
+    ) -> set[str]:
+        # Map checked editor rows to source IDs only through stable indexes.
+        if not selection_source.index.is_unique:
+            return set()
+
+        selected_ids = set()
+        for index, row in edited_data.iterrows():
+            checked = row.get("Select", False)
+            if pd.isna(checked) or not bool(checked):
+                continue
+            if index not in selection_source.index:
+                continue
+
+            sample_id = selection_source.at[index, id_column]
+            if pd.isna(sample_id):
+                continue
+            selected_ids.add(str(sample_id))
+        return selected_ids
+
     def _render_styled_dataframe(
-        self, filtered_data: pd.DataFrame, column_order: list, key: str
+        self,
+        display_data: pd.DataFrame,
+        column_order: list,
+        key: str,
+        selection_source: Optional[pd.DataFrame] = None,
     ):
         """Helper method to render dataframe with selection checkboxes."""
         # Initialize session state for selected samples
         if "selected_samples" not in st.session_state:
             st.session_state.selected_samples = set()
 
-        # Get the ID column for sample selection
-        id_column = self._get_id_column(filtered_data)
+        # Keep the full filtered rows separate from the visible table columns.
+        selection_source = (
+            display_data if selection_source is None else selection_source
+        )
+
+        # Get the ID column for sample selection from the complete source.
+        id_column = self._get_id_column(selection_source)
 
         # Create a working copy of the data
-        display_data = filtered_data.copy()
+        display_data = display_data.copy()
 
-        # Add selection checkbox column if ID column exists
-        if id_column and id_column in filtered_data.columns:
+        # Add selection checkbox column even when the ID is not displayed.
+        if id_column and id_column in selection_source.columns:
             # Add a checkbox column for selection
-            display_data["Select"] = display_data[id_column].apply(
-                lambda x: x in st.session_state.selected_samples
+            selected_ids = {
+                str(sample_id) for sample_id in st.session_state.selected_samples
+            }
+            selection_flags = selection_source[id_column].astype(str).isin(selected_ids)
+            display_data.insert(
+                0,
+                "Select",
+                selection_flags.reindex(display_data.index, fill_value=False),
             )
             # Put the select column first
-            column_order = ["Select"] + column_order
+            column_order = ["Select"] + [
+                column for column in column_order if column != "Select"
+            ]
 
         # Configure columns
         column_config = {}
@@ -1478,12 +1659,9 @@ class QCDashboard:
 
         # Update selected samples based on checkbox changes
         if "Select" in edited_data.columns and id_column:
-            # Get current selections from the edited data
-            current_selections = set()
-            for idx, row in edited_data.iterrows():
-                if row["Select"]:
-                    sample_id = str(row[id_column])
-                    current_selections.add(sample_id)
+            current_selections = self._selected_ids_from_editor(
+                edited_data, selection_source, id_column
+            )
 
             # Update session state if there are changes
             if current_selections != st.session_state.selected_samples:
@@ -1620,43 +1798,68 @@ class QCDashboard:
         st.header("📊 Data")
 
         sections_columns = self._get_columns_by_section(filtered_data)
-        visible_sections = {}
-        section_names = list(sections_columns.keys())
-        section_defaults, visible_col_counts = self._get_visible_section_defaults(
-            sections_columns
+        active_filtering_section = getattr(self, "_active_filtering_section", None)
+        preset_active = bool(
+            active_filtering_section is not None and active_filtering_section.available
         )
 
-        if self.report_mode:
-            report_cfg = self._get_report_mode_config()
-            default_sections = report_cfg.get("default_visible_sections", {})
-            for section_name in section_names:
-                visible_sections[section_name] = bool(
-                    default_sections.get(section_name, section_defaults[section_name])
-                )
+        if preset_active:
+            # Surface partial display-column warnings from the resolved preset.
+            for warning in active_filtering_section.warnings:
+                st.warning(warning)
+
+            visible_sections = {}
+            section_names = []
+            section_defaults = {}
+            visible_col_counts = {}
+            ordered_columns = [
+                field.column
+                for field in active_filtering_section.columns
+                if field.column in filtered_data.columns
+            ]
+            active_sections = []
         else:
-            default_active_sections = [
-                name for name in section_names if section_defaults[name]
-            ]
-            selected_sections = st.session_state.get(
-                "data_preview_visible_sections", default_active_sections
+            visible_sections = {}
+            section_names = list(sections_columns.keys())
+            section_defaults, visible_col_counts = self._get_visible_section_defaults(
+                sections_columns
             )
-            selected_sections = [
-                name for name in selected_sections if name in section_names
+
+            if self.report_mode:
+                report_cfg = self._get_report_mode_config()
+                default_sections = report_cfg.get("default_visible_sections", {})
+                for section_name in section_names:
+                    visible_sections[section_name] = bool(
+                        default_sections.get(
+                            section_name, section_defaults[section_name]
+                        )
+                    )
+            else:
+                default_active_sections = [
+                    name for name in section_names if section_defaults[name]
+                ]
+                selected_sections = st.session_state.get(
+                    "data_preview_visible_sections", default_active_sections
+                )
+                selected_sections = [
+                    name for name in selected_sections if name in section_names
+                ]
+                selected_section_set = set(selected_sections)
+
+                for section_name in section_names:
+                    visible_sections[section_name] = (
+                        section_name in selected_section_set
+                    )
+
+            # Get ordered columns based on visible sections for reference.
+            ordered_columns = self._get_ordered_columns_with_sections(
+                filtered_data, visible_sections
+            )
+
+            # Show active sections info.
+            active_sections = [
+                name for name, visible in visible_sections.items() if visible
             ]
-            selected_section_set = set(selected_sections)
-
-            for section_name in section_names:
-                visible_sections[section_name] = section_name in selected_section_set
-
-        # Get ordered columns based on visible sections for reference
-        ordered_columns = self._get_ordered_columns_with_sections(
-            filtered_data, visible_sections
-        )
-
-        # Show active sections info
-        active_sections = [
-            name for name, visible in visible_sections.items() if visible
-        ]
 
         # Reorder dataframe columns to put important ones first
         # Only show columns from visible sections
@@ -1676,7 +1879,32 @@ class QCDashboard:
         ]
         display_data = filtered_data[visible_columns]
 
-        if not self.report_mode:
+        # Display the dataframe with built-in controls and QC action styling.
+        if self.report_mode:
+            st.dataframe(
+                display_data,
+                width="stretch",
+                height=self._get_table_height(len(display_data)),
+                hide_index=True,
+            )
+        else:
+            self._render_styled_dataframe(
+                display_data,
+                column_order,
+                "data_preview_table",
+                selection_source=filtered_data,
+            )
+
+        # Export the same filtered rows with every available dataframe column.
+        st.download_button(
+            "Download all filtered columns (CSV)",
+            filtered_data.to_csv(index=False).encode("utf-8"),
+            file_name="uqcme_filtered_all_columns.csv",
+            mime="text/csv",
+            key="download_filtered_all_columns",
+        )
+
+        if not self.report_mode and not preset_active:
             st.subheader("Section Visibility")
             self._render_section_visibility_control(
                 section_names, active_sections, visible_col_counts
@@ -1690,20 +1918,6 @@ class QCDashboard:
                     f"sections: {', '.join(active_sections)}"
                 )
                 st.info(tip_msg)
-
-        # Display the dataframe with built-in controls and QC action styling
-        # Only show columns from visible sections
-        if self.report_mode:
-            st.dataframe(
-                display_data,
-                width="stretch",
-                height=self._get_table_height(len(display_data)),
-                hide_index=True,
-            )
-        else:
-            self._render_styled_dataframe(
-                display_data, column_order, "data_preview_table"
-            )
 
         # Optional config-driven API actions for selected samples.
         self.render_sample_api_actions(filtered_data)

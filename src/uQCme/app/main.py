@@ -1966,6 +1966,66 @@ class QCDashboard:
 
         return anchors
 
+    # Resolve a QC rule field to the corresponding processed-data column.
+    def _get_rule_data_field(self, rule_field: str) -> str:
+        sections = self.mapping.get("Sections", {})
+        for section_data in sections.values():
+            if not isinstance(section_data, dict):
+                continue
+
+            for field_config in section_data.values():
+                if not isinstance(field_config, dict):
+                    continue
+
+                data_mapping = field_config.get("data", {}).get("mapping")
+                qc_mapping = field_config.get("QC", {}).get("mapping")
+                if isinstance(qc_mapping, str):
+                    qc_mapping = [qc_mapping]
+
+                if data_mapping and rule_field in (qc_mapping or []):
+                    return data_mapping
+
+        return rule_field
+
+    # Describe a failed rule using its configured criterion and observed value.
+    def _format_failed_rule(self, rule_id: str, sample_data: pd.Series) -> str:
+        qc_rules = getattr(self, "qc_rules", pd.DataFrame())
+        if qc_rules.empty or "rule_id" not in qc_rules.columns:
+            return f"{rule_id} (rule definition unavailable)"
+
+        matching_rules = qc_rules[qc_rules["rule_id"] == rule_id]
+        if matching_rules.empty:
+            return f"{rule_id} (rule definition unavailable)"
+
+        rule = matching_rules.iloc[0]
+        field = str(rule.get("field", "")).strip()
+        software = rule.get("software")
+        software_text = ""
+        if software is not None and pd.notna(software):
+            software_text = str(software).strip()
+
+        operator = str(rule.get("operator", "")).strip()
+        operator_text = {
+            ">=": "must be ≥",
+            "<=": "must be ≤",
+            ">": "must be >",
+            "<": "must be <",
+            "=": "must equal",
+            "!=": "must not equal",
+            "regex": "must match",
+            "contains": "must contain",
+        }.get(operator, f"must satisfy {operator}")
+        threshold = str(rule.get("value", "")).strip()
+
+        criterion_parts = [part for part in [software_text, field] if part]
+        criterion = " ".join(criterion_parts)
+        description = f"{criterion} {operator_text} {threshold}".strip()
+
+        data_field = self._get_rule_data_field(field)
+        observed = self._format_sample_metric_value(sample_data.get(data_field))
+        observed_text = observed if observed is not None else "unavailable"
+        return f"{description}; observed {observed_text}"
+
     # Render one sample's existing detail presentation.
     def _render_single_sample_details(
         self,
@@ -2027,8 +2087,12 @@ class QCDashboard:
                 and pd.notna(failed_rules_val)
                 and isinstance(failed_rules_val, str)
             ):
-                failed_rules = failed_rules_val.split(",")
-                st.write("❌ " + ", ".join([rule.strip() for rule in failed_rules]))
+                failed_rules = [
+                    rule.strip() for rule in failed_rules_val.split(",") if rule.strip()
+                ]
+                for rule_id in failed_rules:
+                    description = self._format_failed_rule(rule_id, sample_data)
+                    st.write(f"❌ {description}")
             else:
                 st.write("✅ No failed rules")
 

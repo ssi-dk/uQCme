@@ -1180,9 +1180,24 @@ def test_sample_details_renders_navigation_and_every_filtered_sample():
                 },
                 "QC Outcome": {"data": {"mapping": "qc_outcome"}},
                 "QC Action": {"data": {"mapping": "qc_action"}},
+                "Q30 fraction": {
+                    "data": {"mapping": "observed_q30"},
+                    "QC": {"mapping": "q30_fraction"},
+                },
             }
         }
     }
+    dashboard.qc_rules = pd.DataFrame(
+        [
+            {
+                "rule_id": "PASS3",
+                "software": "fastp",
+                "field": "q30_fraction",
+                "operator": ">=",
+                "value": "0.80",
+            }
+        ]
+    )
     data = pd.DataFrame(
         [
             {
@@ -1190,8 +1205,9 @@ def test_sample_details_renders_navigation_and_every_filtered_sample():
                 "species": "Listeria",
                 "qc_outcome": "FAIL",
                 "qc_action": "Review",
-                "failed_rules": "rule-2",
+                "failed_rules": "PASS3",
                 "passed_rules": "rule-1",
+                "observed_q30": 0.6,
             },
             {
                 "sample_name": "Sample-2",
@@ -1200,6 +1216,7 @@ def test_sample_details_renders_navigation_and_every_filtered_sample():
                 "qc_action": "Release",
                 "failed_rules": "",
                 "passed_rules": "rule-1",
+                "observed_q30": 0.9,
             },
         ]
     )
@@ -1244,8 +1261,43 @@ def test_sample_details_renders_navigation_and_every_filtered_sample():
         ([1, 1, 1], {"gap": "large"}),
     ]
     assert streamlit_stub.events.count("subheader:Failed Rules") == 2
-    assert "❌ rule-2" in streamlit_stub.write_calls
+    assert (
+        "❌ fastp q30_fraction must be ≥ 0.80; observed 0.6"
+        in streamlit_stub.write_calls
+    )
+    assert "❌ PASS3" not in streamlit_stub.write_calls
     assert "✅ No failed rules" in streamlit_stub.write_calls
+
+
+def test_failed_rule_description_falls_back_without_rule_definition():
+    # Unresolvable rule IDs should remain visible instead of hiding a failure.
+    dashboard = _bare_dashboard()
+
+    description = dashboard._format_failed_rule("UNKNOWN1", pd.Series(dtype=object))
+
+    assert description == "UNKNOWN1 (rule definition unavailable)"
+
+
+def test_failed_rule_description_handles_missing_observed_value():
+    # API data may contain a failed rule without carrying its source metric.
+    dashboard = _bare_dashboard()
+    dashboard.qc_rules = pd.DataFrame(
+        [
+            {
+                "rule_id": "RULE1",
+                "software": "Checkm",
+                "field": "Completeness",
+                "operator": ">=",
+                "value": "90",
+            }
+        ]
+    )
+
+    description = dashboard._format_failed_rule(
+        "RULE1", pd.Series({"sample_name": "Sample-1"})
+    )
+
+    assert description == "Checkm Completeness must be ≥ 90; observed unavailable"
 
 
 def test_sample_details_navigation_columns_come_from_mapping():

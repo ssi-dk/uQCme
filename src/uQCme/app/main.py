@@ -1879,6 +1879,21 @@ class QCDashboard:
         ]
         display_data = filtered_data[visible_columns]
 
+        if not self.report_mode and not preset_active:
+            st.subheader("Section Visibility")
+            self._render_section_visibility_control(
+                section_names, active_sections, visible_col_counts
+            )
+
+            if ordered_columns:
+                tip_msg = (
+                    f"💡 **Tip:** Use the column visibility controls (👁️) in "
+                    f"the table to show/hide specific columns. Currently "
+                    f"showing {len(ordered_columns)} columns from selected "
+                    f"sections: {', '.join(active_sections)}"
+                )
+                st.info(tip_msg)
+
         # Display the dataframe with built-in controls and QC action styling.
         if self.report_mode:
             st.dataframe(
@@ -1903,21 +1918,6 @@ class QCDashboard:
             mime="text/csv",
             key="download_filtered_all_columns",
         )
-
-        if not self.report_mode and not preset_active:
-            st.subheader("Section Visibility")
-            self._render_section_visibility_control(
-                section_names, active_sections, visible_col_counts
-            )
-
-            if ordered_columns:
-                tip_msg = (
-                    f"💡 **Tip:** Use the column visibility controls (👁️) in "
-                    f"the table to show/hide specific columns. Currently "
-                    f"showing {len(ordered_columns)} columns from selected "
-                    f"sections: {', '.join(active_sections)}"
-                )
-                st.info(tip_msg)
 
         # Optional config-driven API actions for selected samples.
         self.render_sample_api_actions(filtered_data)

@@ -1587,8 +1587,8 @@ def test_explicit_other_section_mappings_are_preserved_with_unmapped_columns():
     )
 
 
-def test_data_tab_renders_section_visibility_below_table():
-    """Section visibility controls should render after the main table."""
+def test_data_tab_renders_section_visibility_above_table():
+    """Section visibility controls should render before the main table."""
     streamlit_stub.reset()
     dashboard = _bare_dashboard(table_height=4200)
     data = pd.DataFrame(
@@ -1604,12 +1604,12 @@ def test_data_tab_renders_section_visibility_below_table():
     assert "data_editor" in streamlit_stub.events
     assert "subheader:Section Visibility" in streamlit_stub.events
     assert "pills:Visible sections" in streamlit_stub.events
-    assert streamlit_stub.events.index("data_editor") < streamlit_stub.events.index(
-        "subheader:Section Visibility"
-    )
-    assert streamlit_stub.events.index(
-        "subheader:Section Visibility"
-    ) < streamlit_stub.events.index("pills:Visible sections")
+    heading_index = streamlit_stub.events.index("subheader:Section Visibility")
+    pills_index = streamlit_stub.events.index("pills:Visible sections")
+    info_index = streamlit_stub.events.index("info")
+    table_index = streamlit_stub.events.index("data_editor")
+
+    assert heading_index < pills_index < info_index < table_index
 
 
 def test_data_tab_omits_section_visibility_in_report_mode():

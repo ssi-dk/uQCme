@@ -4,7 +4,7 @@ version: "0.9.2"
 qc:
   input:
     data:
-      file: "./input/example/run_data.tsv"
+      file: "./input/example/run_data_new_schema.tsv"
     mapping: "./input/example/mapping.yaml"
     qc_rules: "./input/example/QC_rules.tsv"
     qc_tests: "./input/example/QC_tests.tsv"

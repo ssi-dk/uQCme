@@ -37,6 +37,26 @@ def test_species_support_matches_trimmed_names_without_regard_to_case():
     assert styling.cell_style_for("Escherichia coli") == ""
 
 
+def test_species_support_matches_configured_aliases_only_for_supported_targets():
+    styling = SpeciesSupportStyling(
+        UIStylingConfig(
+            unsupported_species_color_light="#123456",
+            unsupported_species_color_dark="#654321",
+            missing_species_color="#ABCDEF",
+            missing_species_opacity=0.25,
+        ),
+        supported_species={"Escherichia coli"},
+        species_aliases={
+            "E. coli": {"Escherichia coli"},
+            "K. pneumoniae": {"Klebsiella pneumoniae"},
+        },
+    )
+
+    assert styling.state_for("  e. COLI ") == SUPPORTED_SPECIES
+    assert styling.cell_style_for("E. coli") == ""
+    assert styling.state_for("K. pneumoniae") == UNSUPPORTED_SPECIES
+
+
 def test_species_support_distinguishes_unsupported_and_missing_values():
     styling = _styling()
 

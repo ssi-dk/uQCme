@@ -38,13 +38,18 @@ def test_public_mapping_example_resolves_and_filters_documented_rows(mapping_pat
     # Each lab preset resolves and selects its lab's documented rows.
     mapping = yaml.safe_load(mapping_path.read_text(encoding="utf-8"))
     parsed = parse_filtering_sections(mapping)
+    coverage_column = (
+        "Average_Coverage"
+        if mapping_path == REPOSITORY_ROOT / "input/example/mapping.yaml"
+        else "coverage_x"
+    )
     data = pd.DataFrame(
         {
             "sample_name": ["sample_pass", "sample_fail"],
             "qc_outcome": ["PASS", "FAIL,FAIL_SIZE"],
             "species": ["Example organism A", "Example organism B"],
             "qc_action": ["none", "reject"],
-            "coverage_x": [55, 15],
+            coverage_column: [55, 15],
             "lab_group": ["LabA", "LabB"],
         }
     )
@@ -67,7 +72,7 @@ def test_public_mapping_example_resolves_and_filters_documented_rows(mapping_pat
     assert [field.column for field in resolved["LabB view"].columns] == [
         "sample_name",
         "qc_action",
-        "coverage_x",
+        coverage_column,
     ]
 
 

@@ -13,6 +13,36 @@ QC_overrides:
   software: ["checkm", "quast"]
   assembly_type: "short"  # Default assembly type for QC metrics
 
+SpeciesAliases:
+  A. baumannii:
+    - Acinetobacter baumannii
+  C. jejuni:
+    - Campylobacter jejuni
+  C. freundii:
+    - Citrobacter freundii
+  C. koseri:
+    - Citrobacter koseri
+  C. difficile:
+    - Clostridioides difficile
+  E. coli:
+    - Escherichia coli
+  K. oxytoca:
+    - Klebsiella oxytoca
+  K. pneumoniae:
+    - Klebsiella pneumoniae
+  L. longbeachae:
+    - Legionella longbeachae
+  L. pneumophila:
+    - Legionella pneumophila
+  Listeria:
+    - Listeria monocytogenes
+  Salmonella:
+    - Salmonella enterica
+  S. sonnei:
+    - Shigella sonnei
+  Yersinia:
+    - Yersinia enterocolitica
+
 FilteringSections:
   LabA view:
     columns:

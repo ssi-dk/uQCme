@@ -580,6 +580,107 @@ class QCDashboard:
         """Get the species field name from mapping configuration."""
         return self._get_field_by_role("species") or "species"
 
+    # Resolve the detected-species source from the mapping configuration.
+    def _get_detected_species_field(self) -> Optional[str]:
+        detected_field = None
+        standard_detected_field = None
+        detected_labels = {"detected species", "expected species"}
+        sections = self.mapping.get("Sections", {})
+
+        if not isinstance(sections, dict):
+            return "rMLST_match"
+
+        for section_data in sections.values():
+            if not isinstance(section_data, dict):
+                continue
+
+            for field_name, field_config in section_data.items():
+                if not isinstance(field_config, dict):
+                    continue
+
+                data_mapping = field_config.get("data", {}).get("mapping")
+                if not isinstance(data_mapping, str) or not data_mapping.strip():
+                    continue
+
+                normalized_field_name = str(field_name).strip().casefold()
+                if (
+                    detected_field is None
+                    and normalized_field_name in detected_labels
+                ):
+                    detected_field = data_mapping
+
+                if (
+                    standard_detected_field is None
+                    and data_mapping.strip().casefold() == "rmlst_match"
+                ):
+                    standard_detected_field = data_mapping
+
+        if detected_field is not None:
+            return detected_field
+        if standard_detected_field is not None:
+            return standard_detected_field
+        return "rMLST_match"
+
+    # Return whether a species value is absent or contains only whitespace.
+    def _is_missing_species_value(self, value: Any) -> bool:
+        if value is None:
+            return True
+
+        try:
+            if bool(pd.isna(value)):
+                return True
+        except (TypeError, ValueError):
+            pass
+
+        return str(value).strip() == ""
+
+    # Normalize a species value for direct and configured alias comparisons.
+    def _normalize_species_value(self, value: Any) -> Optional[str]:
+        if self._is_missing_species_value(value):
+            return None
+
+        return str(value).strip().casefold()
+
+    # Resolve explicitly configured category-to-detected species aliases.
+    def _get_species_aliases(self) -> Dict[str, set[str]]:
+        raw_aliases = self.mapping.get("SpeciesAliases", {})
+        if not isinstance(raw_aliases, dict):
+            return {}
+
+        normalized_aliases: Dict[str, set[str]] = {}
+        for provided_value, detected_values in raw_aliases.items():
+            normalized_provided = self._normalize_species_value(provided_value)
+            if normalized_provided is None or not isinstance(
+                detected_values, (list, tuple, set)
+            ):
+                continue
+
+            normalized_detected = {
+                normalized_value
+                for detected_value in detected_values
+                if (normalized_value := self._normalize_species_value(detected_value))
+                is not None
+            }
+            if normalized_detected:
+                normalized_aliases[normalized_provided] = normalized_detected
+
+        return normalized_aliases
+
+    # Compare provided and detected species using direct or explicit matches.
+    def _species_values_match(self, provided: Any, detected: Any) -> bool:
+        normalized_provided = self._normalize_species_value(provided)
+        normalized_detected = self._normalize_species_value(detected)
+        if normalized_provided is None or normalized_detected is None:
+            return False
+
+        if normalized_provided == normalized_detected:
+            return True
+
+        accepted_detected_values = self._get_species_aliases().get(
+            normalized_provided, set()
+        )
+        return normalized_detected in accepted_detected_values
+
     def _get_required_fields(self) -> dict:
         """Get required fields from mapping configuration."""
         required_fields = {
@@ -1477,6 +1578,7 @@ class QCDashboard:
         return SpeciesSupportStyling(
             self.config.app.ui_styling,
             self._get_supported_species(),
+            self._get_species_aliases(),
         )
 
     def _get_ordered_columns_with_sections(
@@ -1497,7 +1599,9 @@ class QCDashboard:
                     # Skip hidden fields
                     if col_info["hidden"]:
                         continue
-                    ordered_cols.append(col_info["column"])
+                    column = col_info["column"]
+                    if column not in ordered_cols:
+                        ordered_cols.append(column)
 
         # Add remaining sections not in the predefined order
         for section_name, section_cols in sections_columns.items():
@@ -2249,6 +2353,7 @@ class QCDashboard:
         outcome_field: Optional[str],
         action_field: Optional[str],
         species_field: Optional[str],
+        detected_species_field: Optional[str],
     ):
         basic_col, metrics_col, rules_col = st.columns(
             [1, 1, 1],
@@ -2259,9 +2364,29 @@ class QCDashboard:
             st.subheader("Basic Information")
             st.write(f"**{id_field}:** {sample_data[id_field]}")
 
+            provided_species = None
             if species_field and species_field in sample_data:
-                species_val = sample_data.get(species_field, "N/A")
-                st.write(f"**{species_field}:** {species_val}")
+                provided_species = sample_data.get(species_field, "N/A")
+                st.write(f"**{species_field}:** {provided_species}")
+
+            if detected_species_field:
+                detected_species = sample_data.get(detected_species_field)
+                detected_display = (
+                    "—"
+                    if self._is_missing_species_value(detected_species)
+                    else escape(str(detected_species), quote=True)
+                )
+                detected_color = (
+                    "#00AA00"
+                    if self._species_values_match(provided_species, detected_species)
+                    else "#DC143C"
+                )
+                st.markdown(
+                    "**detected species:** "
+                    f"<span style='color: {detected_color}; "
+                    f"font-weight: bold;'>{detected_display}</span>",
+                    unsafe_allow_html=True,
+                )
 
             if outcome_field and outcome_field in sample_data:
                 outcome = sample_data[outcome_field]
@@ -2318,6 +2443,7 @@ class QCDashboard:
         outcome_field = self._get_outcome_field()
         action_field = self._get_action_field()
         species_field = self._get_species_field()
+        detected_species_field = self._get_detected_species_field()
 
         if id_field is None or id_field not in filtered_data.columns:
             st.warning("No ID field configured in mapping.")
@@ -2399,6 +2525,7 @@ class QCDashboard:
                 outcome_field,
                 action_field,
                 species_field,
+                detected_species_field,
             )
             st.markdown("[Back to sample index](#sample-index)")
             st.markdown("---")

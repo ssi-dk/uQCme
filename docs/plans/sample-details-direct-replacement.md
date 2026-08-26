@@ -26,12 +26,43 @@
   environment and was not installed or added to the lock file.
 - The user confirmed that the repaired navigation table works as intended.
 
+**Detected-species follow-up complete — 2026-08-18**
+
+- Basic Information now keeps the existing provided `species` row and adds a
+  compact **detected species** row directly beneath it.
+- The provided/category value is resolved through the existing
+  `_get_species_field()` mapping behavior. The detected value is resolved from
+  the configured detected field, currently `rMLST_match`.
+- Direct matches are green after trimming whitespace and case-folding.
+  Explicitly configured biological aliases are also accepted; no fuzzy,
+  substring, abbreviation, or automatic alias matching is used.
+- Missing, blank, unknown, mismatched, or unmapped values are red. Missing
+  detected values display as an em dash (`—`).
+- The detected-species comparison is rendered only in Sample Details. It is
+  not added to the navigation table, Data Preview, exports, QC rule fields,
+  or API contracts.
+- The implementation remains Streamlit-first. It uses the existing
+  `st.write()` and `st.markdown()` patterns, with only the minimal escaped
+  inline span required to color the detected value. No new CSS, JavaScript,
+  component, configuration flag, or schema field was introduced for the UI.
+- A duplicate mapped-column rendering defect was fixed so two mapping labels
+  that refer to the same dataframe column cannot create an ambiguous pandas
+  selection in Data Preview.
+- Current validation passed: 196 tests, 3 dashboard smoke tests, and
+  `git diff --check`. Ruff remains unavailable in the active environment and
+  was not installed or added to the lock file.
+
 ## Layperson's summary
 
 Replace the sample dropdown with a table of all filtered samples. Clicking a
 sample name will jump to that sample's details farther down the page. Samples
 will be sorted naturally by name, failed rules will remain visible, and passed
 rules will be removed from this view.
+
+Basic Information also shows the provided/category species and the detected
+program result underneath it. The detected value is visibly green when it
+matches directly or through an explicitly configured alias, and red when it
+does not match or is unavailable.
 
 ## Architecture decision: Streamlit-first hybrid
 
@@ -61,6 +92,12 @@ remain local, escaped, theme-safe, and covered by regression tests. Where
 Streamlit or ordinary Markdown can express the UI, they remain the preferred
 implementation.
 
+The detected-species indicator follows the same principle. Streamlit owns the
+row, label, layout, and lifecycle. The only HTML is the minimal inline span
+needed to color the data-derived value. This keeps the feature compatible with
+the existing dashboard without introducing a custom component or a second
+styling system.
+
 ### Config-forward navigation columns
 
 The navigation table is driven by the same mapping configuration that
@@ -87,6 +124,59 @@ The bundled default mapping produces **Sample**, **Species**, **QC outcome**,
 and **QC action** in that order. A configuration can add, remove, reorder, or
 relabel navigation columns without changing Python code. Mappings without the
 new metadata retain the legacy four-column layout for backward compatibility.
+
+The detected species is intentionally not a navigation column. Navigation
+continues to identify samples and summarize the configured report fields;
+comparison status belongs in the detail presentation where the provided and
+detected values can be read together.
+
+### Detected-species comparison
+
+Sample Details treats `species` as the provided/category species and
+`rMLST_match` as the detected program result. The local example mapping makes
+that contract explicit:
+
+```yaml
+Provided Species:
+  data:
+    mapping: species
+  QC:
+    mapping:
+      - speciesName
+      - genusName
+      - Marker lineage
+
+Expected species:
+  data:
+    mapping: rMLST_match
+  report:
+    filter: true
+```
+
+The name **Expected species** is retained as a mapping field for compatibility
+with existing configuration terminology, but its value is displayed as the
+detected result in Sample Details. It is not promoted into the sample index.
+
+Biological naming differences are kept in the mapping YAML as explicit
+provided-to-detected aliases:
+
+```yaml
+SpeciesAliases:
+  E. coli:
+    - Escherichia coli
+  Salmonella:
+    - Salmonella enterica
+  S. sonnei:
+    - Shigella sonnei
+  Yersinia:
+    - Yersinia enterocolitica
+```
+
+The comparison normalizes only by trimming whitespace and case-folding. It
+first checks exact normalized equality, then checks the configured aliases for
+the normalized provided value. Missing or blank values never match. New
+biological equivalences require an explicit mapping review rather than a
+Python-code change or an automatic inference.
 
 ## Handoff context for a new chat
 
@@ -132,6 +222,9 @@ Stay within this repository and do not connect to any server.
   metadata.
 - Keep the implementation Streamlit-first. Restrict custom HTML to the table
   and anchors that are required for in-page navigation.
+- Keep the detected-species indicator Streamlit-first. Use native Streamlit
+  rendering wherever possible and restrict HTML to the minimal inline color
+  span required for compact text styling.
 - Make the sample name itself the anchor link. Do not add a separate
   **Details** column because it duplicates the link's purpose.
 - Add a **Back to sample index** link to each sample section.
@@ -146,6 +239,15 @@ Stay within this repository and do not connect to any server.
 - If `sample_name` is unavailable, preserve the incoming order. Put missing
   sample names after populated names when the column exists.
 - Render all filtered samples without pagination or a sample-count cap.
+- Keep `species` as the provided/category value and use the configured
+  detected field, currently `rMLST_match`, only for the Sample Details
+  comparison.
+- Color a matching detected value green and every non-match red, including
+  missing, blank, unknown, and unmapped values. Display missing detected
+  values as `—`.
+- Escape every data-derived detected value before it reaches the minimal
+  inline HTML span.
+- Do not add a detected-species column to the navigation table.
 
 ## Implementation plan
 
@@ -197,6 +299,25 @@ Stay within this repository and do not connect to any server.
 - Use native Streamlit or ordinary Markdown for all surrounding page elements,
   including back links and separators.
 
+### 4. Add the detected-species indicator
+
+- Reuse `_get_species_field()` for the provided/category species so QC and
+  Sample Details continue to agree about the source field.
+- Resolve the detected field from the mapping metadata, with `rMLST_match` as
+  the current default when no more specific detected-species label is present.
+- Pass the resolved detected field into `_render_single_sample_details()`.
+- Render the row immediately below the provided `species` row using the
+  existing Streamlit `st.markdown()` pattern already used for QC action
+  coloring.
+- Keep the label in the normal theme text and apply color only to the escaped
+  detected value. Use green for direct or explicit-alias matches and red for
+  all other states.
+- Leave the three-column Basic Information, Quality Metrics, and Failed Rules
+  layout unchanged. Keep failed-rule-only display, metric formatting, QC
+  action styling, anchors, and Back to sample index links unchanged.
+- Avoid new Streamlit components, JavaScript, CSS, flags, or API/schema
+  changes. The existing Streamlit dashboard remains the primary renderer.
+
 ## Tests and acceptance criteria
 
 Update dashboard unit tests to cover:
@@ -218,6 +339,16 @@ Update dashboard unit tests to cover:
 - Passed rules do not appear in Sample Details; failed rules and existing
   quality metrics still do.
 - Existing empty-data and missing-ID warnings continue to work.
+- The provided species remains the existing `species` row and the detected
+  species row appears directly beneath it for every filtered sample.
+- Direct normalized matches render green.
+- Configured aliases render green for all approved equivalence examples.
+- Mismatches, missing detected values, unknown categories, and unmapped values
+  render red, with missing values shown as `—`.
+- The detected field is resolved from mapping metadata and is not added to the
+  navigation table.
+- Reused mapping columns do not create duplicate pandas dataframe columns or
+  break Data Preview rendering.
 
 After implementation, run the repository-prescribed checks without installing
 or changing dependencies incidentally:

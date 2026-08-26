@@ -1502,6 +1502,43 @@ def test_styled_dataframe_composes_species_and_qc_action_colors():
     assert "text-shadow: 0 0 3px #00AA00" in rendered_html
 
 
+def test_styled_dataframe_treats_configured_species_alias_as_supported():
+    """Configured short species names should not receive unsupported styling."""
+    streamlit_stub.reset()
+    dashboard = _bare_dashboard(
+        ui_styling={
+            "unsupported_species_color_light": "#123456",
+            "unsupported_species_color_dark": "#654321",
+            "missing_species_color": "#ABCDEF",
+            "missing_species_opacity": 0.25,
+        }
+    )
+    dashboard.mapping = {
+        "SpeciesAliases": {"E. coli": ["Escherichia coli"]}
+    }
+    dashboard.qc_rules = pd.DataFrame(
+        {"species": ["all", "Escherichia coli"]}
+    )
+    data = pd.DataFrame(
+        {
+            "species": ["E. coli", "Escherichia coli", "Unmapped species"],
+        }
+    )
+
+    dashboard._render_styled_dataframe(
+        data,
+        ["species"],
+        "species_alias_styling_table",
+    )
+
+    styled_data, _ = streamlit_stub.data_editor_calls[0]
+    styled_data._compute()
+    species_column = styled_data.data.columns.get_loc("species")
+    assert styled_data.ctx[(0, species_column)] == []
+    assert styled_data.ctx[(1, species_column)] == []
+    assert styled_data.ctx[(2, species_column)]
+
+
 def test_supported_species_come_from_explicit_species_rules():
     """General rules should not mark arbitrary species as supported."""
     dashboard = _bare_dashboard()
@@ -1535,10 +1572,13 @@ def test_report_table_applies_species_support_styling():
             "missing_species_opacity": 0.25,
         }
     )
+    dashboard.mapping = {
+        "SpeciesAliases": {"E. coli": ["Escherichia coli"]}
+    }
     dashboard.qc_rules = pd.DataFrame({"species": ["all", "Escherichia coli"]})
     data = pd.DataFrame(
         {
-            "species": ["Escherichia coli", "Unmapped species", ""],
+            "species": ["E. coli", "Unmapped species", ""],
             "qc_action": ["none", "review", "reject"],
         }
     )
@@ -1547,7 +1587,7 @@ def test_report_table_applies_species_support_styling():
 
     report_html = streamlit_stub.markdown_calls[-1][0]
     assert 'class="uqcme-report-table"' in report_html
-    assert "light-dark(#123456, #654321)" in report_html
+    assert report_html.count("light-dark(#123456, #654321)") == 1
     assert "background-color: rgba(171, 205, 239, 0.25)" in report_html
     assert ">—<" in report_html
 
@@ -1610,6 +1650,26 @@ def test_data_tab_renders_section_visibility_above_table():
     table_index = streamlit_stub.events.index("data_editor")
 
     assert heading_index < pills_index < info_index < table_index
+
+
+def test_ordered_columns_deduplicate_reused_mapping_columns():
+    # Repeated mappings should not create duplicate dataframe columns.
+    dashboard = _bare_dashboard()
+    dashboard.mapping = {
+        "Sections": {
+            "QC_metrics": {
+                "Provided Species": {"data": {"mapping": "species"}},
+                "Species": {"data": {"mapping": "species"}},
+            }
+        }
+    }
+    data = pd.DataFrame({"species": ["Escherichia coli"]})
+
+    ordered_columns = dashboard._get_ordered_columns_with_sections(
+        data, {"QC_metrics": True}
+    )
+
+    assert ordered_columns == ["species"]
 
 
 def test_data_tab_omits_section_visibility_in_report_mode():
@@ -1802,6 +1862,145 @@ def test_sample_details_renders_numeric_string_quality_metrics():
     assert "**Number of genomes:** 2" in streamlit_stub.write_calls
     assert "**QC Label:** good" in streamlit_stub.write_calls
     assert "**RunID:** 12,345" not in streamlit_stub.write_calls
+
+
+def test_sample_details_resolves_detected_species_from_mapping():
+    # The default mapping names the detected species source rMLST_match.
+    dashboard = _bare_dashboard()
+    dashboard.mapping = {
+        "Sections": {
+            "QC_metrics": {
+                "Expected species": {
+                    "data": {"mapping": "rMLST_match"},
+                }
+            }
+        }
+    }
+
+    assert dashboard._get_detected_species_field() == "rMLST_match"
+
+
+def test_species_aliases_are_loaded_from_mapping_yaml():
+    # Species aliases are read from the maintained YAML mapping.
+    dashboard = _bare_dashboard()
+    mapping_path = Path(__file__).parents[1] / "data" / "mapping.yaml"
+    dashboard.mapping = yaml.safe_load(mapping_path.read_text(encoding="utf-8"))
+
+    assert dashboard._get_species_aliases() == {
+        "a. baumannii": {"acinetobacter baumannii"},
+        "c. jejuni": {"campylobacter jejuni"},
+        "c. freundii": {"citrobacter freundii"},
+        "c. koseri": {"citrobacter koseri"},
+        "c. difficile": {"clostridioides difficile"},
+        "e. coli": {"escherichia coli"},
+        "k. oxytoca": {"klebsiella oxytoca"},
+        "k. pneumoniae": {"klebsiella pneumoniae"},
+        "l. longbeachae": {"legionella longbeachae"},
+        "l. pneumophila": {"legionella pneumophila"},
+        "listeria": {"listeria monocytogenes"},
+        "salmonella": {"salmonella enterica"},
+        "s. sonnei": {"shigella sonnei"},
+        "yersinia": {"yersinia enterocolitica"},
+    }
+
+
+def test_curated_species_aliases_match_detected_values():
+    # Every curated alias should be accepted by the Sample Details comparison.
+    dashboard = _bare_dashboard()
+    mapping_path = Path(__file__).parents[1] / "data" / "mapping.yaml"
+    dashboard.mapping = yaml.safe_load(mapping_path.read_text(encoding="utf-8"))
+
+    for provided, detected_values in dashboard._get_species_aliases().items():
+        for detected in detected_values:
+            assert dashboard._species_values_match(provided, detected)
+
+
+def test_sample_details_renders_detected_species_match_status():
+    # Every filtered sample gets a compact green or red detected-species row.
+    streamlit_stub.reset()
+    dashboard = _bare_dashboard()
+    dashboard.mapping = {
+        "SpeciesAliases": {
+            "Yersinia": ["Yersinia enterocolitica"],
+            "S. sonnei": ["Shigella sonnei"],
+            "Salmonella": ["Salmonella enterica"],
+        },
+        "Sections": {
+            "Basic": {
+                "Sample Name": {
+                    "data": {"mapping": "sample_name"},
+                    "report": {"id": True},
+                },
+                "Provided Species": {"data": {"mapping": "species"}},
+                "Expected species": {
+                    "data": {"mapping": "rMLST_match"},
+                },
+            }
+        }
+    }
+    data = pd.DataFrame(
+        [
+            {
+                "sample_name": "S1",
+                "species": "Escherichia coli",
+                "rMLST_match": " escherichia coli ",
+            },
+            {
+                "sample_name": "S2",
+                "species": "Escherichia coli",
+                "rMLST_match": "Klebsiella pneumoniae",
+            },
+            {
+                "sample_name": "S3",
+                "species": "Escherichia coli",
+                "rMLST_match": pd.NA,
+            },
+            {
+                "sample_name": "S4",
+                "species": "Yersinia",
+                "rMLST_match": "Yersinia enterocolitica",
+            },
+            {
+                "sample_name": "S5",
+                "species": "S. sonnei",
+                "rMLST_match": "Shigella sonnei",
+            },
+            {
+                "sample_name": "S6",
+                "species": "Salmonella",
+                "rMLST_match": "Salmonella enterica",
+            },
+            {
+                "sample_name": "S7",
+                "species": "Unknown category",
+                "rMLST_match": "Unknown detected value",
+            },
+        ]
+    )
+
+    dashboard.render_sample_details_tab(data)
+
+    detected_markdown = [
+        message
+        for message, _ in streamlit_stub.markdown_calls
+        if "**detected species:**" in message
+    ]
+    assert len(detected_markdown) == len(data)
+    assert "color: #00AA00" in detected_markdown[0]
+    assert "escherichia coli" in detected_markdown[0]
+    assert "color: #DC143C" in detected_markdown[1]
+    assert "Klebsiella pneumoniae" in detected_markdown[1]
+    assert "color: #DC143C" in detected_markdown[2]
+    assert "—" in detected_markdown[2]
+    assert all("color: #00AA00" in detected_markdown[index] for index in (3, 4, 5))
+    assert "color: #DC143C" in detected_markdown[6]
+
+    navigation_html = next(
+        message
+        for message, _ in streamlit_stub.markdown_calls
+        if 'class="uqcme-sample-index"' in message
+    )
+    assert "detected species" not in navigation_html
 
 
 def test_sample_sort_is_natural_case_insensitive_and_stable():

@@ -1,4 +1,4 @@
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping, Optional
 
 import pandas as pd
 
@@ -16,13 +16,35 @@ MISSING_SPECIES = "missing"
 class SpeciesSupportStyling:
     # Build a normalized supported set once so all surfaces classify values
     # using the same trimming and case-folding rules.
-    def __init__(self, config: UIStylingConfig, supported_species: Iterable[str]):
+    def __init__(
+        self,
+        config: UIStylingConfig,
+        supported_species: Iterable[str],
+        species_aliases: Optional[Mapping[str, Iterable[str]]] = None,
+    ):
         self.config = config
         self._supported_species = {
-            species_name.strip().casefold()
+            normalized_name
             for species_name in supported_species
-            if species_name.strip() != ""
+            if (normalized_name := self._normalize_species_value(species_name))
+            is not None
         }
+
+        # Treat explicitly configured aliases as supported only when their
+        # canonical species has at least one explicit species rule.
+        for alias, canonical_names in (species_aliases or {}).items():
+            normalized_alias = self._normalize_species_value(alias)
+            if normalized_alias is None:
+                continue
+
+            if isinstance(canonical_names, str):
+                canonical_names = (canonical_names,)
+
+            for canonical_name in canonical_names:
+                normalized_canonical = self._normalize_species_value(canonical_name)
+                if normalized_canonical in self._supported_species:
+                    self._supported_species.add(normalized_alias)
+                    break
 
     # Return whether a scalar species value should use the missing-value style.
     def is_missing(self, value: Any) -> bool:
@@ -37,12 +59,18 @@ class SpeciesSupportStyling:
 
         return str(value).strip() == ""
 
+    # Normalize species values consistently for direct and alias comparisons.
+    def _normalize_species_value(self, value: Any) -> Optional[str]:
+        if self.is_missing(value):
+            return None
+        return str(value).strip().casefold()
+
     # Classify a value as missing, supported by rules, or unsupported.
     def state_for(self, value: Any) -> str:
         if self.is_missing(value):
             return MISSING_SPECIES
 
-        normalized_value = str(value).strip().casefold()
+        normalized_value = self._normalize_species_value(value)
         if normalized_value in self._supported_species:
             return SUPPORTED_SPECIES
         return UNSUPPORTED_SPECIES

@@ -8,7 +8,7 @@
 - The first implementation slice moved Section Visibility above the Data
   Preview table.
 - Regression coverage verifies the intended heading, selector, tip, and table
-  render order while preserving report mode and preset behavior.
+  render order while preserving report mode and existing table behavior.
 - The full test suite passed with 183 tests, and dashboard smoke tests passed
   with 3 tests.
 - Ruff was unavailable in the active environment and was not installed or
@@ -52,8 +52,7 @@ Relevant implementation locations are:
   - `_render_section_visibility_control()`
 - `tests/unit/test_dashboard.py`
   - Data Preview rendering and section visibility regression tests.
-- `docs/tasks/filtering-sections/05-data-preview-and-selection.md`
-  - Existing behavior for presets, selection, and Data Preview columns.
+- Existing Data Preview selection and column behavior.
 
 Before this plan was implemented, the Section Visibility controls rendered
 after the table. The implementation now renders them before the table while
@@ -69,8 +68,6 @@ preserving the existing visibility state and table behavior.
 - Keep the CSV download after the table.
 - Keep row selection and configured sample API actions unchanged.
 - Do not render Section Visibility controls in report mode.
-- Do not render Section Visibility controls while an active FilteringSection
-  preset owns the displayed columns.
 - Do not introduce custom JavaScript or a new UI component for this change.
 
 ## Implementation plan
@@ -96,7 +93,6 @@ test_data_tab_renders_section_visibility_above_table
 Retain the existing tests covering:
 
 - report mode without Section Visibility controls;
-- active FilteringSection presets without Section Visibility controls;
 - selected sections changing the displayed columns;
 - an empty section selection producing an empty table.
 
@@ -126,7 +122,6 @@ Verify that moving the controls does not change:
 - full-column CSV export;
 - column information;
 - report mode;
-- active FilteringSection presets;
 - reset behavior for section visibility state.
 
 The section selector must continue to control the same table on the next
@@ -149,7 +144,6 @@ The change is accepted when:
 - Selecting or deselecting sections still changes the displayed columns.
 - The table's individual column controls remain available.
 - Report mode remains table-only.
-- Active FilteringSection presets continue to hide manual visibility controls.
 - Row selection and sample API actions continue to use the same data.
 - CSV export behavior remains unchanged.
 - The full test suite passes.
@@ -180,7 +174,6 @@ gap rather than installing it or changing the lock file.
 - Changing section names, labels, or mapping semantics.
 - Changing table-level column visibility controls.
 - Changing report mode.
-- Changing FilteringSection preset behavior.
 - Changing row selection, API actions, or CSV export.
 - Adding pagination, custom JavaScript, or a new table component.
 - Changes to deployment repositories or server environments.

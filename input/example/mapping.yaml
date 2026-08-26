@@ -43,43 +43,6 @@ SpeciesAliases:
   Yersinia:
     - Yersinia enterocolitica
 
-FilteringSections:
-  LabA view:
-    columns:
-      Sample:
-        data:
-          mapping: sample_name
-      QC outcome:
-        data:
-          mapping: qc_outcome
-      Species:
-        data:
-          mapping: species
-    filters:
-      Lab group:
-        data:
-          mapping: lab_group
-        operator: equals
-        value: LabA
-
-  LabB view:
-    columns:
-      Sample:
-        data:
-          mapping: sample_name
-      QC action:
-        data:
-          mapping: qc_action
-      Coverage:
-        data:
-          mapping: Average_Coverage
-    filters:
-      Lab group:
-        data:
-          mapping: lab_group
-        operator: equals
-        value: LabB
-
 # # Example data entry
 # # {
 # #   "irida_ID": 1186,

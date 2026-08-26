@@ -12,11 +12,6 @@ import yaml
 sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
 
 from uQCme.core.engine import QCProcessor  # noqa: E402
-from uQCme.core.filtering import (  # noqa: E402
-    apply_filtering_section,
-    resolve_filtering_sections,
-)
-from uQCme.core.mapping import parse_filtering_sections  # noqa: E402
 
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
@@ -137,32 +132,14 @@ def test_new_schema_mapping_routes_qc_species_fields_to_species():
     assert "QC" not in expected_species
 
 
-def test_new_schema_default_config_and_lab_filters_use_new_columns():
-    # The local default and saved lab views resolve against the new schema.
+def test_new_schema_default_config_uses_new_columns():
+    # The local default config points at the public new-schema fixture.
     config = yaml.safe_load(
         (REPOSITORY_ROOT / "config.yaml").read_text(encoding="utf-8")
     )
     assert config["qc"]["input"]["data"]["file"].endswith(
         "input/example/run_data_new_schema.tsv"
     )
-
-    mapping = yaml.safe_load(
-        (REPOSITORY_ROOT / "input/example/mapping.yaml").read_text(encoding="utf-8")
-    )
-    parsed = parse_filtering_sections(mapping)
-    data = pd.read_csv(NEW_DATA_PATH, sep="\t")
-    resolved = resolve_filtering_sections(parsed, data)
-
-    assert resolved["LabA view"].available is True
-    assert resolved["LabB view"].available is True
-    assert len(apply_filtering_section(data, resolved["LabA view"])) > 0
-    assert len(apply_filtering_section(data, resolved["LabB view"])) > 0
-    assert [field.column for field in resolved["LabB view"].columns] == [
-        "sample_name",
-        "qc_action",
-        "Average_Coverage",
-    ]
-
 
 def test_new_schema_qc_engine_maps_species_rules_to_species():
     # The engine resolves all configured species-rule fields to species.

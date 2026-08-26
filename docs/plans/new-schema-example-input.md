@@ -173,8 +173,6 @@ Expected species:
 - `species` supplies the category/provided value used by QC species rules.
 - `rMLST_match` supplies the detected value used by Sample Details.
 - `SpeciesAliases` supplies only explicitly reviewed biological equivalences.
-- Filtering sections use columns present in the new schema, including
-  `Average_Coverage` for the LabB view.
 - No new Streamlit code is required to distinguish the two fixture shapes;
   mapping resolution remains the source of truth.
 
@@ -205,8 +203,6 @@ The change is accepted when:
 - The processed new-schema fixture contains regenerated QC outcome, action,
   failed-rule, and passed-rule columns.
 - QC species rules resolve to `species`, never implicitly to `rMLST_match`.
-- The local LabA and LabB filtering sections resolve against available new
-  columns.
 - Sample Details can render every new-schema sample, including direct matches,
   configured aliases, mismatches, and missing detected values.
 - The detected species remains a Sample Details presentation field and is not

@@ -1257,40 +1257,267 @@ class QCDashboard:
 
         return defaults, column_counts
 
-    def _render_section_visibility_control(
-        self,
-        section_names: list,
-        active_sections: list,
-        visible_col_counts: Dict[str, int],
+    def _get_selectable_columns_by_section(
+        self, sections_columns: Dict[str, list]
+    ) -> Dict[str, list]:
+        selectable_sections = {}
+        seen_columns = set()
+
+        for section_name, section_columns in sections_columns.items():
+            selectable_columns = []
+            for column_info in section_columns:
+                column = column_info["column"]
+                if column_info["hidden"] or column in seen_columns:
+                    continue
+                seen_columns.add(column)
+                selectable_columns.append(column_info)
+
+            if selectable_columns:
+                selectable_sections[section_name] = selectable_columns
+
+        return selectable_sections
+
+    def _get_column_presets(
+        self, sections_columns: Dict[str, list]
+    ) -> tuple[Dict[str, Dict[str, Any]], Optional[str]]:
+        preset_config = self.mapping.get("ColumnPresets", {})
+        raw_presets = (
+            preset_config.get("presets", {})
+            if isinstance(preset_config, dict)
+            else {}
+        )
+
+        if not isinstance(raw_presets, dict) or not raw_presets:
+            return {}, None
+
+        selectable_sections = self._get_selectable_columns_by_section(
+            sections_columns
+        )
+        all_columns = [
+            column_info["column"]
+            for section_columns in selectable_sections.values()
+            for column_info in section_columns
+        ]
+        available_fields = {
+            section_name: {
+                column_info["field_name"]: column_info["column"]
+                for column_info in section_columns
+                if not column_info["hidden"]
+            }
+            for section_name, section_columns in sections_columns.items()
+        }
+        configured_sections = self.mapping.get("Sections", {})
+        presets = {}
+
+        for preset_name, raw_preset in raw_presets.items():
+            if not isinstance(raw_preset, dict):
+                raise ConfigError(
+                    f"Column preset '{preset_name}' must be a mapping."
+                )
+
+            configured_columns = raw_preset.get("columns")
+            resolved_columns = []
+
+            if configured_columns == "*":
+                resolved_columns = list(all_columns)
+            elif isinstance(configured_columns, dict):
+                for section_name, field_names in configured_columns.items():
+                    section_config = configured_sections.get(section_name)
+                    if not isinstance(section_config, dict):
+                        raise ConfigError(
+                            f"Unknown section '{section_name}' in column "
+                            f"preset '{preset_name}'."
+                        )
+                    if not isinstance(field_names, list):
+                        raise ConfigError(
+                            f"Columns for '{section_name}' in column preset "
+                            f"'{preset_name}' must be a list."
+                        )
+
+                    for field_name in field_names:
+                        if not isinstance(section_config.get(field_name), dict):
+                            raise ConfigError(
+                                f"Unknown field '{section_name}.{field_name}' "
+                                f"in column preset '{preset_name}'."
+                            )
+
+                        column = available_fields.get(section_name, {}).get(
+                            field_name
+                        )
+                        if column and column not in resolved_columns:
+                            resolved_columns.append(column)
+            else:
+                raise ConfigError(
+                    f"Column preset '{preset_name}' must define 'columns'."
+                )
+
+            presets[preset_name] = {
+                "description": str(raw_preset.get("description", "")).strip(),
+                "columns": resolved_columns,
+            }
+
+        default_preset = preset_config.get("default")
+        if default_preset not in presets:
+            default_preset = next(iter(presets))
+
+        return presets, default_preset
+
+    def _sync_column_customizer(
+        self, selectable_sections: Dict[str, list], selected_columns: List[str]
     ):
-        """Render compact section visibility controls above the data table."""
-        label = "Visible sections"
+        selected_column_set = set(selected_columns)
 
-        def format_section(section_name):
-            count = visible_col_counts.get(section_name, 0)
-            return f"{section_name} ({count})"
+        for section_name, section_columns in selectable_sections.items():
+            st.session_state[f"data_preview_custom_columns_{section_name}"] = [
+                column_info["column"]
+                for column_info in section_columns
+                if column_info["column"] in selected_column_set
+            ]
 
-        if hasattr(st, "pills"):
-            st.pills(
-                label,
-                section_names,
-                selection_mode="multi",
-                default=active_sections,
-                format_func=format_section,
-                key="data_preview_visible_sections",
-                label_visibility="collapsed",
-                width="stretch",
-            )
+    def _render_column_view_controls(
+        self, sections_columns: Dict[str, list]
+    ) -> List[str]:
+        active_key = "data_preview_active_preset"
+        visible_key = "data_preview_visible_columns"
+        base_key = "data_preview_customized_from"
+        signature_key = "data_preview_column_signature"
+        selectable_sections = self._get_selectable_columns_by_section(
+            sections_columns
+        )
+        available_columns = [
+            column_info["column"]
+            for section_columns in selectable_sections.values()
+            for column_info in section_columns
+        ]
+
+        try:
+            presets, default_preset = self._get_column_presets(sections_columns)
+        except ConfigError as error:
+            st.error(f"Column preset configuration error: {error}")
+            return available_columns
+
+        if not presets or default_preset is None:
+            return available_columns
+
+        active_preset = st.session_state.get(active_key, default_preset)
+        if active_preset is not None and active_preset not in presets:
+            active_preset = default_preset
+
+        if active_preset in presets:
+            visible_columns = list(presets[active_preset]["columns"])
+            st.session_state[base_key] = active_preset
         else:
-            st.multiselect(
-                label,
-                section_names,
-                default=active_sections,
-                format_func=format_section,
-                key="data_preview_visible_sections",
-                label_visibility="collapsed",
-                placeholder="Choose visible sections",
+            available_column_set = set(available_columns)
+            visible_columns = [
+                column
+                for column in st.session_state.get(visible_key, [])
+                if column in available_column_set
+            ]
+            if not visible_columns:
+                active_preset = default_preset
+                visible_columns = list(presets[active_preset]["columns"])
+                st.session_state[base_key] = active_preset
+
+        st.session_state[active_key] = active_preset
+        st.session_state[visible_key] = visible_columns
+
+        signature = (
+            tuple(
+                (preset_name, tuple(preset["columns"]))
+                for preset_name, preset in presets.items()
+            ),
+            tuple(available_columns),
+        )
+        customizer_keys = [
+            f"data_preview_custom_columns_{section_name}"
+            for section_name in selectable_sections
+        ]
+
+        if (
+            st.session_state.get(signature_key) != signature
+            or any(key not in st.session_state for key in customizer_keys)
+        ):
+            self._sync_column_customizer(
+                selectable_sections, visible_columns
             )
+            st.session_state[signature_key] = signature
+
+        preset_columns = st.columns(len(presets))
+        for column, preset_name in zip(preset_columns, presets):
+            if column.button(
+                preset_name,
+                type=(
+                    "primary"
+                    if active_preset == preset_name
+                    else "secondary"
+                ),
+                key=f"data_preview_preset_{preset_name}",
+                width="stretch",
+            ):
+                selected_columns = list(presets[preset_name]["columns"])
+                st.session_state[active_key] = preset_name
+                st.session_state[visible_key] = selected_columns
+                st.session_state[base_key] = preset_name
+                self._sync_column_customizer(
+                    selectable_sections, selected_columns
+                )
+                st.rerun()
+
+        if active_preset in presets:
+            description = presets[active_preset]["description"]
+            caption = description or active_preset
+        else:
+            base_preset = st.session_state.get(base_key)
+            caption = (
+                f"Custom view based on {base_preset}"
+                if base_preset
+                else "Custom view"
+            )
+
+        st.caption(f"{caption} · {len(visible_columns)} columns")
+
+        custom_columns = []
+        with st.expander("⚙️ Customize columns"):
+            with st.form("data_preview_column_customizer", border=False):
+                for section_name, section_columns in selectable_sections.items():
+                    options = [
+                        column_info["column"]
+                        for column_info in section_columns
+                    ]
+                    labels = {
+                        column_info["column"]: column_info["field_name"]
+                        for column_info in section_columns
+                    }
+                    selected = st.multiselect(
+                        section_name.replace("_", " "),
+                        options,
+                        format_func=lambda column, labels=labels: labels[column],
+                        key=f"data_preview_custom_columns_{section_name}",
+                    )
+                    selected_set = set(selected)
+                    custom_columns.extend(
+                        column_info["column"]
+                        for column_info in section_columns
+                        if column_info["column"] in selected_set
+                    )
+
+                submitted = st.form_submit_button(
+                    "Apply custom view",
+                    type="primary",
+                    width="stretch",
+                )
+
+        if submitted:
+            if not custom_columns:
+                st.warning("Select at least one column.")
+            else:
+                if active_preset:
+                    st.session_state[base_key] = active_preset
+                st.session_state[active_key] = None
+                st.session_state[visible_key] = custom_columns
+                st.rerun()
+
+        return list(st.session_state[visible_key])
 
     def _get_id_column(self, data: pd.DataFrame) -> Optional[str]:
         """Get the column marked as ID field in mapping configuration."""
@@ -1720,83 +1947,41 @@ class QCDashboard:
                             st.error(f"'{action.label}' failed: {e}")
 
     def render_data_tab(self, filtered_data: pd.DataFrame):
-        """Render the data tab with section visibility controls."""
+        """Render the data tab."""
         st.header("📊 Data")
 
         sections_columns = self._get_columns_by_section(filtered_data)
-        visible_sections = {}
-        section_names = list(sections_columns.keys())
-        section_defaults, visible_col_counts = self._get_visible_section_defaults(
-            sections_columns
-        )
 
         if self.report_mode:
+            section_defaults, _ = self._get_visible_section_defaults(
+                sections_columns
+            )
             report_cfg = self._get_report_mode_config()
             default_sections = report_cfg.get("default_visible_sections", {})
-            for section_name in section_names:
-                visible_sections[section_name] = bool(
-                    default_sections.get(section_name, section_defaults[section_name])
+            visible_sections = {
+                section_name: bool(
+                    default_sections.get(
+                        section_name, section_defaults[section_name]
+                    )
                 )
+                for section_name in sections_columns
+            }
+            ordered_columns = self._get_ordered_columns_with_sections(
+                filtered_data, visible_sections
+            )
         else:
-            default_active_sections = [
-                name for name in section_names if section_defaults[name]
-            ]
-            selected_sections = st.session_state.get(
-                "data_preview_visible_sections", default_active_sections
-            )
-            selected_sections = [
-                name for name in selected_sections if name in section_names
-            ]
-            selected_section_set = set(selected_sections)
-
-            for section_name in section_names:
-                visible_sections[section_name] = section_name in selected_section_set
-
-        # Get ordered columns based on visible sections for reference
-        ordered_columns = self._get_ordered_columns_with_sections(
-            filtered_data, visible_sections
-        )
-
-        # Show active sections info
-        active_sections = [
-            name for name, visible in visible_sections.items() if visible
-        ]
-
-        # Reorder dataframe columns to put important ones first
-        # Only show columns from visible sections
-        priority_columns = []
-
-        # Add columns in section order priority (only from visible sections)
-        for col in ordered_columns:
-            if col in filtered_data.columns:
-                priority_columns.append(col)
-
-        # Create column order for Streamlit - only visible section columns
-        column_order = priority_columns
-
-        # Filter the dataframe to only show columns from visible sections.
-        visible_columns = [
-            col for col in priority_columns if col in filtered_data.columns
-        ]
-        display_data = filtered_data[visible_columns]
-
-        if not self.report_mode:
-            st.subheader("Section Visibility")
-            self._render_section_visibility_control(
-                section_names, active_sections, visible_col_counts
+            st.subheader("Column View")
+            ordered_columns = self._render_column_view_controls(
+                sections_columns
             )
 
-            if ordered_columns:
-                tip_msg = (
-                    f"💡 **Tip:** Use the column visibility controls (👁️) in "
-                    f"the table to show/hide specific columns. Currently "
-                    f"showing {len(ordered_columns)} columns from selected "
-                    f"sections: {', '.join(active_sections)}"
-                )
-                st.info(tip_msg)
+        column_order = [
+            column
+            for column in ordered_columns
+            if column in filtered_data.columns
+        ]
+        display_data = filtered_data[column_order]
 
-        # Display the dataframe with built-in controls and QC action styling
-        # Only show columns from visible sections
         if self.report_mode:
             st.dataframe(
                 display_data,
@@ -1808,55 +1993,53 @@ class QCDashboard:
             self._render_styled_dataframe(
                 display_data, column_order, "data_preview_table"
             )
-        # Optional config-driven API actions for selected samples.
+
         self.render_sample_api_actions(filtered_data)
 
-        # Show column information organized by visible sections
+        visible_column_set = set(column_order)
+        selectable_sections = self._get_selectable_columns_by_section(
+            sections_columns
+        )
+
         with st.expander("📋 Column Information"):
             st.write("**Column mapping from configuration:**")
 
-            for section_name in active_sections:
-                if section_name in sections_columns:
-                    st.subheader(f"{section_name} Section")
-                    section_cols = sections_columns[section_name]
+            for section_name, section_columns in selectable_sections.items():
+                visible_section_columns = [
+                    column_info
+                    for column_info in section_columns
+                    if column_info["column"] in visible_column_set
+                ]
 
-                    for col_info in section_cols:
-                        mapping_key = col_info["column"]
-                        field_name = col_info["field_name"]
-                        hidden = col_info["hidden"]
-                        has_filter = col_info["filter"]
-                        is_id = col_info["id"]
+                if not visible_section_columns:
+                    continue
 
-                        if mapping_key in filtered_data.columns:
-                            # Skip hidden fields from display
-                            if hidden:
-                                continue
+                st.subheader(f"{section_name} Section")
 
-                            # Get description from mapping config
-                            description = self._get_column_description(mapping_key)
+                for column_info in visible_section_columns:
+                    mapping_key = column_info["column"]
+                    field_name = column_info["field_name"]
+                    has_filter = column_info["filter"]
+                    is_id = column_info["id"]
+                    description = self._get_column_description(mapping_key)
+                    extras = []
 
-                            # Build display string with additional info
-                            extras = []
-                            if has_filter:
-                                extras.append("Filterable")
-                            if is_id:
-                                extras.append("ID")
+                    if has_filter:
+                        extras.append("Filterable")
+                    if is_id:
+                        extras.append("ID")
 
-                            extra_info = ""
-                            if extras:
-                                extra_info = f" ({', '.join(extras)})"
+                    extra_info = f" ({', '.join(extras)})" if extras else ""
 
-                            # Create field display with description
-                            if description and description != field_name:
-                                field_display = (
-                                    f"- **{field_name}**: `{mapping_key}` - "
-                                    f"{description}{extra_info}"
-                                )
-                            else:
-                                field_display = (
-                                    f"- **{field_name}**: `{mapping_key}`{extra_info}"
-                                )
-                            st.write(field_display)
+                    if description and description != field_name:
+                        st.write(
+                            f"- **{field_name}**: `{mapping_key}` - "
+                            f"{description}{extra_info}"
+                        )
+                    else:
+                        st.write(
+                            f"- **{field_name}**: `{mapping_key}`{extra_info}"
+                        )
 
     def render_report_tab(self, filtered_data: pd.DataFrame):
         """Render config-driven table-only report view."""

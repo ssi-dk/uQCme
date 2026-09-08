@@ -183,12 +183,17 @@ ColumnPresets:
           - Adapter overrepresentation
           - Number of genomes
 
-    Everything:
+    All:
       description: Every available non-hidden column.
       columns: "*"
 
 Sections:
   Basic:
+    SupplyingLab:
+      data:
+        mapping: SupplyingLab
+      report:
+        filter: true
     Name:
       data:
         mapping: sample_name

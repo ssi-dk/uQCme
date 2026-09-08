@@ -115,8 +115,85 @@ SpeciesAliases:
 # #   }
 # # }
 
+
+ColumnPresets:
+  default: Standard
+  presets:
+    Standard:
+      description: Routine QC view with sample identity, QC result, species, and core assembly metrics.
+      columns:
+        Basic:
+          - Name
+        QC_metrics:
+          - QC action
+          - QC outcome
+          - Failed Rules
+          - Passed Rules
+          - Expected species
+          - Provided Species
+          - Genome size (bp)
+          - GC
+          - N50
+          - Contigs
+          - Depth
+
+    LabA:
+      description: Standard QC columns plus selected read quality metrics for LabA.
+      columns:
+        Basic:
+          - Name
+        QC_metrics:
+          - QC action
+          - QC outcome
+          - Failed Rules
+          - Passed Rules
+          - Expected species
+          - Provided Species
+          - Genome size (bp)
+          - GC
+          - N50
+          - Contigs
+          - Depth
+        Read_QC:
+          - Q30 fraction
+          - Mean read length
+          - Duplication rate
+
+    LabB:
+      description: Standard QC columns plus selected contamination metrics for LabB.
+      columns:
+        Basic:
+          - Name
+        QC_metrics:
+          - QC action
+          - QC outcome
+          - Failed Rules
+          - Passed Rules
+          - Expected species
+          - Provided Species
+          - Genome size (bp)
+          - GC
+          - N50
+          - Contigs
+          - Depth
+        Read_QC:
+          - Contamination percent
+          - Unexpected GC percent
+          - N content fraction
+          - Adapter overrepresentation
+          - Number of genomes
+
+    All:
+      description: Every available non-hidden column.
+      columns: "*"
+
 Sections:
   Basic:
+    SupplyingLab:
+      data:
+        mapping: SupplyingLab
+      report:
+        filter: true
     Name:
       data:
         mapping: sample_name

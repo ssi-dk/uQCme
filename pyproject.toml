@@ -2,6 +2,11 @@
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.automation.standalone]
+task = "build-standalone"
+path = "packaging/dist/uqcme-dashboard-standalone.tar.gz"
+launcher = "uqcme"
+
 [project]
 name = "uQCme"
 dynamic = ["version"]

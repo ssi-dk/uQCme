@@ -1,5 +1,10 @@
+import re
 from typing import Dict, List, Optional, Union, Any
-from pydantic import BaseModel, Field, field_validator
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+HEX_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 
 class DataInput(BaseModel):
@@ -83,12 +88,45 @@ class DashboardConfig(BaseModel):
     sample_api_actions: List[SampleApiAction] = Field(default_factory=list)
 
 
+# Validate configuration-driven colors used by dashboard UI surfaces.
+class UIStylingConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    unsupported_species_color_light: str = "#1D4ED8"
+    unsupported_species_color_dark: str = "#60A5FA"
+    missing_species_color: str = "#808080"
+    missing_species_opacity: float = Field(default=0.15, ge=0, le=1)
+
+    @field_validator(
+        "unsupported_species_color_light",
+        "unsupported_species_color_dark",
+        "missing_species_color",
+    )
+    @classmethod
+    def validate_species_color(cls, value):
+        return cls._validate_hex_color(value)
+
+    # Validate the color format shared by the species support cues.
+    @staticmethod
+    def _validate_hex_color(value):
+        if not isinstance(value, str) or HEX_COLOR_PATTERN.fullmatch(value) is None:
+            raise ValueError("species colors must use six-digit hex format (#RRGGBB)")
+        return value
+
+
 class AppConfig(BaseModel):
     server: AppServer = Field(default_factory=AppServer)
     input: AppInput
     dashboard: DashboardConfig = Field(default_factory=DashboardConfig)
-    ui_styling: Optional[Dict[str, Any]] = None
+    ui_styling: UIStylingConfig = Field(default_factory=UIStylingConfig)
     priority_colors: Optional[Dict[Union[int, str], Any]] = None
+
+    @field_validator("ui_styling", mode="before")
+    @classmethod
+    def default_ui_styling(cls, value):
+        if value is None:
+            return {}
+        return value
 
 
 class LogConfig(BaseModel):

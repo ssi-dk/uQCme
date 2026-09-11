@@ -208,3 +208,4 @@ tests/results/
 # Generated version file
 src/uQCme/_version.py
 output/
+docs/researchit-wiki

@@ -13,6 +13,36 @@ QC_overrides:
   software: ["checkm", "quast", "sylph", "fastp", "speciator"]
   assembly_type: "short"  # Default assembly type for QC metrics
 
+SpeciesAliases:
+  A. baumannii:
+    - Acinetobacter baumannii
+  C. jejuni:
+    - Campylobacter jejuni
+  C. freundii:
+    - Citrobacter freundii
+  C. koseri:
+    - Citrobacter koseri
+  C. difficile:
+    - Clostridioides difficile
+  E. coli:
+    - Escherichia coli
+  K. oxytoca:
+    - Klebsiella oxytoca
+  K. pneumoniae:
+    - Klebsiella pneumoniae
+  L. longbeachae:
+    - Legionella longbeachae
+  L. pneumophila:
+    - Legionella pneumophila
+  Listeria:
+    - Listeria monocytogenes
+  Salmonella:
+    - Salmonella enterica
+  S. sonnei:
+    - Shigella sonnei
+  Yersinia:
+    - Yersinia enterocolitica
+
 # # Example data entry
 # # {
 # #   "irida_ID": 1186,
@@ -85,13 +115,93 @@ QC_overrides:
 # #   }
 # # }
 
+
+ColumnPresets:
+  default: Standard
+  presets:
+    Standard:
+      description: Routine QC view with sample identity, QC result, species, and core assembly metrics.
+      columns:
+        Basic:
+          - Name
+        QC_metrics:
+          - QC action
+          - QC outcome
+          - Failed Rules
+          - Passed Rules
+          - Expected species
+          - Provided Species
+          - Genome size (bp)
+          - GC
+          - N50
+          - Contigs
+          - Depth
+
+    LabA:
+      description: Standard QC columns plus selected read quality metrics for LabA.
+      columns:
+        Basic:
+          - Name
+        QC_metrics:
+          - QC action
+          - QC outcome
+          - Failed Rules
+          - Passed Rules
+          - Expected species
+          - Provided Species
+          - Genome size (bp)
+          - GC
+          - N50
+          - Contigs
+          - Depth
+        Read_QC:
+          - Q30 fraction
+          - Mean read length
+          - Duplication rate
+
+    LabB:
+      description: Standard QC columns plus selected contamination metrics for LabB.
+      columns:
+        Basic:
+          - Name
+        QC_metrics:
+          - QC action
+          - QC outcome
+          - Failed Rules
+          - Passed Rules
+          - Expected species
+          - Provided Species
+          - Genome size (bp)
+          - GC
+          - N50
+          - Contigs
+          - Depth
+        Read_QC:
+          - Contamination percent
+          - Unexpected GC percent
+          - N content fraction
+          - Adapter overrepresentation
+          - Number of genomes
+
+    All:
+      description: Every available non-hidden column.
+      columns: "*"
+
 Sections:
   Basic:
+    SupplyingLab:
+      data:
+        mapping: SupplyingLab
+      report:
+        filter: true
     Name:
       data:
         mapping: sample_name
       report:
         id: true # represents the unique identifier for the sample which can be passed to other systems
+        sample_details_index: true
+        sample_details_order: 1
+        label: Sample
   QC_metrics:
     QC action: # generated from qc
       data:
@@ -99,12 +209,16 @@ Sections:
       report:
         filter: true
         priority_coloring: true
+        sample_details_index: true
+        sample_details_order: 4
     QC outcome: # generated from qc
       data:
         mapping: qc_outcome
       report:
         filter: true
         priority_coloring: true
+        sample_details_index: true
+        sample_details_order: 3
     Failed Rules: # generated from qc
       data:
         mapping: failed_rules
@@ -114,21 +228,26 @@ Sections:
     Expected species:
       data:
         mapping: rMLST_match
-      QC:
-        mapping: ["speciesName", "genusName", "Marker lineage"]
       report:
         filter: true
     Provided Species:
       data:
         mapping: species
-    Species:
       QC:
         mapping: ["speciesName", "genusName", "Marker lineage"]
+      report:
+        sample_details_index: true
+        sample_details_order: 2
+        label: Species
+        filter: true
+    Species:
+      data:
+        mapping: species
       report:
         filter: true
     Genome size (bp):
       data:
-        mapping: bin_length_at_1x
+        mapping: Quast_Total_Length
       QC:
         software: "checkm"
         assembly_type: "short"
@@ -137,7 +256,7 @@ Sections:
         filter: true
     GC:
       data:
-        mapping: GC
+        mapping: Quast_GC_Pct
       QC:
         mapping: ["GC", "GC (%)"]
       report:
@@ -145,12 +264,12 @@ Sections:
         description: GC content
     N50:
       data:
-        mapping: N50
+        mapping: Quast_N50
       QC:
         mapping: ["N50", "N50 (scaffolds)"]
     Contigs:
       data:
-        mapping: bin_contigs_at_1x
+        mapping: Quast_Contigs
       QC:
         mapping: ["# contigs", "# contigs (>= 0 bp)"]
     Completeness:
@@ -167,13 +286,13 @@ Sections:
       hidden: true
     Depth:
       data:
-        mapping: bin_coverage_at_1x
+        mapping: Average_Coverage
       QC:
         mapping: ["Depth"]
   Read_QC:
     Coverage:
       data:
-        mapping: coverage_x
+        mapping: Average_Coverage
       QC:
         mapping: ["coverage_x"]
       report:
@@ -196,14 +315,14 @@ Sections:
         description: Fraction of bases with Q>=30 (fastp)
     Mean read length:
       data:
-        mapping: mean_read_length_bp
+        mapping: fastp_Before_Filtering_Read1_Mean_Length
       QC:
         mapping: ["mean_read_length_bp"]
       report:
         description: Mean read length in bp (fastp)
     Duplication rate:
       data:
-        mapping: duplication_rate
+        mapping: fastp_Duplication_Rate
       QC:
         mapping: ["duplication_rate"]
       report:

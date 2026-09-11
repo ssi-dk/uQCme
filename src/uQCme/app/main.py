@@ -11,7 +11,9 @@ Note: This module requires the 'app' or 'all' extras to be installed:
 """
 
 import os
+import re
 import sys
+from html import escape
 import streamlit as st
 from streamlit.web import cli as stcli
 import pandas as pd
@@ -25,6 +27,7 @@ from uQCme.app.plot import (
     build_quality_metric_catalog,
     get_plottable_quality_metric_columns,
 )
+from uQCme.app.styling import SpeciesSupportStyling
 from uQCme.core.loader import (
     collect_duplicate_row_warnings,
     get_unique_columns_from_mapping,
@@ -256,6 +259,28 @@ class QCDashboard:
                 filtered_data = filtered_data[filtered_data[column] == filter_value]
 
         return filtered_data
+
+    # Return a copy with canonical sample names in stable natural-sort order.
+    def _sort_samples_naturally(self, data: pd.DataFrame) -> pd.DataFrame:
+        if "sample_name" not in data.columns:
+            return data.copy()
+
+        def sort_key(value):
+            if value is None or pd.isna(value):
+                return (1, ())
+
+            chunks = re.split(r"(\d+)", str(value))
+            natural_chunks = tuple(
+                (1, int(chunk)) if chunk.isdigit() else (0, chunk.casefold())
+                for chunk in chunks
+            )
+            return (0, natural_chunks)
+
+        positions = sorted(
+            range(len(data)),
+            key=lambda position: sort_key(data.iloc[position]["sample_name"]),
+        )
+        return data.iloc[positions].copy()
 
     def _load_config(self, config_path: Optional[str]) -> UQCMeConfig:
         """Load configuration from YAML file or use defaults."""
@@ -537,6 +562,107 @@ class QCDashboard:
     def _get_species_field(self) -> Optional[str]:
         """Get the species field name from mapping configuration."""
         return self._get_field_by_role("species") or "species"
+
+    # Resolve the detected-species source from the mapping configuration.
+    def _get_detected_species_field(self) -> Optional[str]:
+        detected_field = None
+        standard_detected_field = None
+        detected_labels = {"detected species", "expected species"}
+        sections = self.mapping.get("Sections", {})
+
+        if not isinstance(sections, dict):
+            return "rMLST_match"
+
+        for section_data in sections.values():
+            if not isinstance(section_data, dict):
+                continue
+
+            for field_name, field_config in section_data.items():
+                if not isinstance(field_config, dict):
+                    continue
+
+                data_mapping = field_config.get("data", {}).get("mapping")
+                if not isinstance(data_mapping, str) or not data_mapping.strip():
+                    continue
+
+                normalized_field_name = str(field_name).strip().casefold()
+                if (
+                    detected_field is None
+                    and normalized_field_name in detected_labels
+                ):
+                    detected_field = data_mapping
+
+                if (
+                    standard_detected_field is None
+                    and data_mapping.strip().casefold() == "rmlst_match"
+                ):
+                    standard_detected_field = data_mapping
+
+        if detected_field is not None:
+            return detected_field
+        if standard_detected_field is not None:
+            return standard_detected_field
+        return "rMLST_match"
+
+    # Return whether a species value is absent or contains only whitespace.
+    def _is_missing_species_value(self, value: Any) -> bool:
+        if value is None:
+            return True
+
+        try:
+            if bool(pd.isna(value)):
+                return True
+        except (TypeError, ValueError):
+            pass
+
+        return str(value).strip() == ""
+
+    # Normalize a species value for direct and configured alias comparisons.
+    def _normalize_species_value(self, value: Any) -> Optional[str]:
+        if self._is_missing_species_value(value):
+            return None
+
+        return str(value).strip().casefold()
+
+    # Resolve explicitly configured category-to-detected species aliases.
+    def _get_species_aliases(self) -> Dict[str, set[str]]:
+        raw_aliases = self.mapping.get("SpeciesAliases", {})
+        if not isinstance(raw_aliases, dict):
+            return {}
+
+        normalized_aliases: Dict[str, set[str]] = {}
+        for provided_value, detected_values in raw_aliases.items():
+            normalized_provided = self._normalize_species_value(provided_value)
+            if normalized_provided is None or not isinstance(
+                detected_values, (list, tuple, set)
+            ):
+                continue
+
+            normalized_detected = {
+                normalized_value
+                for detected_value in detected_values
+                if (normalized_value := self._normalize_species_value(detected_value))
+                is not None
+            }
+            if normalized_detected:
+                normalized_aliases[normalized_provided] = normalized_detected
+
+        return normalized_aliases
+
+    # Compare provided and detected species using direct or explicit matches.
+    def _species_values_match(self, provided: Any, detected: Any) -> bool:
+        normalized_provided = self._normalize_species_value(provided)
+        normalized_detected = self._normalize_species_value(detected)
+        if normalized_provided is None or normalized_detected is None:
+            return False
+
+        if normalized_provided == normalized_detected:
+            return True
+
+        accepted_detected_values = self._get_species_aliases().get(
+            normalized_provided, set()
+        )
+        return normalized_detected in accepted_detected_values
 
     def _get_required_fields(self) -> dict:
         """Get required fields from mapping configuration."""
@@ -1037,6 +1163,88 @@ class QCDashboard:
 
         return sections_columns
 
+    # Resolve Sample Details index columns from mapping metadata, with the
+    # original four-column layout as a compatibility fallback.
+    def _get_sample_index_columns(self, data: pd.DataFrame) -> List[Dict[str, Any]]:
+        configured_columns = []
+        identity_column = None
+        mapping_position = 0
+        id_field = self._get_id_field()
+
+        for section_data in self.mapping.get("Sections", {}).values():
+            for field_name, field_config in section_data.items():
+                if not isinstance(field_config, dict):
+                    continue
+
+                report_config = field_config.get("report", {})
+                data_mapping = field_config.get("data", {}).get("mapping")
+                qc_mapping = field_config.get("QC", {}).get("mapping")
+                column = data_mapping
+                if column is None and isinstance(qc_mapping, str):
+                    column = qc_mapping
+                elif column is None and isinstance(qc_mapping, list):
+                    column = next(
+                        (candidate for candidate in qc_mapping if candidate in data),
+                        None,
+                    )
+
+                column_info = {
+                    "column": column,
+                    "label": report_config.get("label") or field_name,
+                    "id": bool(report_config.get("id")) or column == id_field,
+                }
+                if report_config.get("id"):
+                    identity_column = column_info
+
+                if not report_config.get("sample_details_index"):
+                    mapping_position += 1
+                    continue
+
+                configured_order = report_config.get("sample_details_order")
+                has_numeric_order = isinstance(configured_order, (int, float))
+                has_numeric_order = has_numeric_order and not isinstance(
+                    configured_order, bool
+                )
+                order_key = (
+                    0 if has_numeric_order else 1,
+                    configured_order if has_numeric_order else mapping_position,
+                    mapping_position,
+                )
+                configured_columns.append({**column_info, "order_key": order_key})
+                mapping_position += 1
+
+        if configured_columns:
+            configured_columns.sort(key=lambda column_info: column_info["order_key"])
+            columns = [
+                {
+                    key: value
+                    for key, value in column_info.items()
+                    if key != "order_key"
+                }
+                for column_info in configured_columns
+            ]
+            if identity_column is not None and not any(
+                column_info["id"] for column_info in columns
+            ):
+                columns.insert(0, identity_column)
+            return columns
+
+        fallback_columns = [
+            {"column": id_field, "label": "Sample", "id": True},
+            {"column": self._get_species_field(), "label": "Species", "id": False},
+            {
+                "column": self._get_outcome_field(),
+                "label": "QC outcome",
+                "id": False,
+            },
+            {
+                "column": self._get_action_field(),
+                "label": "QC action",
+                "id": False,
+            },
+        ]
+        return fallback_columns
+
     def _get_visible_section_defaults(self, sections_columns: Dict[str, list]):
         """Return section default visibility and visible column counts."""
         defaults = {}
@@ -1049,40 +1257,267 @@ class QCDashboard:
 
         return defaults, column_counts
 
-    def _render_section_visibility_control(
-        self,
-        section_names: list,
-        active_sections: list,
-        visible_col_counts: Dict[str, int],
+    def _get_selectable_columns_by_section(
+        self, sections_columns: Dict[str, list]
+    ) -> Dict[str, list]:
+        selectable_sections = {}
+        seen_columns = set()
+
+        for section_name, section_columns in sections_columns.items():
+            selectable_columns = []
+            for column_info in section_columns:
+                column = column_info["column"]
+                if column_info["hidden"] or column in seen_columns:
+                    continue
+                seen_columns.add(column)
+                selectable_columns.append(column_info)
+
+            if selectable_columns:
+                selectable_sections[section_name] = selectable_columns
+
+        return selectable_sections
+
+    def _get_column_presets(
+        self, sections_columns: Dict[str, list]
+    ) -> tuple[Dict[str, Dict[str, Any]], Optional[str]]:
+        preset_config = self.mapping.get("ColumnPresets", {})
+        raw_presets = (
+            preset_config.get("presets", {})
+            if isinstance(preset_config, dict)
+            else {}
+        )
+
+        if not isinstance(raw_presets, dict) or not raw_presets:
+            return {}, None
+
+        selectable_sections = self._get_selectable_columns_by_section(
+            sections_columns
+        )
+        all_columns = [
+            column_info["column"]
+            for section_columns in selectable_sections.values()
+            for column_info in section_columns
+        ]
+        available_fields = {
+            section_name: {
+                column_info["field_name"]: column_info["column"]
+                for column_info in section_columns
+                if not column_info["hidden"]
+            }
+            for section_name, section_columns in sections_columns.items()
+        }
+        configured_sections = self.mapping.get("Sections", {})
+        presets = {}
+
+        for preset_name, raw_preset in raw_presets.items():
+            if not isinstance(raw_preset, dict):
+                raise ConfigError(
+                    f"Column preset '{preset_name}' must be a mapping."
+                )
+
+            configured_columns = raw_preset.get("columns")
+            resolved_columns = []
+
+            if configured_columns == "*":
+                resolved_columns = list(all_columns)
+            elif isinstance(configured_columns, dict):
+                for section_name, field_names in configured_columns.items():
+                    section_config = configured_sections.get(section_name)
+                    if not isinstance(section_config, dict):
+                        raise ConfigError(
+                            f"Unknown section '{section_name}' in column "
+                            f"preset '{preset_name}'."
+                        )
+                    if not isinstance(field_names, list):
+                        raise ConfigError(
+                            f"Columns for '{section_name}' in column preset "
+                            f"'{preset_name}' must be a list."
+                        )
+
+                    for field_name in field_names:
+                        if not isinstance(section_config.get(field_name), dict):
+                            raise ConfigError(
+                                f"Unknown field '{section_name}.{field_name}' "
+                                f"in column preset '{preset_name}'."
+                            )
+
+                        column = available_fields.get(section_name, {}).get(
+                            field_name
+                        )
+                        if column and column not in resolved_columns:
+                            resolved_columns.append(column)
+            else:
+                raise ConfigError(
+                    f"Column preset '{preset_name}' must define 'columns'."
+                )
+
+            presets[preset_name] = {
+                "description": str(raw_preset.get("description", "")).strip(),
+                "columns": resolved_columns,
+            }
+
+        default_preset = preset_config.get("default")
+        if default_preset not in presets:
+            default_preset = next(iter(presets))
+
+        return presets, default_preset
+
+    def _sync_column_customizer(
+        self, selectable_sections: Dict[str, list], selected_columns: List[str]
     ):
-        """Render compact section visibility controls below the data table."""
-        label = "Visible sections"
+        selected_column_set = set(selected_columns)
 
-        def format_section(section_name):
-            count = visible_col_counts.get(section_name, 0)
-            return f"{section_name} ({count})"
+        for section_name, section_columns in selectable_sections.items():
+            st.session_state[f"data_preview_custom_columns_{section_name}"] = [
+                column_info["column"]
+                for column_info in section_columns
+                if column_info["column"] in selected_column_set
+            ]
 
-        if hasattr(st, "pills"):
-            st.pills(
-                label,
-                section_names,
-                selection_mode="multi",
-                default=active_sections,
-                format_func=format_section,
-                key="data_preview_visible_sections",
-                label_visibility="collapsed",
-                width="stretch",
-            )
+    def _render_column_view_controls(
+        self, sections_columns: Dict[str, list]
+    ) -> List[str]:
+        active_key = "data_preview_active_preset"
+        visible_key = "data_preview_visible_columns"
+        base_key = "data_preview_customized_from"
+        signature_key = "data_preview_column_signature"
+        selectable_sections = self._get_selectable_columns_by_section(
+            sections_columns
+        )
+        available_columns = [
+            column_info["column"]
+            for section_columns in selectable_sections.values()
+            for column_info in section_columns
+        ]
+
+        try:
+            presets, default_preset = self._get_column_presets(sections_columns)
+        except ConfigError as error:
+            st.error(f"Column preset configuration error: {error}")
+            return available_columns
+
+        if not presets or default_preset is None:
+            return available_columns
+
+        active_preset = st.session_state.get(active_key, default_preset)
+        if active_preset is not None and active_preset not in presets:
+            active_preset = default_preset
+
+        if active_preset in presets:
+            visible_columns = list(presets[active_preset]["columns"])
+            st.session_state[base_key] = active_preset
         else:
-            st.multiselect(
-                label,
-                section_names,
-                default=active_sections,
-                format_func=format_section,
-                key="data_preview_visible_sections",
-                label_visibility="collapsed",
-                placeholder="Choose visible sections",
+            available_column_set = set(available_columns)
+            visible_columns = [
+                column
+                for column in st.session_state.get(visible_key, [])
+                if column in available_column_set
+            ]
+            if not visible_columns:
+                active_preset = default_preset
+                visible_columns = list(presets[active_preset]["columns"])
+                st.session_state[base_key] = active_preset
+
+        st.session_state[active_key] = active_preset
+        st.session_state[visible_key] = visible_columns
+
+        signature = (
+            tuple(
+                (preset_name, tuple(preset["columns"]))
+                for preset_name, preset in presets.items()
+            ),
+            tuple(available_columns),
+        )
+        customizer_keys = [
+            f"data_preview_custom_columns_{section_name}"
+            for section_name in selectable_sections
+        ]
+
+        if (
+            st.session_state.get(signature_key) != signature
+            or any(key not in st.session_state for key in customizer_keys)
+        ):
+            self._sync_column_customizer(
+                selectable_sections, visible_columns
             )
+            st.session_state[signature_key] = signature
+
+        preset_columns = st.columns(len(presets))
+        for column, preset_name in zip(preset_columns, presets):
+            if column.button(
+                preset_name,
+                type=(
+                    "primary"
+                    if active_preset == preset_name
+                    else "secondary"
+                ),
+                key=f"data_preview_preset_{preset_name}",
+                width="stretch",
+            ):
+                selected_columns = list(presets[preset_name]["columns"])
+                st.session_state[active_key] = preset_name
+                st.session_state[visible_key] = selected_columns
+                st.session_state[base_key] = preset_name
+                self._sync_column_customizer(
+                    selectable_sections, selected_columns
+                )
+                st.rerun()
+
+        if active_preset in presets:
+            description = presets[active_preset]["description"]
+            caption = description or active_preset
+        else:
+            base_preset = st.session_state.get(base_key)
+            caption = (
+                f"Custom view based on {base_preset}"
+                if base_preset
+                else "Custom view"
+            )
+
+        st.caption(f"{caption} · {len(visible_columns)} columns")
+
+        custom_columns = []
+        with st.expander("⚙️ Customize columns"):
+            with st.form("data_preview_column_customizer", border=False):
+                for section_name, section_columns in selectable_sections.items():
+                    options = [
+                        column_info["column"]
+                        for column_info in section_columns
+                    ]
+                    labels = {
+                        column_info["column"]: column_info["field_name"]
+                        for column_info in section_columns
+                    }
+                    selected = st.multiselect(
+                        section_name.replace("_", " "),
+                        options,
+                        format_func=lambda column, labels=labels: labels[column],
+                        key=f"data_preview_custom_columns_{section_name}",
+                    )
+                    selected_set = set(selected)
+                    custom_columns.extend(
+                        column_info["column"]
+                        for column_info in section_columns
+                        if column_info["column"] in selected_set
+                    )
+
+                submitted = st.form_submit_button(
+                    "Apply custom view",
+                    type="primary",
+                    width="stretch",
+                )
+
+        if submitted:
+            if not custom_columns:
+                st.warning("Select at least one column.")
+            else:
+                if active_preset:
+                    st.session_state[base_key] = active_preset
+                st.session_state[active_key] = None
+                st.session_state[visible_key] = custom_columns
+                st.rerun()
+
+        return list(st.session_state[visible_key])
 
     def _get_id_column(self, data: pd.DataFrame) -> Optional[str]:
         """Get the column marked as ID field in mapping configuration."""
@@ -1208,6 +1643,31 @@ class QCDashboard:
         action_lower = str(action).lower()
         return action_colors.get(action_lower, "#000000")
 
+    def _get_supported_species(self) -> set[str]:
+        # Only explicit species rules indicate support; the special "all" rules
+        # apply generally and do not make an otherwise unknown species supported.
+        qc_rules = getattr(self, "qc_rules", pd.DataFrame())
+        if qc_rules.empty or "species" not in qc_rules.columns:
+            return set()
+
+        supported_species = set()
+        for value in qc_rules["species"]:
+            if pd.isna(value):
+                continue
+            species_name = str(value).strip()
+            if species_name != "" and species_name.casefold() != "all":
+                supported_species.add(species_name)
+        return supported_species
+
+    def _get_species_styling(self) -> SpeciesSupportStyling:
+        # Construct from current rules so configuration or uploaded rule changes
+        # are reflected without maintaining a second support list.
+        return SpeciesSupportStyling(
+            self.config.app.ui_styling,
+            self._get_supported_species(),
+            self._get_species_aliases(),
+        )
+
     def _get_ordered_columns_with_sections(
         self, data: pd.DataFrame, visible_sections: Dict[str, bool]
     ) -> list:
@@ -1226,7 +1686,9 @@ class QCDashboard:
                     # Skip hidden fields
                     if col_info["hidden"]:
                         continue
-                    ordered_cols.append(col_info["column"])
+                    column = col_info["column"]
+                    if column not in ordered_cols:
+                        ordered_cols.append(column)
 
         # Add remaining sections not in the predefined order
         for section_name, section_cols in sections_columns.items():
@@ -1295,6 +1757,9 @@ class QCDashboard:
                 "Select", help="Select this sample"
             )
 
+        styled_data = display_data.style
+        has_styling = False
+
         # Apply QC action styling if the column exists
         action_field = self._get_action_field()
         if action_field and action_field in display_data.columns:
@@ -1307,10 +1772,24 @@ class QCDashboard:
                     f"color: {color}; font-weight: bold; text-shadow: 0 0 3px {color};"
                 )
 
-            styled_data = display_data.style.map(
+            styled_data = styled_data.map(
                 highlight_action_values, subset=[action_field]
             )
-        else:
+            has_styling = True
+
+        species_field = self._get_species_field()
+        if species_field and species_field in display_data.columns:
+            species_styling = self._get_species_styling()
+            styled_data = styled_data.map(
+                species_styling.cell_style_for,
+                subset=[species_field],
+            )
+            styled_data = styled_data.format(
+                {species_field: species_styling.table_label_for}
+            )
+            has_styling = True
+
+        if not has_styling:
             styled_data = display_data
 
         # Disable all columns except Select to prevent accidental editing
@@ -1468,68 +1947,41 @@ class QCDashboard:
                             st.error(f"'{action.label}' failed: {e}")
 
     def render_data_tab(self, filtered_data: pd.DataFrame):
-        """Render the data tab with section visibility controls."""
+        """Render the data tab."""
         st.header("📊 Data")
 
         sections_columns = self._get_columns_by_section(filtered_data)
-        visible_sections = {}
-        section_names = list(sections_columns.keys())
-        section_defaults, visible_col_counts = self._get_visible_section_defaults(
-            sections_columns
-        )
 
         if self.report_mode:
+            section_defaults, _ = self._get_visible_section_defaults(
+                sections_columns
+            )
             report_cfg = self._get_report_mode_config()
             default_sections = report_cfg.get("default_visible_sections", {})
-            for section_name in section_names:
-                visible_sections[section_name] = bool(
-                    default_sections.get(section_name, section_defaults[section_name])
+            visible_sections = {
+                section_name: bool(
+                    default_sections.get(
+                        section_name, section_defaults[section_name]
+                    )
                 )
-        else:
-            default_active_sections = [
-                name for name in section_names if section_defaults[name]
-            ]
-            selected_sections = st.session_state.get(
-                "data_preview_visible_sections", default_active_sections
+                for section_name in sections_columns
+            }
+            ordered_columns = self._get_ordered_columns_with_sections(
+                filtered_data, visible_sections
             )
-            selected_sections = [
-                name for name in selected_sections if name in section_names
-            ]
-            selected_section_set = set(selected_sections)
+        else:
+            st.subheader("Column View")
+            ordered_columns = self._render_column_view_controls(
+                sections_columns
+            )
 
-            for section_name in section_names:
-                visible_sections[section_name] = section_name in selected_section_set
-
-        # Get ordered columns based on visible sections for reference
-        ordered_columns = self._get_ordered_columns_with_sections(
-            filtered_data, visible_sections
-        )
-
-        # Show active sections info
-        active_sections = [
-            name for name, visible in visible_sections.items() if visible
+        column_order = [
+            column
+            for column in ordered_columns
+            if column in filtered_data.columns
         ]
+        display_data = filtered_data[column_order]
 
-        # Reorder dataframe columns to put important ones first
-        # Only show columns from visible sections
-        priority_columns = []
-
-        # Add columns in section order priority (only from visible sections)
-        for col in ordered_columns:
-            if col in filtered_data.columns:
-                priority_columns.append(col)
-
-        # Create column order for Streamlit - only visible section columns
-        column_order = priority_columns
-
-        # Filter the dataframe to only show columns from visible sections.
-        visible_columns = [
-            col for col in priority_columns if col in filtered_data.columns
-        ]
-        display_data = filtered_data[visible_columns]
-
-        # Display the dataframe with built-in controls and QC action styling
-        # Only show columns from visible sections
         if self.report_mode:
             st.dataframe(
                 display_data,
@@ -1542,70 +1994,52 @@ class QCDashboard:
                 display_data, column_order, "data_preview_table"
             )
 
-        if not self.report_mode:
-            st.subheader("Section Visibility")
-            self._render_section_visibility_control(
-                section_names, active_sections, visible_col_counts
-            )
-
-            if ordered_columns:
-                tip_msg = (
-                    f"💡 **Tip:** Use the column visibility controls (👁️) in "
-                    f"the table to show/hide specific columns. Currently "
-                    f"showing {len(ordered_columns)} columns from selected "
-                    f"sections: {', '.join(active_sections)}"
-                )
-                st.info(tip_msg)
-
-        # Optional config-driven API actions for selected samples.
         self.render_sample_api_actions(filtered_data)
 
-        # Show column information organized by visible sections
+        visible_column_set = set(column_order)
+        selectable_sections = self._get_selectable_columns_by_section(
+            sections_columns
+        )
+
         with st.expander("📋 Column Information"):
             st.write("**Column mapping from configuration:**")
 
-            for section_name in active_sections:
-                if section_name in sections_columns:
-                    st.subheader(f"{section_name} Section")
-                    section_cols = sections_columns[section_name]
+            for section_name, section_columns in selectable_sections.items():
+                visible_section_columns = [
+                    column_info
+                    for column_info in section_columns
+                    if column_info["column"] in visible_column_set
+                ]
 
-                    for col_info in section_cols:
-                        mapping_key = col_info["column"]
-                        field_name = col_info["field_name"]
-                        hidden = col_info["hidden"]
-                        has_filter = col_info["filter"]
-                        is_id = col_info["id"]
+                if not visible_section_columns:
+                    continue
 
-                        if mapping_key in filtered_data.columns:
-                            # Skip hidden fields from display
-                            if hidden:
-                                continue
+                st.subheader(f"{section_name} Section")
 
-                            # Get description from mapping config
-                            description = self._get_column_description(mapping_key)
+                for column_info in visible_section_columns:
+                    mapping_key = column_info["column"]
+                    field_name = column_info["field_name"]
+                    has_filter = column_info["filter"]
+                    is_id = column_info["id"]
+                    description = self._get_column_description(mapping_key)
+                    extras = []
 
-                            # Build display string with additional info
-                            extras = []
-                            if has_filter:
-                                extras.append("Filterable")
-                            if is_id:
-                                extras.append("ID")
+                    if has_filter:
+                        extras.append("Filterable")
+                    if is_id:
+                        extras.append("ID")
 
-                            extra_info = ""
-                            if extras:
-                                extra_info = f" ({', '.join(extras)})"
+                    extra_info = f" ({', '.join(extras)})" if extras else ""
 
-                            # Create field display with description
-                            if description and description != field_name:
-                                field_display = (
-                                    f"- **{field_name}**: `{mapping_key}` - "
-                                    f"{description}{extra_info}"
-                                )
-                            else:
-                                field_display = (
-                                    f"- **{field_name}**: `{mapping_key}`{extra_info}"
-                                )
-                            st.write(field_display)
+                    if description and description != field_name:
+                        st.write(
+                            f"- **{field_name}**: `{mapping_key}` - "
+                            f"{description}{extra_info}"
+                        )
+                    else:
+                        st.write(
+                            f"- **{field_name}**: `{mapping_key}`{extra_info}"
+                        )
 
     def render_report_tab(self, filtered_data: pd.DataFrame):
         """Render config-driven table-only report view."""
@@ -1634,8 +2068,21 @@ class QCDashboard:
 
         # Use static HTML table in report mode so all rows are rendered
         # in the DOM (st.dataframe virtualizes and truncates to viewport).
-        report_table_html = display_data.to_html(
-            index=False, escape=False, border=0, classes=["uqcme-report-table"]
+        report_table = display_data.style
+        species_field = self._get_species_field()
+        if species_field and species_field in display_data.columns:
+            species_styling = self._get_species_styling()
+            report_table = report_table.map(
+                species_styling.cell_style_for,
+                subset=[species_field],
+            )
+            report_table = report_table.format(
+                {species_field: species_styling.table_label_for}
+            )
+        report_table_html = (
+            report_table.hide(axis="index")
+            .set_table_attributes('class="uqcme-report-table"')
+            .to_html()
         )
         st.markdown(
             """
@@ -1780,52 +2227,139 @@ class QCDashboard:
                     warning_msg = "No additional metrics available for scatter plot."
                     st.warning(warning_msg)
 
-    def render_sample_details_tab(self, filtered_data: pd.DataFrame):
-        """Render detailed sample information."""
-        st.header("🔬 Sample Details")
+    # Build readable, unique HTML fragment IDs for the sample rows.
+    def _build_sample_anchors(self, sample_values: list) -> list[str]:
+        base_slugs = []
+        for value in sample_values:
+            value_text = "sample" if value is None or pd.isna(value) else str(value)
+            slug = re.sub(r"[^a-z0-9]+", "-", value_text.casefold()).strip("-")
+            base_slugs.append(f"sample-{slug or 'sample'}")
 
-        # Get field names from mapping
-        id_field = self._get_id_field()
-        outcome_field = self._get_outcome_field()
-        action_field = self._get_action_field()
-        species_field = self._get_species_field()
+        base_counts = {}
+        for base_slug in base_slugs:
+            base_counts[base_slug] = base_counts.get(base_slug, 0) + 1
 
-        # Sample selection - use ID field from mapping
-        if id_field and id_field in filtered_data.columns:
-            sample_options = filtered_data[id_field].tolist()
-        else:
-            st.warning("No ID field configured in mapping.")
-            return
+        seen_counts = {}
+        anchors = []
+        for base_slug in base_slugs:
+            if base_counts[base_slug] == 1:
+                anchors.append(base_slug)
+                continue
 
-        if not sample_options:
-            st.warning("No samples match the current filters.")
-            return
+            occurrence = seen_counts.get(base_slug, 0) + 1
+            seen_counts[base_slug] = occurrence
+            anchors.append(f"{base_slug}-{occurrence}")
 
-        selected_sample = st.selectbox(
-            "Select Sample (based on filtered data)", sample_options
+        return anchors
+
+    # Resolve a QC rule field to the corresponding processed-data column.
+    def _get_rule_data_field(self, rule_field: str) -> str:
+        sections = self.mapping.get("Sections", {})
+        for section_data in sections.values():
+            if not isinstance(section_data, dict):
+                continue
+
+            for field_config in section_data.values():
+                if not isinstance(field_config, dict):
+                    continue
+
+                data_mapping = field_config.get("data", {}).get("mapping")
+                qc_mapping = field_config.get("QC", {}).get("mapping")
+                if isinstance(qc_mapping, str):
+                    qc_mapping = [qc_mapping]
+
+                if data_mapping and rule_field in (qc_mapping or []):
+                    return data_mapping
+
+        return rule_field
+
+    # Describe a failed rule using its configured criterion and observed value.
+    def _format_failed_rule(self, rule_id: str, sample_data: pd.Series) -> str:
+        qc_rules = getattr(self, "qc_rules", pd.DataFrame())
+        if qc_rules.empty or "rule_id" not in qc_rules.columns:
+            return f"{rule_id} (rule definition unavailable)"
+
+        matching_rules = qc_rules[qc_rules["rule_id"] == rule_id]
+        if matching_rules.empty:
+            return f"{rule_id} (rule definition unavailable)"
+
+        rule = matching_rules.iloc[0]
+        field = str(rule.get("field", "")).strip()
+        software = rule.get("software")
+        software_text = ""
+        if software is not None and pd.notna(software):
+            software_text = str(software).strip()
+
+        operator = str(rule.get("operator", "")).strip()
+        operator_text = {
+            ">=": "must be ≥",
+            "<=": "must be ≤",
+            ">": "must be >",
+            "<": "must be <",
+            "=": "must equal",
+            "!=": "must not equal",
+            "regex": "must match",
+            "contains": "must contain",
+        }.get(operator, f"must satisfy {operator}")
+        threshold = str(rule.get("value", "")).strip()
+
+        criterion_parts = [part for part in [software_text, field] if part]
+        criterion = " ".join(criterion_parts)
+        description = f"{criterion} {operator_text} {threshold}".strip()
+
+        data_field = self._get_rule_data_field(field)
+        observed = self._format_sample_metric_value(sample_data.get(data_field))
+        observed_text = observed if observed is not None else "unavailable"
+        return f"{description}; observed {observed_text}"
+
+    # Render one sample's existing detail presentation.
+    def _render_single_sample_details(
+        self,
+        filtered_data: pd.DataFrame,
+        sample_data: pd.Series,
+        id_field: str,
+        outcome_field: Optional[str],
+        action_field: Optional[str],
+        species_field: Optional[str],
+        detected_species_field: Optional[str],
+    ):
+        basic_col, metrics_col, rules_col = st.columns(
+            [1, 1, 1],
+            gap="large",
         )
 
-        # Get sample data
-        selected_filter = filtered_data[id_field] == selected_sample
-        sample_data = filtered_data[selected_filter].iloc[0]
-
-        # Display sample information
-        col1, col2 = st.columns(2)
-
-        with col1:
+        with basic_col:
             st.subheader("Basic Information")
             st.write(f"**{id_field}:** {sample_data[id_field]}")
 
+            provided_species = None
             if species_field and species_field in sample_data:
-                species_val = sample_data.get(species_field, "N/A")
-                st.write(f"**{species_field}:** {species_val}")
+                provided_species = sample_data.get(species_field, "N/A")
+                st.write(f"**{species_field}:** {provided_species}")
 
-            # Display QC outcome
+            if detected_species_field:
+                detected_species = sample_data.get(detected_species_field)
+                detected_display = (
+                    "—"
+                    if self._is_missing_species_value(detected_species)
+                    else escape(str(detected_species), quote=True)
+                )
+                detected_color = (
+                    "#00AA00"
+                    if self._species_values_match(provided_species, detected_species)
+                    else "#DC143C"
+                )
+                st.markdown(
+                    "**detected species:** "
+                    f"<span style='color: {detected_color}; "
+                    f"font-weight: bold;'>{detected_display}</span>",
+                    unsafe_allow_html=True,
+                )
+
             if outcome_field and outcome_field in sample_data:
                 outcome = sample_data[outcome_field]
                 st.write(f"**{outcome_field}:** {outcome}")
 
-            # Display QC action with color highlighting if available
             if (
                 action_field
                 and action_field in sample_data
@@ -1833,13 +2367,14 @@ class QCDashboard:
             ):
                 action = sample_data[action_field]
                 action_color = self._get_qc_action_color(action)
+                escaped_action = escape(str(action), quote=True)
                 st.markdown(
                     f"**{action_field}:** <span style='color: {action_color}; "
-                    f"font-weight: bold;'>{action}</span>",
+                    f"font-weight: bold;'>{escaped_action}</span>",
                     unsafe_allow_html=True,
                 )
 
-        with col2:
+        with metrics_col:
             st.subheader("Quality Metrics")
             metric_entries = self._get_sample_quality_metric_entries(
                 filtered_data, sample_data
@@ -1851,38 +2386,117 @@ class QCDashboard:
             else:
                 st.info("No quality metric values available for this sample.")
 
-        # Failed and passed rules
-        st.subheader("QC Rules Analysis")
-
-        col1, col2 = st.columns(2)
-
-        with col1:
+        with rules_col:
+            st.subheader("Failed Rules")
             failed_rules_val = sample_data.get("failed_rules")
             if (
                 failed_rules_val
                 and pd.notna(failed_rules_val)
                 and isinstance(failed_rules_val, str)
             ):
-                st.write("**Failed Rules:**")
-                failed_rules = failed_rules_val.split(",")
-                # Display all failed rules, each on one row
-                st.write("❌ " + ", ".join([rule.strip() for rule in failed_rules]))
+                failed_rules = [
+                    rule.strip() for rule in failed_rules_val.split(",") if rule.strip()
+                ]
+                for rule_id in failed_rules:
+                    description = self._format_failed_rule(rule_id, sample_data)
+                    st.write(f"❌ {description}")
             else:
                 st.write("✅ No failed rules")
 
-        with col2:
-            passed_rules_val = sample_data.get("passed_rules")
-            if (
-                passed_rules_val
-                and pd.notna(passed_rules_val)
-                and isinstance(passed_rules_val, str)
-            ):
-                st.write("**Passed Rules:**")
-                passed_rules = passed_rules_val.split(",")
-                # Display all passed rules, all on one row
-                st.write("✅ " + ", ".join([rule.strip() for rule in passed_rules]))
-            else:
-                st.write("No passed rules data available")
+    def render_sample_details_tab(self, filtered_data: pd.DataFrame):
+        """Render detailed sample information."""
+        st.header("🔬 Sample Details")
+
+        id_field = self._get_id_field()
+        outcome_field = self._get_outcome_field()
+        action_field = self._get_action_field()
+        species_field = self._get_species_field()
+        detected_species_field = self._get_detected_species_field()
+
+        if id_field is None or id_field not in filtered_data.columns:
+            st.warning("No ID field configured in mapping.")
+            return
+
+        sample_values = filtered_data[id_field].tolist()
+        if not sample_values:
+            st.warning("No samples match the current filters.")
+            return
+
+        anchors = self._build_sample_anchors(sample_values)
+        index_columns = self._get_sample_index_columns(filtered_data)
+        navigation_rows = []
+
+        def display_value(sample_data, field_name: Optional[str]) -> str:
+            if field_name is None or field_name not in sample_data:
+                return "—"
+            value = sample_data[field_name]
+            if value is None or pd.isna(value):
+                return "—"
+            return escape(str(value), quote=True)
+
+        for sample_data, anchor in zip(filtered_data.to_dict("records"), anchors):
+            cells = []
+            for column_info in index_columns:
+                cell_value = display_value(sample_data, column_info["column"])
+                if column_info["id"]:
+                    cells.append(f'<td><a href="#{anchor}">{cell_value}</a></td>')
+                else:
+                    cells.append(f"<td>{cell_value}</td>")
+            navigation_rows.append("<tr>" + "".join(cells) + "</tr>")
+
+        navigation_headers = [
+            f"<th>{escape(str(column_info['label']), quote=True)}</th>"
+            for column_info in index_columns
+        ]
+
+        st.markdown('<a id="sample-index"></a>', unsafe_allow_html=True)
+        navigation_html = "\n".join(
+            [
+                "<style>",
+                ".uqcme-sample-index {",
+                "    border-collapse: collapse;",
+                "    width: 100%;",
+                "    margin-bottom: 1rem;",
+                "}",
+                ".uqcme-sample-index th, .uqcme-sample-index td {",
+                "    border: 1px solid rgba(128, 128, 128, 0.35);",
+                "    padding: 4px 6px;",
+                "    text-align: left;",
+                "    vertical-align: top;",
+                "}",
+                ".uqcme-sample-index th {",
+                "    background-color: rgba(128, 128, 128, 0.14);",
+                "    color: inherit;",
+                "    font-weight: 600;",
+                "}",
+                "</style>",
+                '<table class="uqcme-sample-index">',
+                "<thead>",
+                "<tr>",
+                *navigation_headers,
+                "</tr>",
+                "</thead>",
+                "<tbody>",
+                *navigation_rows,
+                "</tbody>",
+                "</table>",
+            ]
+        )
+        st.markdown(navigation_html, unsafe_allow_html=True)
+
+        for (_, sample_data), anchor in zip(filtered_data.iterrows(), anchors):
+            st.markdown(f'<a id="{anchor}"></a>', unsafe_allow_html=True)
+            self._render_single_sample_details(
+                filtered_data,
+                sample_data,
+                id_field,
+                outcome_field,
+                action_field,
+                species_field,
+                detected_species_field,
+            )
+            st.markdown("[Back to sample index](#sample-index)")
+            st.markdown("---")
 
     def render_qc_tests_tab(self):
         """Render the QC tests configuration tab."""
@@ -2395,6 +3009,7 @@ class QCDashboard:
 
         # Get filtered data from sidebar controls
         filtered_data = self.render_sidebar_filters()
+        filtered_data = self._sort_samples_naturally(filtered_data)
 
         # Main content tabs
         if self.report_mode:

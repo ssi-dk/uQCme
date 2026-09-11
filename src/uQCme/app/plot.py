@@ -14,6 +14,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 from dataclasses import dataclass
 from typing import Dict, Any, Optional, Iterable, List, Tuple
+
+from uQCme.app.styling import SpeciesSupportStyling
 from uQCme.core.config import UQCMeConfig
 
 
@@ -257,6 +259,7 @@ class QCPlotter:
             if config.app and config.app.priority_colors
             else {}
         )
+        self.species_styling = SpeciesSupportStyling(config.app.ui_styling, ())
 
     def create_outcome_pie_chart(
         self, data: pd.DataFrame, title: str = "QC Outcome Distribution"
@@ -283,7 +286,8 @@ class QCPlotter:
         if "species" not in data.columns:
             return go.Figure()
 
-        species_counts = data["species"].value_counts().head(top_n)
+        species_labels = data["species"].map(self.species_styling.chart_label_for)
+        species_counts = species_labels.value_counts().head(top_n)
 
         fig = px.bar(
             x=species_counts.values,
@@ -297,6 +301,7 @@ class QCPlotter:
             yaxis={"categoryorder": "total ascending"},
             height=max(400, top_n * 30),
             margin=dict(l=200),
+            showlegend=False,
         )
 
         return fig

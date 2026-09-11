@@ -257,6 +257,27 @@ app:
 
 See the `input/example/` directory for template files.
 
+**Rule-aware species styling**
+
+The dashboard derives species support from explicit, species-specific entries
+in the configured QC rules. Rules targeting `all` do not mark a species as
+supported. Supported species use normal table styling, unsupported species use
+subtle blue text, and missing species use a translucent gray cell:
+
+```yaml
+app:
+  ui_styling:
+    unsupported_species_color_light: "#1D4ED8"
+    unsupported_species_color_dark: "#60A5FA"
+    missing_species_color: "#808080"
+    missing_species_opacity: 0.15
+```
+
+Colors must use six-digit hexadecimal notation (`#RRGGBB`), and opacity must be
+between `0` and `1`. Species names are matched after trimming whitespace and
+without regard to case. Null, empty, or whitespace-only table values display as
+an em dash and appear as `Missing species` in the distribution chart.
+
 ## Output Files
 
 ### 1. QC Results (`qc_results.tsv`)
@@ -280,6 +301,13 @@ Detailed log of rule evaluation issues:
 - Summary statistics and sample counts
 
 ### Sample Details
+
+- Config-driven navigation index of filtered samples
+- Mapping fields marked with `report.sample_details_index: true` appear in the
+  index; `report.sample_details_order` controls their order and `report.label`
+  optionally overrides the heading
+- The field marked with `report.id: true` links to each sample's detail section
+- Mappings without index flags retain the four-column legacy index
 - Detailed view of individual sample QC results
 - Failed rules and thresholds
 - Interactive metric exploration

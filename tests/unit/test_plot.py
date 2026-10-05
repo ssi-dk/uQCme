@@ -10,11 +10,72 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
 
 from uQCme.app.plot import (
+    QCPlotter,
     build_quality_metric_catalog,
     get_available_metrics,
     get_plottable_quality_metric_columns,
     validate_metric_for_plotting,
 )
+from uQCme.core.config import UQCMeConfig
+
+
+def _plotter_with_species_styling() -> QCPlotter:
+    return QCPlotter(
+        UQCMeConfig(
+            app={
+                "input": {
+                    "data": {"file": "output/qc_results.tsv"},
+                    "mapping": "config/mapping.yaml",
+                    "qc_rules": "config/QC_rules.tsv",
+                    "qc_tests": "config/QC_tests.tsv",
+                },
+                "ui_styling": {
+                    "unsupported_species_color_light": "#123456",
+                    "unsupported_species_color_dark": "#654321",
+                    "missing_species_color": "#ABCDEF",
+                    "missing_species_opacity": 0.25,
+                },
+            }
+        )
+    )
+
+
+def test_species_bar_chart_uses_standard_color_and_includes_missing_values():
+    plotter = _plotter_with_species_styling()
+    data = pd.DataFrame(
+        {
+            "species": [
+                "Escherichia coli",
+                " escherichia COLI ",
+                "Salmonella enterica",
+                None,
+                "   ",
+            ]
+        }
+    )
+
+    figure = plotter.create_species_bar_chart(data)
+
+    labels = list(figure.data[0].y)
+    assert labels == [
+        "Missing species",
+        "Escherichia coli",
+        "escherichia COLI",
+        "Salmonella enterica",
+    ]
+    assert figure.data[0].marker.color == "#636efa"
+    assert figure.layout.showlegend is False
+
+
+def test_species_bar_chart_honors_top_n_and_handles_missing_column():
+    plotter = _plotter_with_species_styling()
+    data = pd.DataFrame({"species": ["A", "A", "B", "C"]})
+
+    figure = plotter.create_species_bar_chart(data, top_n=2)
+    empty_figure = plotter.create_species_bar_chart(pd.DataFrame({"sample": ["S1"]}))
+
+    assert list(figure.data[0].y) == ["A", "B"]
+    assert len(empty_figure.data) == 0
 
 
 def test_get_available_metrics_accepts_numeric_strings_and_excludes_ids():

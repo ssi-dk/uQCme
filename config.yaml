@@ -18,7 +18,14 @@ app:
     port: 8501
   input:
     data:
-      file: "./output/example/uQCme_run_data.tsv" # can also load via an API, only 1 can be enabled
+      #file: "./input/example/run_data_new_schema.tsv"
+      api_call: "http://127.0.0.1:8000/api/v1/uQCme?project_id=uSymph"
+      api_bearer_token_env: "UQCME_API_TOKEN"
+      api_query_params:
+        - batchIDs
+        - seqSamples
+        - analysisTypeID
+      #file: "./output/example/uQCme_run_data.tsv" # can also load via an API, only 1 can be enabled
       # api_call: 
       # api_bearer_token: 
       # api_bearer_token_env: ""
@@ -34,6 +41,77 @@ app:
     categorical_filter_threshold: 20  # Max unique values for dropdown filter
     max_displayed_rules: 10           # Max rules shown in sample details
     table_height: 3600                # Main table height in pixels (~100 rows)
+    column_presets:
+      default: Standard
+      presets:
+        Standard:
+          description: Routine QC view with sample identity, QC result, species, and core assembly metrics.
+          columns:
+            Basic:
+              - Name
+              - SupplyingLab
+              - QC action
+              - QC outcome
+              - Provided Species
+              - Expected species
+            QC_metrics:
+              - Failed Rules
+              - Passed Rules
+              - Genome size (bp)
+              - GC
+              - N50
+              - Contigs
+              - Depth
+        LabA:
+          description: Placeholder for fbi 
+          columns:
+            Basic:
+              - Name
+              - SupplyingLab
+              - QC action
+              - QC outcome
+              - Expected species
+              - Expected species support
+            QC_metrics:
+              - Failed Rules
+              - Passed Rules
+            Taxonomy:
+              - Species Summary
+              - Species Summary Percent
+              - Top Species Percent
+              - Top Species
+              - Second Species
+              - Second Species Percent
+              - Unclassified Label
+              - Unclassified Percent
+        LabB:
+          description: Placeholder for rar
+          columns:
+            Basic:
+              - Name
+              - SupplyingLab
+              - Expected species
+              - QC action
+              - QC outcome
+            QC_metrics:
+              - Failed Rules
+              - Passed Rules
+            Plasmids:
+              - pMLST Plasmids
+              - pMLST Summary
+        All:
+          columns: "*"
+    sample_details:
+      index_columns:
+        - sample_name
+        - species
+        - qc_outcome
+        - qc_action
+      labels:
+        sample_name: Sample
+        species: Species
+        qc_outcome: QC outcome
+        qc_action: QC action
   ui_styling:
     unsupported_species_color_light: "#1D4ED8"
     unsupported_species_color_dark: "#60A5FA"
@@ -44,5 +122,34 @@ app:
     2: "#FFFFE0"
     3: "#F08080"
     4: "#FFB6C1"
+  species_aliases:
+    A. baumannii:
+      - Acinetobacter baumannii
+    C. jejuni:
+      - Campylobacter jejuni
+    C. freundii:
+      - Citrobacter freundii
+    C. koseri:
+      - Citrobacter koseri
+    C. difficile:
+      - Clostridioides difficile
+    E. coli:
+      - Escherichia coli
+    K. oxytoca:
+      - Klebsiella oxytoca
+    K. pneumoniae:
+      - Klebsiella pneumoniae
+    L. longbeachae:
+      - Legionella longbeachae
+    L. pneumophila:
+      - Legionella pneumophila
+    Listeria:
+      - Listeria monocytogenes
+    Salmonella:
+      - Salmonella enterica
+    S. sonnei:
+      - Shigella sonnei
+    Yersinia:
+      - Yersinia enterocolitica
 log:
   file: "./log/log.tsv"

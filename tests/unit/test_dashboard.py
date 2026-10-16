@@ -61,6 +61,19 @@ class StreamlitStub(types.ModuleType):
         self.data_editor_calls = []
         self.session_state = _SessionStateStub()
         self.query_params = _QueryParamsStub()
+        self.form_submitted = False
+        self.clicked_button = None
+
+    def caption(self, message):
+        self.events.append(f"caption:{message}")
+
+    def form(self, *args, **kwargs):
+        self.events.append("form")
+        return _ContextStub()
+
+    def form_submit_button(self, label, **kwargs):
+        self.events.append(f"form_submit_button:{label}")
+        return self.form_submitted
 
     def info(self, message):
         self.events.append("info")
@@ -95,7 +108,7 @@ class StreamlitStub(types.ModuleType):
         self.events.append("columns")
         self.columns_calls.append((spec, kwargs))
         column_count = spec if isinstance(spec, int) else len(spec)
-        return [_ContextStub() for _ in range(column_count)]
+        return [_ButtonContextStub(self) for _ in range(column_count)]
 
     def selectbox(self, label, options, index=0, **kwargs):
         self.events.append(f"selectbox:{label}")
@@ -191,6 +204,15 @@ class _ContextStub:
 
     def metric(self, *args, **kwargs):
         return None
+
+
+class _ButtonContextStub(_ContextStub):
+    def __init__(self, streamlit):
+        self.streamlit = streamlit
+
+    def button(self, label, **kwargs):
+        self.streamlit.events.append(f"button:{label}")
+        return self.streamlit.clicked_button == label
 
 
 class _InsertedContextStub(_ContextStub):
@@ -356,6 +378,50 @@ def _bare_dashboard(table_height: int = 3600, ui_styling=None):
     dashboard.report_mode = False
     dashboard.data = pd.DataFrame()
     dashboard.qc_rules = pd.DataFrame()
+    return dashboard
+
+
+def _dashboard_with_presets():
+    dashboard = _bare_dashboard()
+
+    dashboard.config.app.dashboard.column_presets.default = "Standard"
+    dashboard.config.app.dashboard.column_presets.presets = {
+        "Standard": {
+            "description": "Standard QC view",
+            "columns": {
+                "Basic": ["Sample Name"],
+            },
+        },
+        "Everything": {
+            "description": "All columns",
+            "columns": "*",
+        },
+    }
+
+    dashboard.mapping = {
+        "Sections": {
+            "Basic": {
+                "Sample Name": {
+                    "data": {"mapping": "sample_name"},
+                },
+            },
+            "QC": {
+                "QC Outcome": {
+                    "data": {"mapping": "qc_outcome"},
+                },
+            },
+        }
+    }
+
+    dashboard.data = pd.DataFrame(
+        [
+            {
+                "sample_name": "S1",
+                "qc_outcome": "PASS",
+            }
+        ]
+    )
+
     return dashboard
 
 
@@ -726,12 +792,8 @@ def test_styled_dataframe_treats_configured_species_alias_as_supported():
             "missing_species_opacity": 0.25,
         }
     )
-    dashboard.mapping = {
-        "SpeciesAliases": {"E. coli": ["Escherichia coli"]}
-    }
-    dashboard.qc_rules = pd.DataFrame(
-        {"species": ["all", "Escherichia coli"]}
-    )
+    dashboard.mapping = {"SpeciesAliases": {"E. coli": ["Escherichia coli"]}}
+    dashboard.qc_rules = pd.DataFrame({"species": ["all", "Escherichia coli"]})
     data = pd.DataFrame(
         {
             "species": ["E. coli", "Escherichia coli", "Unmapped species"],
@@ -785,9 +847,7 @@ def test_report_table_applies_species_support_styling():
             "missing_species_opacity": 0.25,
         }
     )
-    dashboard.mapping = {
-        "SpeciesAliases": {"E. coli": ["Escherichia coli"]}
-    }
+    dashboard.mapping = {"SpeciesAliases": {"E. coli": ["Escherichia coli"]}}
     dashboard.qc_rules = pd.DataFrame({"species": ["all", "Escherichia coli"]})
     data = pd.DataFrame(
         {
@@ -840,29 +900,24 @@ def test_explicit_other_section_mappings_are_preserved_with_unmapped_columns():
     )
 
 
-def test_data_tab_renders_section_visibility_above_table():
-    """Section visibility controls should render before the main table."""
+def test_data_tab_renders_column_view_above_table():
     streamlit_stub.reset()
-    dashboard = _bare_dashboard(table_height=4200)
-    data = pd.DataFrame(
-        [
-            {"sample_name": "S1", "qc_outcome": "PASS"},
-            {"sample_name": "S2", "qc_outcome": "FAIL"},
-        ]
-    )
-    dashboard.data = data
+    dashboard = _dashboard_with_presets()
 
-    dashboard.render_data_tab(data)
+    dashboard.render_data_tab(dashboard.data)
 
+    assert "subheader:Column View" in streamlit_stub.events
     assert "data_editor" in streamlit_stub.events
-    assert "subheader:Section Visibility" in streamlit_stub.events
-    assert "pills:Visible sections" in streamlit_stub.events
-    heading_index = streamlit_stub.events.index("subheader:Section Visibility")
-    pills_index = streamlit_stub.events.index("pills:Visible sections")
-    info_index = streamlit_stub.events.index("info")
-    table_index = streamlit_stub.events.index("data_editor")
 
-    assert heading_index < pills_index < info_index < table_index
+    assert streamlit_stub.events.index(
+        "subheader:Column View"
+    ) < streamlit_stub.events.index("data_editor")
+
+    rendered_data, _ = streamlit_stub.data_editor_calls[0]
+
+    assert list(rendered_data.columns) == ["sample_name"]
+
+
 def test_ordered_columns_deduplicate_reused_mapping_columns():
     # Repeated mappings should not create duplicate dataframe columns.
     dashboard = _bare_dashboard()
@@ -902,62 +957,40 @@ def test_data_tab_omits_section_visibility_in_report_mode():
     assert "pills:Visible sections" not in streamlit_stub.events
 
 
-def test_section_visibility_uses_compact_stateful_selection():
-    """Selected sections should be read from one compact Streamlit widget."""
+def test_column_view_uses_custom_column_selection():
     streamlit_stub.reset()
-    dashboard = _bare_dashboard()
-    dashboard.mapping = {
-        "Sections": {
-            "Basic": {
-                "Sample Name": {"data": {"mapping": "sample_name"}},
-            },
-            "QC": {
-                "QC Outcome": {"data": {"mapping": "qc_outcome"}},
-            },
-        }
-    }
-    data = pd.DataFrame(
-        [
-            {"sample_name": "S1", "qc_outcome": "PASS"},
-        ]
-    )
-    dashboard.data = data
-    streamlit_stub.session_state["data_preview_visible_sections"] = ["Basic"]
+    dashboard = _dashboard_with_presets()
 
-    dashboard.render_data_tab(data)
+    streamlit_stub.session_state["data_preview_active_preset"] = None
+    streamlit_stub.session_state["data_preview_visible_columns"] = ["qc_outcome"]
+
+    dashboard.render_data_tab(dashboard.data)
 
     rendered_data, _ = streamlit_stub.data_editor_calls[0]
+
+    assert list(rendered_data.columns) == ["qc_outcome"]
+
+
+def test_column_view_rejects_empty_custom_selection():
+    streamlit_stub.reset()
+    dashboard = _dashboard_with_presets()
+
+    dashboard.render_data_tab(dashboard.data)
+
+    streamlit_stub.session_state["data_preview_custom_columns_Basic"] = []
+    streamlit_stub.session_state["data_preview_custom_columns_QC"] = []
+    streamlit_stub.form_submitted = True
+
+    streamlit_stub.data_editor_calls.clear()
+    streamlit_stub.warning_calls.clear()
+
+    dashboard.render_data_tab(dashboard.data)
+
+    assert "Select at least one column." in streamlit_stub.warning_calls
+
+    rendered_data, _ = streamlit_stub.data_editor_calls[0]
+
     assert list(rendered_data.columns) == ["sample_name"]
-    assert "pills:Visible sections" in streamlit_stub.events
-    assert not any(event.startswith("checkbox:") for event in streamlit_stub.events)
-
-
-def test_section_visibility_empty_selection_does_not_show_all_columns():
-    """Deselecting all sections should not fall back to showing everything."""
-    streamlit_stub.reset()
-    dashboard = _bare_dashboard()
-    dashboard.mapping = {
-        "Sections": {
-            "Basic": {
-                "Sample Name": {"data": {"mapping": "sample_name"}},
-            },
-            "QC": {
-                "QC Outcome": {"data": {"mapping": "qc_outcome"}},
-            },
-        }
-    }
-    data = pd.DataFrame(
-        [
-            {"sample_name": "S1", "qc_outcome": "PASS"},
-        ]
-    )
-    dashboard.data = data
-    streamlit_stub.session_state["data_preview_visible_sections"] = []
-
-    dashboard.render_data_tab(data)
-
-    rendered_data, _ = streamlit_stub.data_editor_calls[0]
-    assert list(rendered_data.columns) == []
 
 
 def test_sidebar_summary_stays_at_top_of_left_panel():
@@ -1147,7 +1180,7 @@ def test_sample_details_renders_detected_species_match_status():
                     "data": {"mapping": "rMLST_match"},
                 },
             }
-        }
+        },
     }
     data = pd.DataFrame(
         [
@@ -1376,6 +1409,7 @@ def test_sample_details_renders_navigation_and_every_filtered_sample():
                     "report": {"id": True},
                 },
                 "Species": {
+                    "data": {"mapping": "species"},
                     "QC": {"mapping": "species"},
                 },
                 "QC Outcome": {"data": {"mapping": "qc_outcome"}},
@@ -1421,9 +1455,7 @@ def test_sample_details_renders_navigation_and_every_filtered_sample():
         ]
     )
 
-    dashboard.render_sample_details_tab(
-        dashboard._sort_samples_naturally(data)
-    )
+    dashboard.render_sample_details_tab(dashboard._sort_samples_naturally(data))
 
     navigation_html, navigation_kwargs = next(
         (message, kwargs)
@@ -1435,7 +1467,7 @@ def test_sample_details_renders_navigation_and_every_filtered_sample():
     ]
     assert navigation_html.startswith("<style>")
     assert all(line == line.lstrip() for line in html_lines)
-    assert "\n<table class=\"uqcme-sample-index\">\n" in navigation_html
+    assert '\n<table class="uqcme-sample-index">\n' in navigation_html
     assert "\n<tbody>\n<tr>" in navigation_html
     assert navigation_kwargs["unsafe_allow_html"] is True
     assert "rgba(128, 128, 128, 0.35)" in navigation_html
@@ -1443,10 +1475,10 @@ def test_sample_details_renders_navigation_and_every_filtered_sample():
     assert "color: inherit" in navigation_html
 
     markdown = "\n".join(message for message, _ in streamlit_stub.markdown_calls)
-    assert "Sample</th>" in markdown
+    assert "Sample Name</th>" in markdown
     assert "Species</th>" in markdown
-    assert "QC outcome</th>" in markdown
-    assert "QC action</th>" in markdown
+    assert "QC Outcome</th>" in markdown
+    assert "QC Action</th>" in markdown
     assert "Details" not in markdown
     assert 'href="#sample-sample-2"' in markdown
     assert 'href="#sample-sample-10"' in markdown
@@ -1500,10 +1532,16 @@ def test_failed_rule_description_handles_missing_observed_value():
     assert description == "Checkm Completeness must be ≥ 90; observed unavailable"
 
 
-def test_sample_details_navigation_columns_come_from_mapping():
-    # Mapping metadata should control index columns, labels, and order.
+def test_sample_details_navigation_columns_come_from_config():
     streamlit_stub.reset()
     dashboard = _bare_dashboard()
+
+    dashboard.config.app.dashboard.sample_details.index_columns = [
+        "sample_name",
+        "coverage_x",
+        "qc_action",
+    ]
+
     dashboard.mapping = {
         "Sections": {
             "Basic": {
@@ -1511,36 +1549,28 @@ def test_sample_details_navigation_columns_come_from_mapping():
                     "data": {"mapping": "sample_name"},
                     "report": {
                         "id": True,
-                        "sample_details_index": True,
-                        "sample_details_order": 1,
                         "label": "Configured <sample>",
                     },
-                }
+                },
             },
             "Read_QC": {
                 "Action": {
                     "data": {"mapping": "qc_action"},
-                    "report": {
-                        "sample_details_index": True,
-                        "sample_details_order": 3,
-                        "label": "Disposition",
-                    },
+                    "report": {"label": "Disposition"},
                 },
                 "Coverage": {
                     "data": {"mapping": "coverage_x"},
-                    "report": {
-                        "sample_details_index": True,
-                        "sample_details_order": 2,
-                        "label": "Read depth",
-                    },
+                    "report": {"label": "Read depth"},
                 },
             },
         }
     }
+
     data = pd.DataFrame(
         [
             {
                 "sample_name": "S1",
+                "coverage_x": 120,
                 "qc_action": "review",
                 "species": "Not indexed",
                 "qc_outcome": "FAIL",
@@ -1555,17 +1585,18 @@ def test_sample_details_navigation_columns_come_from_mapping():
         for message, _ in streamlit_stub.markdown_calls
         if 'class="uqcme-sample-index"' in message
     )
+
     assert "Configured <sample>" not in navigation_html
-    assert navigation_html.index(
-        "Configured &lt;sample&gt;</th>"
-    ) < navigation_html.index("Read depth</th>")
-    assert navigation_html.index("Read depth</th>") < navigation_html.index(
-        "Disposition</th>"
+
+    assert (
+        navigation_html.index("Configured &lt;sample&gt;</th>")
+        < navigation_html.index("Read depth</th>")
+        < navigation_html.index("Disposition</th>")
     )
-    assert "<th>Species</th>" not in navigation_html
-    assert "<th>QC outcome</th>" not in navigation_html
-    assert '<a href="#sample-s1">S1</a>' in navigation_html
-    assert "<td>—</td>" in navigation_html
+
+    assert 'href="#sample-s1"' in navigation_html
+    assert "<td>120</td>" in navigation_html
+    assert "<td>review</td>" in navigation_html
 
 
 def test_sample_details_escapes_values_and_disambiguates_duplicate_anchors():

@@ -75,10 +75,7 @@ def test_new_schema_fixture_covers_direct_alias_mismatch_and_missing_rmlst():
         data.loc["example_pass_general_fail_species_kp", "rMLST_match"]
         == "Klebsiella pneumoniae"
     )
-    assert (
-        data.loc["example_warn_review", "rMLST_match"]
-        == "Cronobacter sakazakii"
-    )
+    assert data.loc["example_warn_review", "rMLST_match"] == "Cronobacter sakazakii"
     assert pd.isna(data.loc["test_fail_adapter", "rMLST_match"])
 
 
@@ -119,8 +116,8 @@ def test_new_schema_mapping_routes_qc_species_fields_to_species():
     mapping = yaml.safe_load(
         (REPOSITORY_ROOT / "input/example/mapping.yaml").read_text(encoding="utf-8")
     )
-    provided_species = mapping["Sections"]["QC_metrics"]["Provided Species"]
-    expected_species = mapping["Sections"]["QC_metrics"]["Expected species"]
+    provided_species = mapping["Sections"]["Basic"]["Provided Species"]
+    expected_species = mapping["Sections"]["Basic"]["Expected species"]
 
     assert provided_species["data"]["mapping"] == "species"
     assert provided_species["QC"]["mapping"] == [
@@ -140,6 +137,7 @@ def test_new_schema_default_config_uses_new_columns():
     assert config["qc"]["input"]["data"]["file"].endswith(
         "input/example/run_data_new_schema.tsv"
     )
+
 
 def test_new_schema_qc_engine_maps_species_rules_to_species():
     # The engine resolves all configured species-rule fields to species.

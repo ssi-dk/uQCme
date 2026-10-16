@@ -586,10 +586,7 @@ class QCDashboard:
                     continue
 
                 normalized_field_name = str(field_name).strip().casefold()
-                if (
-                    detected_field is None
-                    and normalized_field_name in detected_labels
-                ):
+                if detected_field is None and normalized_field_name in detected_labels:
                     detected_field = data_mapping
 
                 if (
@@ -1005,6 +1002,39 @@ class QCDashboard:
         # Apply filters
         filtered_data = self.data.copy()
 
+        # Check if filters should be reset
+        reset_filters = st.session_state.get("filters_reset", False)
+        default_sample_value = ""
+
+        # Add sample name search (always available)
+        # Get the ID field from mapping
+        id_field = self._get_id_field()
+        search_field = (
+            id_field if id_field and id_field in filtered_data.columns else None
+        )
+
+        if search_field:
+            sample_filter = st.sidebar.text_input(
+                f"Search {search_field}",
+                placeholder=f"Enter {search_field}...",
+                value=default_sample_value,
+                key="search_sample_name",
+            )
+
+            if sample_filter:
+                contains_filter = (
+                    filtered_data[search_field]
+                    .astype(str)
+                    .str.contains(sample_filter, case=False, na=False)
+                )
+                filtered_data = filtered_data[contains_filter]
+
+        # Clear the reset flag for sample search
+        if reset_filters:
+            key = "search_sample_name"
+            if key in st.session_state:
+                del st.session_state[key]
+
         # Generate dynamic filters based on mapping configuration
         for field_info in filterable_fields:
             column = field_info["column"]
@@ -1041,40 +1071,6 @@ class QCDashboard:
                             filtered_data = self._create_text_search_filter(
                                 filtered_data, column, field_name
                             )
-
-        # Add sample name search (always available)
-        # Get the ID field from mapping
-        id_field = self._get_id_field()
-        search_field = (
-            id_field if id_field and id_field in filtered_data.columns else None
-        )
-
-        # Check if filters should be reset
-        reset_filters = st.session_state.get("filters_reset", False)
-        default_sample_value = ""
-
-        # Clear the reset flag for sample search
-        if reset_filters:
-            key = "search_sample_name"
-            if key in st.session_state:
-                del st.session_state[key]
-
-        if search_field:
-            sample_filter = st.sidebar.text_input(
-                f"Search {search_field}",
-                placeholder=f"Enter {search_field}...",
-                value=default_sample_value,
-                key="search_sample_name",
-            )
-
-            if sample_filter:
-                contains_filter = (
-                    filtered_data[search_field]
-                    .astype(str)
-                    .str.contains(sample_filter, case=False, na=False)
-                )
-                filtered_data = filtered_data[contains_filter]
-
         # Clear the reset flag after all filters have been processed
         if st.session_state.get("filters_reset", False):
             st.session_state["filters_reset"] = False
@@ -1166,84 +1162,36 @@ class QCDashboard:
     # Resolve Sample Details index columns from mapping metadata, with the
     # original four-column layout as a compatibility fallback.
     def _get_sample_index_columns(self, data: pd.DataFrame) -> List[Dict[str, Any]]:
-        configured_columns = []
-        identity_column = None
-        mapping_position = 0
+        cfg = self.config.app.dashboard.sample_details
         id_field = self._get_id_field()
 
-        for section_data in self.mapping.get("Sections", {}).values():
-            for field_name, field_config in section_data.items():
-                if not isinstance(field_config, dict):
-                    continue
+        mapped_fields = {}
 
-                report_config = field_config.get("report", {})
-                data_mapping = field_config.get("data", {}).get("mapping")
-                qc_mapping = field_config.get("QC", {}).get("mapping")
-                column = data_mapping
-                if column is None and isinstance(qc_mapping, str):
-                    column = qc_mapping
-                elif column is None and isinstance(qc_mapping, list):
-                    column = next(
-                        (candidate for candidate in qc_mapping if candidate in data),
-                        None,
+        for section in self.mapping.get("Sections", {}).values():
+            if not isinstance(section, dict):
+                continue
+            for field_name, definition in section.items():
+                if not isinstance(definition, dict):
+                    continue
+                data_mapping = definition.get("data", {}).get("mapping")
+                if data_mapping:
+                    mapped_fields[data_mapping] = definition.get("report", {}).get(
+                        "label", field_name
                     )
 
-                column_info = {
-                    "column": column,
-                    "label": report_config.get("label") or field_name,
-                    "id": bool(report_config.get("id")) or column == id_field,
-                }
-                if report_config.get("id"):
-                    identity_column = column_info
+        columns = []
 
-                if not report_config.get("sample_details_index"):
-                    mapping_position += 1
-                    continue
-
-                configured_order = report_config.get("sample_details_order")
-                has_numeric_order = isinstance(configured_order, (int, float))
-                has_numeric_order = has_numeric_order and not isinstance(
-                    configured_order, bool
-                )
-                order_key = (
-                    0 if has_numeric_order else 1,
-                    configured_order if has_numeric_order else mapping_position,
-                    mapping_position,
-                )
-                configured_columns.append({**column_info, "order_key": order_key})
-                mapping_position += 1
-
-        if configured_columns:
-            configured_columns.sort(key=lambda column_info: column_info["order_key"])
-            columns = [
+        for column in cfg.index_columns:
+            if column not in data.columns:
+                continue
+            columns.append(
                 {
-                    key: value
-                    for key, value in column_info.items()
-                    if key != "order_key"
+                    "column": column,
+                    "label": mapped_fields.get(column, column),
+                    "id": column == id_field,
                 }
-                for column_info in configured_columns
-            ]
-            if identity_column is not None and not any(
-                column_info["id"] for column_info in columns
-            ):
-                columns.insert(0, identity_column)
-            return columns
-
-        fallback_columns = [
-            {"column": id_field, "label": "Sample", "id": True},
-            {"column": self._get_species_field(), "label": "Species", "id": False},
-            {
-                "column": self._get_outcome_field(),
-                "label": "QC outcome",
-                "id": False,
-            },
-            {
-                "column": self._get_action_field(),
-                "label": "QC action",
-                "id": False,
-            },
-        ]
-        return fallback_columns
+            )
+        return columns
 
     def _get_visible_section_defaults(self, sections_columns: Dict[str, list]):
         """Return section default visibility and visible column counts."""
@@ -1280,19 +1228,19 @@ class QCDashboard:
     def _get_column_presets(
         self, sections_columns: Dict[str, list]
     ) -> tuple[Dict[str, Dict[str, Any]], Optional[str]]:
-        preset_config = self.mapping.get("ColumnPresets", {})
-        raw_presets = (
-            preset_config.get("presets", {})
-            if isinstance(preset_config, dict)
-            else {}
-        )
+        # preset_config = self.config.app.dashboard.column_presets
+        # raw_presets = (
+        #    preset_config.get("presets", {})
+        #    if isinstance(preset_config, dict)
+        #    else {}
+        # )
+        preset_config = self.config.app.dashboard.column_presets
+        raw_presets = preset_config.presets
 
         if not isinstance(raw_presets, dict) or not raw_presets:
             return {}, None
 
-        selectable_sections = self._get_selectable_columns_by_section(
-            sections_columns
-        )
+        selectable_sections = self._get_selectable_columns_by_section(sections_columns)
         all_columns = [
             column_info["column"]
             for section_columns in selectable_sections.values()
@@ -1308,12 +1256,9 @@ class QCDashboard:
         }
         configured_sections = self.mapping.get("Sections", {})
         presets = {}
-
         for preset_name, raw_preset in raw_presets.items():
             if not isinstance(raw_preset, dict):
-                raise ConfigError(
-                    f"Column preset '{preset_name}' must be a mapping."
-                )
+                raise ConfigError(f"Column preset '{preset_name}' must be a mapping.")
 
             configured_columns = raw_preset.get("columns")
             resolved_columns = []
@@ -1341,9 +1286,7 @@ class QCDashboard:
                                 f"in column preset '{preset_name}'."
                             )
 
-                        column = available_fields.get(section_name, {}).get(
-                            field_name
-                        )
+                        column = available_fields.get(section_name, {}).get(field_name)
                         if column and column not in resolved_columns:
                             resolved_columns.append(column)
             else:
@@ -1356,7 +1299,7 @@ class QCDashboard:
                 "columns": resolved_columns,
             }
 
-        default_preset = preset_config.get("default")
+        default_preset = preset_config.default  # preset_config.get("default")
         if default_preset not in presets:
             default_preset = next(iter(presets))
 
@@ -1381,9 +1324,7 @@ class QCDashboard:
         visible_key = "data_preview_visible_columns"
         base_key = "data_preview_customized_from"
         signature_key = "data_preview_column_signature"
-        selectable_sections = self._get_selectable_columns_by_section(
-            sections_columns
-        )
+        selectable_sections = self._get_selectable_columns_by_section(sections_columns)
         available_columns = [
             column_info["column"]
             for section_columns in selectable_sections.values()
@@ -1433,24 +1374,17 @@ class QCDashboard:
             for section_name in selectable_sections
         ]
 
-        if (
-            st.session_state.get(signature_key) != signature
-            or any(key not in st.session_state for key in customizer_keys)
+        if st.session_state.get(signature_key) != signature or any(
+            key not in st.session_state for key in customizer_keys
         ):
-            self._sync_column_customizer(
-                selectable_sections, visible_columns
-            )
+            self._sync_column_customizer(selectable_sections, visible_columns)
             st.session_state[signature_key] = signature
 
         preset_columns = st.columns(len(presets))
         for column, preset_name in zip(preset_columns, presets):
             if column.button(
                 preset_name,
-                type=(
-                    "primary"
-                    if active_preset == preset_name
-                    else "secondary"
-                ),
+                type=("primary" if active_preset == preset_name else "secondary"),
                 key=f"data_preview_preset_{preset_name}",
                 width="stretch",
             ):
@@ -1458,9 +1392,7 @@ class QCDashboard:
                 st.session_state[active_key] = preset_name
                 st.session_state[visible_key] = selected_columns
                 st.session_state[base_key] = preset_name
-                self._sync_column_customizer(
-                    selectable_sections, selected_columns
-                )
+                self._sync_column_customizer(selectable_sections, selected_columns)
                 st.rerun()
 
         if active_preset in presets:
@@ -1469,9 +1401,7 @@ class QCDashboard:
         else:
             base_preset = st.session_state.get(base_key)
             caption = (
-                f"Custom view based on {base_preset}"
-                if base_preset
-                else "Custom view"
+                f"Custom view based on {base_preset}" if base_preset else "Custom view"
             )
 
         st.caption(f"{caption} · {len(visible_columns)} columns")
@@ -1480,10 +1410,7 @@ class QCDashboard:
         with st.expander("⚙️ Customize columns"):
             with st.form("data_preview_column_customizer", border=False):
                 for section_name, section_columns in selectable_sections.items():
-                    options = [
-                        column_info["column"]
-                        for column_info in section_columns
-                    ]
+                    options = [column_info["column"] for column_info in section_columns]
                     labels = {
                         column_info["column"]: column_info["field_name"]
                         for column_info in section_columns
@@ -1528,36 +1455,6 @@ class QCDashboard:
                 if col_info.get("id", False):
                     return col_info["column"]
 
-        return None
-
-    def _get_column_description(self, column_name: str) -> Optional[str]:
-        """Get description for a column from mapping configuration."""
-        sections = self.mapping.get("Sections", {})
-
-        for section_data in sections.values():
-            for field_name, field_config in section_data.items():
-                # Skip if field_config is not a dict
-                if not isinstance(field_config, dict):
-                    continue
-
-                mapping_key = field_config.get("data", {}).get("mapping")
-                if mapping_key == column_name:
-                    # Check for description in report config first
-                    report_config = field_config.get("report", {})
-                    description = report_config.get("description")
-                    if description:
-                        return description
-
-                    # Fallback: check QC config for backward compatibility
-                    qc_config = field_config.get("QC", {})
-                    description = qc_config.get("description")
-                    if description:
-                        return description
-
-                    # Fallback to field name if no description
-                    return field_name
-
-        # Return None if no mapping found
         return None
 
     def _format_sample_metric_value(self, value) -> Optional[str]:
@@ -1948,21 +1845,17 @@ class QCDashboard:
 
     def render_data_tab(self, filtered_data: pd.DataFrame):
         """Render the data tab."""
-        st.header("📊 Data")
+        # st.header("📊 Data")
 
         sections_columns = self._get_columns_by_section(filtered_data)
 
         if self.report_mode:
-            section_defaults, _ = self._get_visible_section_defaults(
-                sections_columns
-            )
+            section_defaults, _ = self._get_visible_section_defaults(sections_columns)
             report_cfg = self._get_report_mode_config()
             default_sections = report_cfg.get("default_visible_sections", {})
             visible_sections = {
                 section_name: bool(
-                    default_sections.get(
-                        section_name, section_defaults[section_name]
-                    )
+                    default_sections.get(section_name, section_defaults[section_name])
                 )
                 for section_name in sections_columns
             }
@@ -1971,14 +1864,10 @@ class QCDashboard:
             )
         else:
             st.subheader("Column View")
-            ordered_columns = self._render_column_view_controls(
-                sections_columns
-            )
+            ordered_columns = self._render_column_view_controls(sections_columns)
 
         column_order = [
-            column
-            for column in ordered_columns
-            if column in filtered_data.columns
+            column for column in ordered_columns if column in filtered_data.columns
         ]
         display_data = filtered_data[column_order]
 
@@ -1997,9 +1886,7 @@ class QCDashboard:
         self.render_sample_api_actions(filtered_data)
 
         visible_column_set = set(column_order)
-        selectable_sections = self._get_selectable_columns_by_section(
-            sections_columns
-        )
+        selectable_sections = self._get_selectable_columns_by_section(sections_columns)
 
         with st.expander("📋 Column Information"):
             st.write("**Column mapping from configuration:**")
@@ -2021,7 +1908,6 @@ class QCDashboard:
                     field_name = column_info["field_name"]
                     has_filter = column_info["filter"]
                     is_id = column_info["id"]
-                    description = self._get_column_description(mapping_key)
                     extras = []
 
                     if has_filter:
@@ -2031,15 +1917,7 @@ class QCDashboard:
 
                     extra_info = f" ({', '.join(extras)})" if extras else ""
 
-                    if description and description != field_name:
-                        st.write(
-                            f"- **{field_name}**: `{mapping_key}` - "
-                            f"{description}{extra_info}"
-                        )
-                    else:
-                        st.write(
-                            f"- **{field_name}**: `{mapping_key}`{extra_info}"
-                        )
+                    st.write(f"- **{field_name}**: `{mapping_key}`{extra_info}")
 
     def render_report_tab(self, filtered_data: pd.DataFrame):
         """Render config-driven table-only report view."""
@@ -2110,7 +1988,7 @@ class QCDashboard:
 
     def render_overview_tab(self, filtered_data: pd.DataFrame):
         """Render the overview tab with summary statistics."""
-        st.header("📈 Overview")
+        # st.header("📈 Overview")
         metric_catalog = self._get_quality_metric_catalog(filtered_data)
         plottable_metrics = get_plottable_quality_metric_columns(metric_catalog)
 
@@ -2158,7 +2036,7 @@ class QCDashboard:
 
     def render_quality_metrics_tab(self, filtered_data: pd.DataFrame):
         """Render quality metrics visualizations."""
-        st.header("🔍 Quality Metrics")
+        # st.header("🔍 Quality Metrics")
         metric_catalog = self._get_quality_metric_catalog(filtered_data)
         available_cols = get_plottable_quality_metric_columns(metric_catalog)
         metric_labels = {entry.data_column: entry.label for entry in metric_catalog}
@@ -2405,7 +2283,7 @@ class QCDashboard:
 
     def render_sample_details_tab(self, filtered_data: pd.DataFrame):
         """Render detailed sample information."""
-        st.header("🔬 Sample Details")
+        # st.header("🔬 Sample Details")
 
         id_field = self._get_id_field()
         outcome_field = self._get_outcome_field()
@@ -2500,7 +2378,7 @@ class QCDashboard:
 
     def render_qc_tests_tab(self):
         """Render the QC tests configuration tab."""
-        st.header("⚙️ QC Tests Configuration")
+        # st.header("⚙️ QC Tests Configuration")
 
         if self.qc_tests.empty:
             st.warning("No QC tests data available.")
@@ -2678,9 +2556,25 @@ class QCDashboard:
                 )
         return rules_table_data
 
+    def _get_column_description(self, column: str) -> str:
+        for section in self.mapping.get("Sections", {}).values():
+            if not isinstance(section, dict):
+                continue
+
+            for definition in section.values():
+                if not isinstance(definition, dict):
+                    continue
+
+                data_mapping = definition.get("data", {}).get("mapping")
+
+                if data_mapping == column:
+                    return definition.get("report", {}).get("description", "")
+
+        return ""
+
     def render_warnings_tab(self):
         """Render the warnings tab showing processing warnings and issues."""
-        st.header("⚠️ Processing Warnings")
+        # st.header("⚠️ Processing Warnings")
 
         if self.warnings is None or self.warnings.empty:
             st.info(

@@ -2,46 +2,12 @@
 # Headers Configuration - Proper YAML Format
 # Defines the sections and their corresponding columns for the QC report
 
-# Headers Configuration - Enhanced with Display Names
-# Defines the sections and their corresponding columns for the QC report
-# Each column can have both the actual column name and a user-friendly display name
-
 qc_rules_file: ./input/QC_rules.csv
 qc_judgement_file: ./input/qc_judgment.tsv
 
 QC_overrides:
   software: ["checkm", "quast"]
   assembly_type: "short"  # Default assembly type for QC metrics
-
-SpeciesAliases:
-  A. baumannii:
-    - Acinetobacter baumannii
-  C. jejuni:
-    - Campylobacter jejuni
-  C. freundii:
-    - Citrobacter freundii
-  C. koseri:
-    - Citrobacter koseri
-  C. difficile:
-    - Clostridioides difficile
-  E. coli:
-    - Escherichia coli
-  K. oxytoca:
-    - Klebsiella oxytoca
-  K. pneumoniae:
-    - Klebsiella pneumoniae
-  L. longbeachae:
-    - Legionella longbeachae
-  L. pneumophila:
-    - Legionella pneumophila
-  Listeria:
-    - Listeria monocytogenes
-  Salmonella:
-    - Salmonella enterica
-  S. sonnei:
-    - Shigella sonnei
-  Yersinia:
-    - Yersinia enterocolitica
 
 # # Example data entry
 # # {
@@ -115,17 +81,19 @@ SpeciesAliases:
 # #   }
 # # }
 
+
 Sections:
   Basic:
+    SupplyingLab:
+      data:
+        mapping: SupplyingLab
+      report:
+        filter: true
     Name:
       data:
         mapping: sample_name
       report:
         id: true # represents the unique identifier for the sample which can be passed to other systems
-        sample_details_index: true
-        sample_details_order: 1
-        label: Sample
-        # unique: true # optional: validate that this mapped column has no duplicates
   QC_metrics:
     QC action: # generated from qc
       data:
@@ -133,16 +101,12 @@ Sections:
       report:
         filter: true
         priority_coloring: true
-        sample_details_index: true
-        sample_details_order: 4
     QC outcome: # generated from qc
       data:
         mapping: qc_outcome
       report:
         filter: true
         priority_coloring: true
-        sample_details_index: true
-        sample_details_order: 3
     Failed Rules: # generated from qc
       data:
         mapping: failed_rules
@@ -152,20 +116,18 @@ Sections:
     Expected species:
       data:
         mapping: rMLST_match
-      QC:
-        mapping: ["speciesName", "genusName", "Marker lineage"]
       report:
         filter: true
     Provided Species:
       data:
         mapping: species
-      report:
-        sample_details_index: true
-        sample_details_order: 2
-        label: Species
-    Species:
       QC:
         mapping: ["speciesName", "genusName", "Marker lineage"]
+      report:
+        filter: true
+    Species:
+      data:
+        mapping: species
       report:
         filter: true
     Genome size (bp):
@@ -184,7 +146,6 @@ Sections:
         mapping: ["GC", "GC (%)"]
       report:
         filter: true
-        description: GC content
     N50:
       data:
         mapping: N50

@@ -2,10 +2,6 @@
 # Headers Configuration - Proper YAML Format
 # Defines the sections and their corresponding columns for the QC report
 
-# Headers Configuration - Enhanced with Display Names
-# Defines the sections and their corresponding columns for the QC report
-# Each column can have both the actual column name and a user-friendly display name
-
 qc_rules_file: ./input/QC_rules.csv
 qc_judgement_file: ./input/qc_judgment.tsv
 
@@ -85,14 +81,19 @@ QC_overrides:
 # #   }
 # # }
 
+
 Sections:
   Basic:
+    SupplyingLab:
+      data:
+        mapping: SupplyingLab
+      report:
+        filter: true
     Name:
       data:
         mapping: sample_name
       report:
         id: true # represents the unique identifier for the sample which can be passed to other systems
-        # unique: true # optional: validate that this mapped column has no duplicates
   QC_metrics:
     QC action: # generated from qc
       data:
@@ -115,16 +116,18 @@ Sections:
     Expected species:
       data:
         mapping: rMLST_match
-      QC:
-        mapping: ["speciesName", "genusName", "Marker lineage"]
       report:
         filter: true
     Provided Species:
       data:
         mapping: species
-    Species:
       QC:
         mapping: ["speciesName", "genusName", "Marker lineage"]
+      report:
+        filter: true
+    Species:
+      data:
+        mapping: species
       report:
         filter: true
     Genome size (bp):
@@ -143,7 +146,6 @@ Sections:
         mapping: ["GC", "GC (%)"]
       report:
         filter: true
-        description: GC content
     N50:
       data:
         mapping: N50

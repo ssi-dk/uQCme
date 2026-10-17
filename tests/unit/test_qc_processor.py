@@ -417,12 +417,19 @@ class TestFieldMapping(unittest.TestCase):
 
     def test_field_mapping_consistency(self):
         """Test that field mapping is consistent."""
-        self.processor.mapping = {"Sections": {"Basic": {
-            "Metric": {"data": {"mapping": "source_metric"},
-                       "QC": {"mapping": "rule_metric"}}
-        }}}
-        self.assertEqual(self.processor._build_field_mapping(),
-                         {"rule_metric": "source_metric"})
+        self.processor.mapping = {
+            "Sections": {
+                "Basic": {
+                    "Metric": {
+                        "data": {"mapping": "source_metric"},
+                        "QC": {"mapping": "rule_metric"},
+                    }
+                }
+            }
+        }
+        self.assertEqual(
+            self.processor._build_field_mapping(), {"rule_metric": "source_metric"}
+        )
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import yaml
 from uQCme import app
 from uQCme.core.config import UQCMeConfig
 
+
 class StreamlitStub(types.ModuleType):
     """Lightweight stub of the streamlit API used in QCDashboard."""
 

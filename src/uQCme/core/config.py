@@ -92,9 +92,7 @@ class DashboardConfig(BaseModel):
     categorical_filter_threshold: int = 20
     max_displayed_rules: int = 10
     table_height: int = Field(default=3600, ge=200)
-    column_presets: ColumnPresetConfig = Field(
-        default_factory=ColumnPresetConfig
-    )
+    column_presets: ColumnPresetConfig = Field(default_factory=ColumnPresetConfig)
     sample_details: SampleDetailsConfig = Field(default_factory=SampleDetailsConfig)
     debug_api: bool = False
     report_mode: ReportModeConfig = Field(default_factory=ReportModeConfig)

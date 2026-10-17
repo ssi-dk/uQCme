@@ -83,7 +83,9 @@ def test_species_aliases_are_loaded_from_mapping_yaml():
     mapping_path = Path(__file__).parents[1] / "data" / "mapping.yaml"
     dashboard.mapping = yaml.safe_load(mapping_path.read_text(encoding="utf-8"))
 
-    assert dashboard._get_species_aliases()["Klebsiella pneumoniae"] == ["K. pneumoniae"]
+    assert dashboard._get_species_aliases()["Klebsiella pneumoniae"] == [
+        "K. pneumoniae"
+    ]
     assert dashboard._species_values_match("K. pneumoniae", "Klebsiella pneumoniae")
     assert not dashboard._species_values_match("Klebsiella", "Klebsiella pneumoniae")
 
@@ -433,7 +435,9 @@ def test_sample_details_navigation_columns_come_from_config(streamlit_stub):
     assert "<td>review</td>" in navigation_html
 
 
-def test_sample_details_escapes_values_and_disambiguates_duplicate_anchors(streamlit_stub):
+def test_sample_details_escapes_values_and_disambiguates_duplicate_anchors(
+    streamlit_stub,
+):
     # Data values must not become HTML, and every row needs a unique target.
     streamlit_stub.reset()
     dashboard = _bare_dashboard()

@@ -1136,8 +1136,10 @@ class QCDashboard:
         selected_columns = cfg.index_columns
         if selected_columns is None:
             selected_columns = [
-                id_field, self._get_species_field(),
-                self._get_outcome_field(), self._get_action_field(),
+                id_field,
+                self._get_species_field(),
+                self._get_outcome_field(),
+                self._get_action_field(),
             ]
 
         for column in dict.fromkeys(selected_columns):
@@ -1872,7 +1874,9 @@ class QCDashboard:
 
                     description = self._get_column_description(mapping_key)
                     explanation = (
-                        f" - {description}" if description and description != field_name else ""
+                        f" - {description}"
+                        if description and description != field_name
+                        else ""
                     )
                     st.write(
                         f"- **{field_name}**: `{mapping_key}`{extra_info}{explanation}"

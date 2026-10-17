@@ -10,8 +10,6 @@ import pandas as pd
 import yaml
 
 
-
-
 REPOSITORY_ROOT = Path(__file__).parents[2]
 NEW_DATA_PATH = REPOSITORY_ROOT / "input/example/run_data_new_schema.tsv"
 NEW_OUTPUT_PATH = REPOSITORY_ROOT / "tests/fixtures/new_schema_example_run_data.tsv"

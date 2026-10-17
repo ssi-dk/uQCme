@@ -1,6 +1,5 @@
 """Tests for the dashboard smoke CLI helper."""
 
-
 import pytest
 
 

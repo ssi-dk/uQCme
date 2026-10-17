@@ -359,12 +359,18 @@ def test_quality_metrics_tab_lists_non_plottable_catalog_entries(streamlit_stub)
     }
 
 
-
 def test_column_information_preserves_legacy_explanations(streamlit_stub):
     dashboard = _bare_dashboard()
-    dashboard.mapping = {"Sections": {"Metrics": {
-        "Depth": {"data": {"mapping": "depth"}, "QC": {"description": "Legacy depth explanation"}},
-    }}}
+    dashboard.mapping = {
+        "Sections": {
+            "Metrics": {
+                "Depth": {
+                    "data": {"mapping": "depth"},
+                    "QC": {"description": "Legacy depth explanation"},
+                },
+            }
+        }
+    }
     dashboard.render_data_tab(pd.DataFrame({"depth": [20], "unmapped": [1]}))
     information = "\n".join(str(value) for value in streamlit_stub.write_calls)
     assert "Legacy depth explanation" in information

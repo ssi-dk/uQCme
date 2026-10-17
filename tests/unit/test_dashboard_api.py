@@ -7,7 +7,11 @@ import yaml
 
 from uQCme import app
 from uQCme.core import loader
-from tests.support.dashboard import DummyResponse, _build_api_config, _build_dashboard_with_sample_action
+from tests.support.dashboard import (
+    DummyResponse,
+    _build_api_config,
+    _build_dashboard_with_sample_action,
+)
 
 dashboard_main = importlib.import_module("uQCme.app.main")
 
@@ -54,8 +58,8 @@ def test_load_data_from_api(streamlit_stub, monkeypatch, tmp_path, test_data_pat
     )
 
 
-def test_load_data_from_api_allows_missing_sample_name_when_not_required(streamlit_stub,
-    monkeypatch, tmp_path, test_data_paths
+def test_load_data_from_api_allows_missing_sample_name_when_not_required(
+    streamlit_stub, monkeypatch, tmp_path, test_data_paths
 ):
     """API data without sample_name should load when mapping does not require it."""
     streamlit_stub.reset()
@@ -127,7 +131,9 @@ def test_load_data_from_api_allows_missing_sample_name_when_not_required(streaml
     )
 
 
-def test_load_data_from_api_with_bearer_token(streamlit_stub, monkeypatch, tmp_path, test_data_paths):
+def test_load_data_from_api_with_bearer_token(
+    streamlit_stub, monkeypatch, tmp_path, test_data_paths
+):
     """API data loading should include bearer token from config."""
     streamlit_stub.reset()
 
@@ -166,8 +172,8 @@ def test_load_data_from_api_with_bearer_token(streamlit_stub, monkeypatch, tmp_p
     dashboard.load_data()
 
 
-def test_load_data_from_api_with_bearer_token_env(streamlit_stub,
-    monkeypatch, tmp_path, test_data_paths
+def test_load_data_from_api_with_bearer_token_env(
+    streamlit_stub, monkeypatch, tmp_path, test_data_paths
 ):
     """API data loading should include bearer token from configured env var."""
     streamlit_stub.reset()
@@ -208,8 +214,8 @@ def test_load_data_from_api_with_bearer_token_env(streamlit_stub,
     dashboard.load_data()
 
 
-def test_load_data_from_api_debug_captures_payload(streamlit_stub,
-    monkeypatch, tmp_path, test_data_paths
+def test_load_data_from_api_debug_captures_payload(
+    streamlit_stub, monkeypatch, tmp_path, test_data_paths
 ):
     """Debug mode should retain API payload preview for browser inspection."""
     streamlit_stub.reset()
@@ -255,7 +261,9 @@ def test_load_data_from_api_debug_captures_payload(streamlit_stub,
     assert "sample_name" in dashboard.api_debug_info["columns"]
 
 
-def test_render_api_debug_panel_shows_payload(streamlit_stub, monkeypatch, tmp_path, test_data_paths):
+def test_render_api_debug_panel_shows_payload(
+    streamlit_stub, monkeypatch, tmp_path, test_data_paths
+):
     """Debug panel should render payload preview and table preview."""
     streamlit_stub.reset()
 
@@ -318,8 +326,8 @@ def test_url_debug_param_disables_api_debug(streamlit_stub, tmp_path, test_data_
     assert dashboard._is_api_debug_enabled() is False
 
 
-def test_trigger_sample_api_action_with_bearer_token(streamlit_stub,
-    monkeypatch, tmp_path, test_data_paths
+def test_trigger_sample_api_action_with_bearer_token(
+    streamlit_stub, monkeypatch, tmp_path, test_data_paths
 ):
     """Sample action requests should include bearer token from config."""
     streamlit_stub.reset()
@@ -361,8 +369,8 @@ def test_trigger_sample_api_action_with_bearer_token(streamlit_stub,
     assert result is response
 
 
-def test_trigger_sample_api_action_with_bearer_token_env(streamlit_stub,
-    monkeypatch, tmp_path, test_data_paths
+def test_trigger_sample_api_action_with_bearer_token_env(
+    streamlit_stub, monkeypatch, tmp_path, test_data_paths
 ):
     """Sample action requests should include bearer token from env var."""
     streamlit_stub.reset()
@@ -400,7 +408,9 @@ def test_trigger_sample_api_action_with_bearer_token_env(streamlit_stub,
     assert result is response
 
 
-def test_load_data_from_api_with_custom_headers(streamlit_stub, monkeypatch, tmp_path, test_data_paths):
+def test_load_data_from_api_with_custom_headers(
+    streamlit_stub, monkeypatch, tmp_path, test_data_paths
+):
     """X-Project-Id header should be converted to project_id query param."""
     streamlit_stub.reset()
 

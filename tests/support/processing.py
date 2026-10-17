@@ -12,7 +12,8 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 def make_processor(schema: str, output_dir: Path) -> QCProcessor:
     fixture = "config_example.yaml" if schema == "legacy" else "config_new_schema.yaml"
     config_path = (
-        REPOSITORY_ROOT / "config.yaml" if schema == "local_example"
+        REPOSITORY_ROOT / "config.yaml"
+        if schema == "local_example"
         else REPOSITORY_ROOT / "tests/fixtures" / fixture
     )
     config = yaml.safe_load(config_path.read_text())

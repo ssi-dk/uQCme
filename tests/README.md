@@ -1,164 +1,52 @@
-# uQCme Test Suite
+# uQCme tests
 
-This directory contains the comprehensive test suite for uQCme, organized according to Python testing best practices.
+Run the maintained environment from the repository root:
 
-## Directory Structure
-
-```
-tests/
-├── __init__.py              # Makes tests a Python package
-├── conftest.py             # Shared pytest fixtures
-├── README.md               # This file
-├── data/                   # Test data files
-│   ├── example_run_data.tsv
-│   ├── mapping.yaml
-│   ├── QC_outcomes.tsv
-│   ├── QC_rules.tsv
-│   └── run_stats.tsv
-├── fixtures/               # Test configuration files
-│   └── config_example.yaml
-├── integration/            # Integration tests
-│   ├── __init__.py
-│   └── test_uQCme_outcomes.py
-└── unit/                   # Unit tests
-    ├── __init__.py
-    └── test_qc_processor.py
-```
-
-## Test Categories
-
-### Unit Tests (`unit/`)
-Tests for individual components and methods in isolation:
-- `test_qc_processor.py`: Tests for QCProcessor class methods
-  - Configuration loading
-  - Operator application logic
-  - Field mapping functionality
-  - Rule matching criteria
-
-### Integration Tests (`integration/`)
-Tests for complete workflows and system interactions:
-- `test_uQCme_outcomes.py`: End-to-end testing of QC processing
-  - 16 comprehensive test cases
-  - Tests all QC outcome categories
-  - Validates data integrity
-  - Tests species-specific rules
-
-## Test Data
-
-### Synthetic Test Dataset (`data/`)
-- **30 synthetic samples** with diverse characteristics
-- **363 QC rules** covering various scenarios
-- **11 outcome categories** (PASS, contamination, coverage, etc.)
-- **Species coverage**: E. coli, Salmonella, Listeria, etc.
-
-### Test Configuration (`fixtures/`)
-- `config_example.yaml`: Test-specific configuration
-- Paths adjusted for test directory structure
-- Simplified for testing scenarios
-
-## Running Tests
-
-### All Tests
 ```bash
-# From project root
-python -m pytest tests/ -v
+pixi run test
+pixi run test-packaging
+pixi run test-dashboard-smoke
 ```
 
-### Unit Tests Only
-```bash
-python -m pytest tests/unit/ -v
-```
+With that environment already active, `python -m pytest` is equivalent to the
+main test task. Pytest configures the source import path centrally.
 
-### Integration Tests Only
-```bash
-python -m pytest tests/integration/ -v
-```
+## Responsibilities
 
-### Specific Test File
-```bash
-python -m pytest tests/integration/test_uQCme_outcomes.py -v
-```
+| Location | Coverage |
+| --- | --- |
+| `unit/test_species.py` | Canonical names, aliases, missing names, ambiguous configuration and migration errors. |
+| `unit/test_qc_processor.py`, `unit/test_qc_caveats.py` | Operators, rule/field mapping, QC conditions and per-sample missing-metric caveats. |
+| `unit/test_dashboard_*.py` | API handling, tables, sample details and filters with a fresh, scoped Streamlit double. |
+| `unit/test_config.py`, `unit/test_styling.py`, `unit/test_plot.py` | Configuration boundaries, styling decisions and plot semantics. |
+| `integration/test_qc_outcomes.py` | Fresh synthetic processing, legacy outcome compatibility, new-schema failures, aliases and output writing. |
+| `integration/test_example_fixture.py` | Fixture identity/schema, deterministic generation and comparison of the maintained example with freshly computed results. |
+| `integration/test_dashboard_runtime.py` | Real Streamlit defaults, optional preset/customizer interactions, navigation links, descriptions and QC caveats. |
+| `integration/test_cli.py` | Offline CLI-to-dashboard workflow, including fresh output directories and the default example presets. |
+| `test_python_standalone_packaging.py`, `unit/test_dashboard_smoke.py` | Packaging contracts and smoke-helper parser/command construction. |
+| `support/` | Shared test doubles and isolated processor configuration helpers. |
 
-### With Coverage
-```bash
-python -m pytest tests/ --cov=uQCme --cov-report=html
-```
+## Isolation and fixtures
 
-## Shared Fixtures
+- Inputs contain synthetic, public-safe examples only. Never fetch operational
+  data to run these tests.
+- HTTP requests are blocked by an autouse fixture. API tests explicitly mock
+  their transport; unexpected requests fail the test.
+- Processing helpers resolve input paths explicitly and put results, warnings
+  and logs under pytest's temporary directory.
+- Integration tests inspect `processor.results` from the run they just performed.
+  The checked-in legacy TSV is an expected baseline, not the actual result.
+- Dashboard doubles patch only the dashboard module for the requesting test.
+  Installed Streamlit/plot modules are not replaced in `sys.modules`.
+- Plot tests choose their theme explicitly so real Streamlit theme registration
+  cannot change their expected palette through test order.
 
-The `conftest.py` file provides shared fixtures available to all tests:
+The maintained new-schema processed fixture is checked against fresh processing.
+Regenerate it deliberately when the public example changes; tests must not
+rewrite expected results to make themselves pass. The raw fixture generator is
+`fixtures/generate_new_schema_fixture.py` and uses the public source data plus
+`fixtures/new_schema_columns.txt`.
 
-- `test_data_dir`: Path to test data directory
-- `sample_config`: Loaded test configuration
-- `test_data_paths`: Dictionary of test data file paths
-
-## Test Development Guidelines
-
-### Adding New Unit Tests
-1. Create test files in `tests/unit/`
-2. Follow naming convention: `test_<module_name>.py`
-3. Test individual methods/functions in isolation
-4. Use `unittest.TestCase` or pytest style
-
-### Adding New Integration Tests
-1. Create test files in `tests/integration/`
-2. Test complete workflows
-3. Use real test data from `tests/data/`
-4. Focus on end-to-end scenarios
-
-### Test Data Management
-- Keep test data in `tests/data/`
-- Use realistic but synthetic data
-- Document data characteristics
-- Keep file sizes reasonable
-
-## Best Practices
-
-1. **Isolation**: Unit tests should not depend on external files
-2. **Deterministic**: Tests should produce consistent results
-3. **Fast**: Unit tests should run quickly
-4. **Clear**: Test names should describe what they test
-5. **Coverage**: Aim for high code coverage
-6. **Fixtures**: Use shared fixtures for common setup
-
-## Dependencies
-
-Tests require:
-- `pytest`: Test framework
-- `pandas`: Data manipulation
-- `pyyaml`: YAML configuration loading
-- `pathlib`: Path handling
-
-Install test dependencies:
-```bash
-pip install pytest pytest-cov
-```
-
-## Continuous Integration
-
-This test suite is designed to run in CI/CD environments:
-- All paths are relative to project root
-- No external dependencies required
-- Comprehensive coverage of functionality
-- Fast execution time
-
-## Troubleshooting
-
-### Import Issues
-If you see import errors, ensure you're running tests from the project root:
-```bash
-cd /path/to/uQCme
-python -m pytest tests/
-```
-
-### Path Issues
-All test data paths are configured relative to the tests directory. If tests fail due to file not found errors, check that:
-1. Test data files exist in `tests/data/`
-2. Configuration files reference correct paths
-3. Working directory is project root
-
-### Missing Dependencies
-Install required packages:
-```bash
-pip install pandas pyyaml pytest
-```
+The `dashboard_smoke` tests check helper configuration and command construction.
+They do not establish that a dashboard process started, that PDF export works,
+or that any remote deployment is healthy.

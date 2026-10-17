@@ -1,5 +1,11 @@
 # Data Preview Adaptation Plan
 
+> Maintenance update — 17 October 2026: Data Preview now enables Column View
+> presets and grouped customization only when presets are configured. Without
+> them the basic table retains native controls. See [the configuration
+> contract](../species-mapping.md) and the current test layout in `tests/README.md`.
+> The original implementation record below describes the earlier section control.
+
 ## Status
 
 **Complete — 2026-08-18**

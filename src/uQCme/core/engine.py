@@ -18,6 +18,7 @@ from .config import UQCMeConfig, DataInput, QCConfig
 from .exceptions import ConfigError, DataLoadError, ProcessingError, ValidationError
 from .logging import setup_logging
 from .schemas import QCRulesSchema, QCTestsSchema
+from .species import SpeciesResolver, normalize_species, species_data_field
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ class QCProcessor:
         self.qc_rules: pd.DataFrame = pd.DataFrame()
         self.qc_tests: pd.DataFrame = pd.DataFrame()
         self.mapping: Dict[str, Any] = {}
+        self.species_resolver = SpeciesResolver.from_mapping(self.mapping)
         self.qc_overrides: Dict[str, Any] = {}
         self.results: pd.DataFrame = pd.DataFrame()
         self.warnings: set = set()  # Collect unique warnings
@@ -162,6 +164,9 @@ class QCProcessor:
         mapping_path = self.qc_config.input.mapping
         with open(mapping_path, "r", encoding="utf-8") as f:
             self.mapping = yaml.safe_load(f)
+        self.species_resolver = SpeciesResolver.from_mapping(
+            self.mapping, rule_species=self.qc_rules["species"]
+        )
         self.logger.info("✓ Mapping configuration loaded from %s", mapping_path)
 
         # Extract and normalize QC overrides
@@ -314,6 +319,8 @@ class QCProcessor:
 
         if actual_field:
             value = sample_data[actual_field]
+            if actual_field == species_data_field(self.mapping):
+                value = self.species_resolver.resolve(value)
             operator = rule["operator"]
             threshold = rule["value"]
 
@@ -331,10 +338,8 @@ class QCProcessor:
         attributes = {}
 
         # Get species from sample data (strip whitespace)
-        species_val = sample.get("species", "")
-        if isinstance(species_val, str):
-            species_val = species_val.strip()
-        attributes["species"] = species_val
+        species_val = sample.get(species_data_field(self.mapping))
+        attributes["species"] = self.species_resolver.resolve(species_val) or ""
 
         # Get assembly_type with override default
         default_assembly = self.qc_overrides.get("assembly_type", "short")
@@ -348,18 +353,11 @@ class QCProcessor:
         self, rule: pd.Series, sample_attributes: Dict[str, str]
     ) -> bool:
         """Check if a rule matches the sample criteria."""
-        # Species filtering (strip whitespace for comparison)
-        rule_species = str(rule["species"]).strip() if pd.notna(rule["species"]) else ""
-        sample_species = (
-            str(sample_attributes["species"]).strip()
-            if sample_attributes.get("species")
-            else ""
-        )
-        # Explicitly handle empty species values: if either is empty, do not match unless rule_species is 'all'
-        if rule_species == "" or sample_species == "":
-            if rule_species != "all":
-                return False
-        elif rule_species != "all" and rule_species.lower() != sample_species.lower():
+        # Aliases resolve to the configured rule name before species selection.
+        rule_species = normalize_species(rule["species"])
+        if rule_species != "all" and not self.species_resolver.matches(
+            rule["species"], sample_attributes.get("species")
+        ):
             return False
 
         # Assembly type filtering
@@ -385,12 +383,19 @@ class QCProcessor:
         """Process all samples through QC rules."""
         self.logger.info("\n🔍 Processing samples through QC rules...")
 
+        self.species_resolver = SpeciesResolver.from_mapping(
+            self.mapping, rule_species=self.qc_rules["species"]
+        )
+        self.skipped_rules.clear()
+        field_mapping = self._build_field_mapping()
         results_list = []
 
         for idx, sample in self.run_data.iterrows():
             sample_results = sample.copy()
             failed_rules = []
             passed_rules = []
+            skipped_rules = []
+            missing_fields = set()
 
             # Get sample attributes with defaults
             sample_attributes = self._get_sample_attributes(sample)
@@ -403,13 +408,19 @@ class QCProcessor:
                 if not self._rule_matches_criteria(rule, sample_attributes):
                     continue
 
-                # Evaluate the rule
+                actual_field = field_mapping.get(rule["field"], rule["field"])
+                value = sample.get(actual_field)
+                if normalize_species(value) in (None, "null", "none", "nan"):
+                    missing_fields.add(actual_field)
+
+                # Preserve pass/fail semantics and report missing inputs separately.
                 rule_result = self._evaluate_rule(sample, rule)
                 if rule_result == "PASS":
                     passed_rules.append(rule_id)
                 elif rule_result == "FAIL":
                     failed_rules.append(rule_id)
-                # 'SKIP' rules are not added to either list
+                elif rule_result == "SKIP":
+                    skipped_rules.append(rule_id)
 
             # Add rule results to sample data
             failed_str = ",".join(failed_rules) if failed_rules else ""
@@ -417,6 +428,8 @@ class QCProcessor:
 
             passed_str = ",".join(passed_rules) if passed_rules else ""
             sample_results["passed_rules"] = passed_str
+            sample_results["skipped_rules"] = ",".join(skipped_rules)
+            sample_results["missing_qc_fields"] = ",".join(sorted(missing_fields))
 
             # Determine QC outcomes
             qc_outcomes = self._determine_qc_outcomes(failed_rules, passed_rules)
@@ -538,6 +551,7 @@ class QCProcessor:
         """Save processing results to output file."""
         try:
             output_path = self.qc_config.output.results
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             self.results.to_csv(output_path, sep="\t", index=False)
             self.logger.info(f"✓ Results saved to {output_path}")
         except Exception as e:
@@ -548,6 +562,7 @@ class QCProcessor:
         """Save warnings to output file."""
         try:
             warnings_path = self.qc_config.output.warnings
+            Path(warnings_path).parent.mkdir(parents=True, exist_ok=True)
 
             # Create warnings dataframe
             warnings_data = []

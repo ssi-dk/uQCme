@@ -1,11 +1,8 @@
 """Tests for the dashboard smoke CLI helper."""
 
-import sys
-from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
 
 from uQCme.app import smoke
 

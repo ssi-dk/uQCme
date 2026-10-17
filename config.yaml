@@ -18,21 +18,7 @@ app:
     port: 8501
   input:
     data:
-      #file: "./input/example/run_data_new_schema.tsv"
-      api_call: "http://127.0.0.1:8000/api/v1/uQCme?project_id=uSymph"
-      api_bearer_token_env: "UQCME_API_TOKEN"
-      api_query_params:
-        - batchIDs
-        - seqSamples
-        - analysisTypeID
-      #file: "./output/example/uQCme_run_data.tsv" # can also load via an API, only 1 can be enabled
-      # api_call: 
-      # api_bearer_token: 
-      # api_bearer_token_env: ""
-      # api_query_params:
-      #   - project_id
-      #   - batchIDs
-      #   - seqSamples
+      file: "./output/example/uQCme_run_data.tsv"
     mapping: "./input/example/mapping.yaml"
     qc_rules: "./input/example/QC_rules.tsv"
     qc_tests: "./input/example/QC_tests.tsv"
@@ -57,13 +43,14 @@ app:
             QC_metrics:
               - Failed Rules
               - Passed Rules
+              - Missing QC fields
               - Genome size (bp)
               - GC
               - N50
               - Contigs
               - Depth
         LabA:
-          description: Placeholder for fbi 
+          description: Placeholder for fbi
           columns:
             Basic:
               - Name
@@ -75,6 +62,7 @@ app:
             QC_metrics:
               - Failed Rules
               - Passed Rules
+              - Missing QC fields
             Taxonomy:
               - Species Summary
               - Species Summary Percent
@@ -96,6 +84,7 @@ app:
             QC_metrics:
               - Failed Rules
               - Passed Rules
+              - Missing QC fields
             Plasmids:
               - pMLST Plasmids
               - pMLST Summary

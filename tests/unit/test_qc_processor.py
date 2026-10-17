@@ -7,17 +7,15 @@ rather than full integration workflows.
 """
 
 import unittest
-import sys
+import tempfile
 from pathlib import Path
 
 import pandas as pd
 
-# Add the src directory to sys.path to import uQCme package
-sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
-from uQCme.core.engine import QCProcessor
 from uQCme.core.config import UQCMeConfig
 from uQCme.core.exceptions import ValidationError
 from uQCme.core.loader import validate_run_data_frame
+from tests.support.processing import make_processor
 
 
 class TestQCProcessor(unittest.TestCase):
@@ -25,9 +23,9 @@ class TestQCProcessor(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.test_dir = Path(__file__).parent.parent
-        self.config_path = self.test_dir / "fixtures" / "config_example.yaml"
-        self.processor = QCProcessor(str(self.config_path))
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.processor = make_processor("legacy", Path(temporary.name))
 
     def test_load_config(self):
         """Test configuration loading."""
@@ -404,25 +402,27 @@ class TestFieldMapping(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.test_dir = Path(__file__).parent.parent
-        self.config_path = self.test_dir / "fixtures" / "config_example.yaml"
-        self.processor = QCProcessor(str(self.config_path))
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.processor = make_processor("legacy", Path(temporary.name))
         self.processor.load_input_files()
 
     def test_build_field_mapping(self):
         """Test field mapping construction."""
         field_mapping = self.processor._build_field_mapping()
 
-        self.assertIsInstance(field_mapping, dict)
-        # Should have some mappings from our test data
-        self.assertGreater(len(field_mapping), 0)
+        self.assertEqual(field_mapping["Genome size (bp)"], "bin_length_at_1x")
+        self.assertEqual(field_mapping["Total length (>= 0 bp)"], "bin_length_at_1x")
+        self.assertEqual(field_mapping["speciesName"], "species")
 
     def test_field_mapping_consistency(self):
         """Test that field mapping is consistent."""
-        mapping1 = self.processor._build_field_mapping()
-        mapping2 = self.processor._build_field_mapping()
-
-        self.assertEqual(mapping1, mapping2)
+        self.processor.mapping = {"Sections": {"Basic": {
+            "Metric": {"data": {"mapping": "source_metric"},
+                       "QC": {"mapping": "rule_metric"}}
+        }}}
+        self.assertEqual(self.processor._build_field_mapping(),
+                         {"rule_metric": "source_metric"})
 
 
 if __name__ == "__main__":

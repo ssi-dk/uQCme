@@ -80,32 +80,28 @@ class ReportModeConfig(BaseModel):
 
 
 class ColumnPresetConfig(BaseModel):
-    default: str
+    default: str = "Standard"
     presets: Dict[str, Any] = Field(default_factory=dict)
 
 
 class SampleDetailsConfig(BaseModel):
-    index_columns: List[str] = Field(
-        default_factory=lambda: [
-            "sample_name",
-            "species",
-            "qc_outcome",
-            "qc_action",
-        ]
-    )
+    index_columns: Optional[List[str]] = None
 
 
 class DashboardConfig(BaseModel):
     categorical_filter_threshold: int = 20
     max_displayed_rules: int = 10
     table_height: int = Field(default=3600, ge=200)
-    column_presets: ColumnPresetConfig = Field(
-        default_factory=lambda: ColumnPresetConfig(default="Standard", presets={})
-    )
+    column_presets: ColumnPresetConfig = Field(default_factory=ColumnPresetConfig)
     sample_details: SampleDetailsConfig = Field(default_factory=SampleDetailsConfig)
     debug_api: bool = False
     report_mode: ReportModeConfig = Field(default_factory=ReportModeConfig)
     sample_api_actions: List[SampleApiAction] = Field(default_factory=list)
+
+    @field_validator("column_presets", "sample_details", mode="before")
+    @classmethod
+    def optional_dashboard_defaults(cls, value):
+        return {} if value is None else value
 
 
 # Validate configuration-driven colors used by dashboard UI surfaces.
@@ -140,7 +136,6 @@ class AppConfig(BaseModel):
     dashboard: DashboardConfig = Field(default_factory=DashboardConfig)
     ui_styling: UIStylingConfig = Field(default_factory=UIStylingConfig)
     priority_colors: Optional[Dict[Union[int, str], Any]] = None
-    species_aliases: Dict[str, List[str]] = Field(default_factory=dict)
 
     @field_validator("ui_styling", mode="before")
     @classmethod

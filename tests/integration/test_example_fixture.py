@@ -9,10 +9,6 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
-
-from uQCme.core.engine import QCProcessor  # noqa: E402
-
 
 REPOSITORY_ROOT = Path(__file__).parents[2]
 NEW_DATA_PATH = REPOSITORY_ROOT / "input/example/run_data_new_schema.tsv"
@@ -99,16 +95,14 @@ def test_new_schema_fixture_generation_is_deterministic(tmp_path):
     assert regenerated_path.read_bytes() == NEW_DATA_PATH.read_bytes()
 
 
-def test_new_schema_processed_fixture_has_regenerated_qc_results():
-    # The processed fixture contains results generated from the new input.
-    output_data = pd.read_csv(NEW_OUTPUT_PATH, sep="\t")
-
-    assert len(output_data) == 19
-    assert {"failed_rules", "passed_rules", "qc_outcome", "qc_action"}.issubset(
-        output_data.columns
+def test_new_schema_processed_fixture_matches_fresh_processing(processor_factory):
+    processor = processor_factory("new_schema")
+    processor.load_input_files()
+    processor.process_samples()
+    expected = pd.read_csv(NEW_OUTPUT_PATH, sep="\t").fillna("")
+    pd.testing.assert_frame_equal(
+        processor.results.fillna(""), expected, check_dtype=False
     )
-    assert output_data["qc_outcome"].notna().all()
-    assert output_data["qc_action"].notna().all()
 
 
 def test_new_schema_mapping_routes_qc_species_fields_to_species():
@@ -137,13 +131,12 @@ def test_new_schema_default_config_uses_new_columns():
     assert config["qc"]["input"]["data"]["file"].endswith(
         "input/example/run_data_new_schema.tsv"
     )
+    assert config["app"]["input"]["data"] == {"file": config["qc"]["output"]["results"]}
 
 
-def test_new_schema_qc_engine_maps_species_rules_to_species():
+def test_new_schema_qc_engine_maps_species_rules_to_species(processor_factory):
     # The engine resolves all configured species-rule fields to species.
-    processor = QCProcessor(
-        str(REPOSITORY_ROOT / "tests/fixtures/config_new_schema.yaml")
-    )
+    processor = processor_factory("new_schema")
     processor.load_input_files()
     field_mapping = processor._build_field_mapping()
 

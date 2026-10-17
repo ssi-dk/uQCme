@@ -82,6 +82,36 @@ QC_overrides:
 # # }
 
 
+SpeciesAliases:
+  Acinetobacter baumannii:
+  - A. baumannii
+  Campylobacter jejuni:
+  - C. jejuni
+  Citrobacter freundii:
+  - C. freundii
+  Citrobacter koseri:
+  - C. koseri
+  Clostridioides difficile:
+  - C. difficile
+  Escherichia coli:
+  - E. coli
+  Klebsiella oxytoca:
+  - K. oxytoca
+  Klebsiella pneumoniae:
+  - K. pneumoniae
+  Legionella longbeachae:
+  - L. longbeachae
+  Legionella pneumophila:
+  - L. pneumophila
+  Listeria monocytogenes:
+  - Listeria
+  Salmonella enterica:
+  - Salmonella
+  Shigella sonnei:
+  - S. sonnei
+  Yersinia enterocolitica:
+  - Yersinia
+
 Sections:
   Basic:
     SupplyingLab:
@@ -121,10 +151,14 @@ Sections:
     Provided Species:
       data:
         mapping: species
-      QC:
-        mapping: ["speciesName", "genusName", "Marker lineage"]
       report:
         filter: true
+        species: true
+      QC:
+        mapping:
+        - speciesName
+        - genusName
+        - Marker lineage
     Species:
       data:
         mapping: species

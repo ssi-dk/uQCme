@@ -181,6 +181,10 @@ The tool is driven by a `config.yaml` file. This file defines:
 
 **Bearer token for `api_call`**
 
+The default `config.yaml` runs locally from synthetic files. Run the CLI first
+to generate its dashboard input. API input is opt-in; `config.api.test.yaml`
+provides a separate integration example.
+
 When `qc.input.data.api_call` or `app.input.data.api_call` requires bearer auth,
 configure one of:
 - `api_bearer_token_env` (recommended): environment variable name containing the token
@@ -257,6 +261,21 @@ app:
 
 See the `input/example/` directory for template files.
 
+**Canonical species names**
+
+Species aliases belong in the mapping file, keyed by the name used in QC rules:
+
+```yaml
+SpeciesAliases:
+  Klebsiella pneumoniae:
+    - K. pneumoniae
+```
+
+The QC engine resolves aliases for species-rule selection and species-value
+checks; the dashboard uses the same resolver. Original input values are retained.
+See [species mapping and QC caveats](docs/species-mapping.md) for migration from
+the earlier alias-key format, alternate source columns and missing-metric flags.
+
 **Rule-aware species styling**
 
 The dashboard derives species support from explicit, species-specific entries
@@ -303,11 +322,12 @@ Detailed log of rule evaluation issues:
 ### Sample Details
 
 - Config-driven navigation index of filtered samples
-- Mapping fields marked with `report.sample_details_index: true` appear in the
-  index; `report.sample_details_order` controls their order and `report.label`
-  optionally overrides the heading
+- With no extra settings, the index uses the mapped sample ID, species, QC
+  outcome and QC action. `app.dashboard.sample_details.index_columns` optionally
+  selects and orders source columns; `report.label` overrides their headings
 - The field marked with `report.id: true` links to each sample's detail section
-- Mappings without index flags retain the four-column legacy index
+- Column presets are optional; omitting them leaves the basic table available
+- Missing QC fields appear as per-sample caveats alongside the existing result
 - Detailed view of individual sample QC results
 - Failed rules and thresholds
 - Interactive metric exploration

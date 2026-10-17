@@ -2,6 +2,7 @@
 """Tests for optional python-build-standalone bundle assets."""
 
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
@@ -18,7 +19,7 @@ def test_python_standalone_build_script_help():
     script_path = APP_ROOT / "scripts" / "build_python_standalone_bundle.py"
 
     proc = subprocess.run(
-        ["python", str(script_path), "--help"],
+        [sys.executable, str(script_path), "--help"],
         capture_output=True,
         text=True,
         check=False,

@@ -28,6 +28,7 @@ from uQCme.app.plot import (
     get_plottable_quality_metric_columns,
 )
 from uQCme.app.styling import SpeciesSupportStyling
+from uQCme.core.species import SpeciesResolver, normalize_species, species_data_field
 from uQCme.core.loader import (
     collect_duplicate_row_warnings,
     get_unique_columns_from_mapping,
@@ -418,6 +419,13 @@ class QCDashboard:
             mapping_path = self.config.app.input.mapping
             with open(mapping_path, "r", encoding="utf-8") as f:
                 self.mapping = yaml.safe_load(f)
+            # Load QC rules
+            rules_path = self.config.app.input.qc_rules
+            self.qc_rules = pd.read_csv(rules_path, sep="\t")
+
+            SpeciesResolver.from_mapping(
+                self.mapping, rule_species=self.qc_rules["species"]
+            )
 
             # Load processed QC results - check if API or file
             data_config = self.config.app.input.data
@@ -483,10 +491,6 @@ class QCDashboard:
                 # No source configured, start with empty dataframe
                 self.data = pd.DataFrame()
                 self.api_warning = None
-
-            # Load QC rules
-            rules_path = self.config.app.input.qc_rules
-            self.qc_rules = pd.read_csv(rules_path, sep="\t")
 
             # Load QC tests
             tests_path = self.config.app.input.qc_tests
@@ -561,7 +565,7 @@ class QCDashboard:
 
     def _get_species_field(self) -> Optional[str]:
         """Get the species field name from mapping configuration."""
-        return self._get_field_by_role("species") or "species"
+        return species_data_field(self.mapping)
 
     # Resolve the detected-species source from the mapping configuration.
     def _get_detected_species_field(self) -> Optional[str]:
@@ -601,65 +605,13 @@ class QCDashboard:
             return standard_detected_field
         return "rMLST_match"
 
-    # Return whether a species value is absent or contains only whitespace.
-    def _is_missing_species_value(self, value: Any) -> bool:
-        if value is None:
-            return True
+    # All species semantics use the same configured canonical names as QC.
+    def _get_species_aliases(self) -> Dict[str, List[str]]:
+        SpeciesResolver.from_mapping(self.mapping)
+        return self.mapping.get("SpeciesAliases", {})
 
-        try:
-            if bool(pd.isna(value)):
-                return True
-        except (TypeError, ValueError):
-            pass
-
-        return str(value).strip() == ""
-
-    # Normalize a species value for direct and configured alias comparisons.
-    def _normalize_species_value(self, value: Any) -> Optional[str]:
-        if self._is_missing_species_value(value):
-            return None
-
-        return str(value).strip().casefold()
-
-    # Resolve explicitly configured category-to-detected species aliases.
-    def _get_species_aliases(self) -> Dict[str, set[str]]:
-        raw_aliases = self.mapping.get("SpeciesAliases", {})
-        if not isinstance(raw_aliases, dict):
-            return {}
-
-        normalized_aliases: Dict[str, set[str]] = {}
-        for provided_value, detected_values in raw_aliases.items():
-            normalized_provided = self._normalize_species_value(provided_value)
-            if normalized_provided is None or not isinstance(
-                detected_values, (list, tuple, set)
-            ):
-                continue
-
-            normalized_detected = {
-                normalized_value
-                for detected_value in detected_values
-                if (normalized_value := self._normalize_species_value(detected_value))
-                is not None
-            }
-            if normalized_detected:
-                normalized_aliases[normalized_provided] = normalized_detected
-
-        return normalized_aliases
-
-    # Compare provided and detected species using direct or explicit matches.
     def _species_values_match(self, provided: Any, detected: Any) -> bool:
-        normalized_provided = self._normalize_species_value(provided)
-        normalized_detected = self._normalize_species_value(detected)
-        if normalized_provided is None or normalized_detected is None:
-            return False
-
-        if normalized_provided == normalized_detected:
-            return True
-
-        accepted_detected_values = self._get_species_aliases().get(
-            normalized_provided, set()
-        )
-        return normalized_detected in accepted_detected_values
+        return SpeciesResolver.from_mapping(self.mapping).matches(provided, detected)
 
     def _get_required_fields(self) -> dict:
         """Get required fields from mapping configuration."""
@@ -1181,7 +1133,16 @@ class QCDashboard:
 
         columns = []
 
-        for column in cfg.index_columns:
+        selected_columns = cfg.index_columns
+        if selected_columns is None:
+            selected_columns = [
+                id_field,
+                self._get_species_field(),
+                self._get_outcome_field(),
+                self._get_action_field(),
+            ]
+
+        for column in dict.fromkeys(selected_columns):
             if column not in data.columns:
                 continue
             columns.append(
@@ -1228,12 +1189,6 @@ class QCDashboard:
     def _get_column_presets(
         self, sections_columns: Dict[str, list]
     ) -> tuple[Dict[str, Dict[str, Any]], Optional[str]]:
-        # preset_config = self.config.app.dashboard.column_presets
-        # raw_presets = (
-        #    preset_config.get("presets", {})
-        #    if isinstance(preset_config, dict)
-        #    else {}
-        # )
         preset_config = self.config.app.dashboard.column_presets
         raw_presets = preset_config.presets
 
@@ -1299,7 +1254,7 @@ class QCDashboard:
                 "columns": resolved_columns,
             }
 
-        default_preset = preset_config.default  # preset_config.get("default")
+        default_preset = preset_config.default
         if default_preset not in presets:
             default_preset = next(iter(presets))
 
@@ -1917,7 +1872,15 @@ class QCDashboard:
 
                     extra_info = f" ({', '.join(extras)})" if extras else ""
 
-                    st.write(f"- **{field_name}**: `{mapping_key}`{extra_info}")
+                    description = self._get_column_description(mapping_key)
+                    explanation = (
+                        f" - {description}"
+                        if description and description != field_name
+                        else ""
+                    )
+                    st.write(
+                        f"- **{field_name}**: `{mapping_key}`{extra_info}{explanation}"
+                    )
 
     def render_report_tab(self, filtered_data: pd.DataFrame):
         """Render config-driven table-only report view."""
@@ -2209,6 +2172,12 @@ class QCDashboard:
         with basic_col:
             st.subheader("Basic Information")
             st.write(f"**{id_field}:** {sample_data[id_field]}")
+            missing_fields = sample_data.get("missing_qc_fields")
+            if isinstance(missing_fields, str) and missing_fields.strip():
+                st.warning(
+                    f"QC caveat: missing metric values: {missing_fields}. "
+                    "The QC outcome is based on the available metrics."
+                )
 
             provided_species = None
             if species_field and species_field in sample_data:
@@ -2219,7 +2188,7 @@ class QCDashboard:
                 detected_species = sample_data.get(detected_species_field)
                 detected_display = (
                     "—"
-                    if self._is_missing_species_value(detected_species)
+                    if normalize_species(detected_species) is None
                     else escape(str(detected_species), quote=True)
                 )
                 detected_color = (
@@ -2556,21 +2525,23 @@ class QCDashboard:
                 )
         return rules_table_data
 
+    # Keep explanatory text available through both current and legacy mappings.
     def _get_column_description(self, column: str) -> str:
+        fallback = ""
         for section in self.mapping.get("Sections", {}).values():
             if not isinstance(section, dict):
                 continue
-
-            for definition in section.values():
+            for field_name, definition in section.items():
                 if not isinstance(definition, dict):
                     continue
-
-                data_mapping = definition.get("data", {}).get("mapping")
-
-                if data_mapping == column:
-                    return definition.get("report", {}).get("description", "")
-
-        return ""
+                if definition.get("data", {}).get("mapping") != column:
+                    continue
+                description = definition.get("report", {}).get("description")
+                description = description or definition.get("QC", {}).get("description")
+                if description:
+                    return str(description)
+                fallback = fallback or field_name
+        return fallback
 
     def render_warnings_tab(self):
         """Render the warnings tab showing processing warnings and issues."""

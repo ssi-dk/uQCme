@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 
 import pandas as pd
+import pytest
+import plotly.io as pio
 
-sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
 
 from uQCme.app.plot import (
     QCPlotter,
@@ -17,6 +16,12 @@ from uQCme.app.plot import (
     validate_metric_for_plotting,
 )
 from uQCme.core.config import UQCMeConfig
+
+
+@pytest.fixture(autouse=True)
+def plotly_theme(monkeypatch):
+    # Real Streamlit rendering registers its own global Plotly theme.
+    monkeypatch.setattr(pio.templates, "default", "plotly")
 
 
 def _plotter_with_species_styling() -> QCPlotter:

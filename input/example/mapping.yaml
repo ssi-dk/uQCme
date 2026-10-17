@@ -6,7 +6,7 @@ qc_rules_file: ./input/QC_rules.csv
 qc_judgement_file: ./input/qc_judgment.tsv
 
 QC_overrides:
-  software: ["checkm", "quast"]
+  software: ["checkm", "quast", "sylph", "fastp", "speciator"]
   assembly_type: "short"  # Default assembly type for QC metrics
 
 # # Example data entry
@@ -81,34 +81,34 @@ QC_overrides:
 # #   }
 # # }
 SpeciesAliases:
-    A. baumannii:
-      - Acinetobacter baumannii
-    C. jejuni:
-      - Campylobacter jejuni
-    C. freundii:
-      - Citrobacter freundii
-    C. koseri:
-      - Citrobacter koseri
-    C. difficile:
-      - Clostridioides difficile
-    E. coli:
-      - Escherichia coli
-    K. oxytoca:
-      - Klebsiella oxytoca
-    K. pneumoniae:
-      - Klebsiella pneumoniae
-    L. longbeachae:
-      - Legionella longbeachae
-    L. pneumophila:
-      - Legionella pneumophila
-    Listeria:
-      - Listeria monocytogenes
-    Salmonella:
-      - Salmonella enterica
-    S. sonnei:
-      - Shigella sonnei
-    Yersinia:
-      - Yersinia enterocolitica
+  Acinetobacter baumannii:
+  - A. baumannii
+  Campylobacter jejuni:
+  - C. jejuni
+  Citrobacter freundii:
+  - C. freundii
+  Citrobacter koseri:
+  - C. koseri
+  Clostridioides difficile:
+  - C. difficile
+  Escherichia coli:
+  - E. coli
+  Klebsiella oxytoca:
+  - K. oxytoca
+  Klebsiella pneumoniae:
+  - K. pneumoniae
+  Legionella longbeachae:
+  - L. longbeachae
+  Legionella pneumophila:
+  - L. pneumophila
+  Listeria monocytogenes:
+  - Listeria
+  Salmonella enterica:
+  - Salmonella
+  Shigella sonnei:
+  - S. sonnei
+  Yersinia enterocolitica:
+  - Yersinia
 
 Sections:
   Basic:
@@ -119,7 +119,7 @@ Sections:
         id: true # represents the unique identifier for the sample which can be passed to other systems
     SupplyingLab:
       data:
-        mapping: SupplyingLab
+        mapping: lab_group
       report:
         filter: true
     QC action: # generated from qc
@@ -137,10 +137,14 @@ Sections:
     Provided Species:
       data:
         mapping: species
-      QC:
-        mapping: ["speciesName", "genusName", "Marker lineage"]
       report:
         filter: true
+        species: true
+      QC:
+        mapping:
+        - speciesName
+        - genusName
+        - Marker lineage
     Expected species:
       data:
         mapping: rMLST_match
@@ -152,7 +156,7 @@ Sections:
   QC_metrics:
     Genome size (bp):
       data:
-        mapping: genome_size_bp
+        mapping: Quast_Total_Length
       QC:
         software: "checkm"
         assembly_type: "short"
@@ -161,19 +165,19 @@ Sections:
         filter: true
     GC:
       data:
-        mapping: gc_percent
+        mapping: Quast_GC_Pct
       QC:
         mapping: ["GC", "GC (%)"]
       report:
         filter: true
     N50:
       data:
-        mapping: n50_bp
+        mapping: Quast_N50
       QC:
         mapping: ["N50", "N50 (scaffolds)"]
     Contigs:
       data:
-        mapping: contig_count
+        mapping: Quast_Contigs
       QC:
         mapping: ["# contigs", "# contigs (>= 0 bp)"]
     Completeness:
@@ -190,9 +194,18 @@ Sections:
       hidden: true
     Depth:
       data:
-        mapping: average_coverage
+        mapping: Average_Coverage
       QC:
-        mapping: ["Depth"]
+        mapping: ["Depth", "coverage_x"]
+    Skipped Rules:
+      data:
+        mapping: skipped_rules
+    Missing QC fields:
+      data:
+        mapping: missing_qc_fields
+      report:
+        filter: true
+        description: Unavailable metrics; the QC outcome uses available values.
     Failed Rules: # generated from qc
       data:
         mapping: failed_rules
@@ -214,6 +227,8 @@ Sections:
     fastp Read1 Mean Length Before Filtering:
       data:
         mapping: fastp_Before_Filtering_Read1_Mean_Length
+      QC:
+        mapping: ["mean_read_length_bp"]
     fastp Read2 Mean Length Before Filtering:
       data:
         mapping: fastp_Before_Filtering_Read2_Mean_Length
@@ -251,6 +266,8 @@ Sections:
     fastp Duplication Rate:
       data:
         mapping: fastp_Duplication_Rate
+      QC:
+        mapping: ["duplication_rate"]
       report:
         description: Estimated proportion of duplicated reads.
     fastp Adapter Trimmed Reads:

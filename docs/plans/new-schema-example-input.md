@@ -1,5 +1,12 @@
 # New-Schema Example Input Plan
 
+> Maintenance update — 17 October 2026: species aliases now use the canonical
+> QC rule name as the key and are shared by core processing and the dashboard.
+> Sample navigation defaults derive from the mapped ID; optional explicit
+> columns live in `app.dashboard.sample_details.index_columns`. See
+> [the maintained configuration contract](../species-mapping.md). Earlier
+> implementation/status details below describe the original work.
+
 ## Status
 
 **Complete — 2026-08-18**

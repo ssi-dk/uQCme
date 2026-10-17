@@ -8,7 +8,26 @@ all test modules in the uQCme test suite.
 import pytest
 import pandas as pd
 import yaml
+import requests
 from pathlib import Path
+
+from tests.support.processing import make_processor
+
+
+@pytest.fixture(autouse=True)
+def block_network(monkeypatch):
+    def unexpected_request(*args, **kwargs):
+        raise AssertionError("Tests must use synthetic fixtures or mock HTTP requests")
+
+    monkeypatch.setattr(requests.sessions.Session, "request", unexpected_request)
+
+
+@pytest.fixture
+def processor_factory(tmp_path):
+    def build(schema="legacy"):
+        return make_processor(schema, tmp_path / schema)
+
+    return build
 
 
 @pytest.fixture

@@ -10,34 +10,34 @@ QC_overrides:
   assembly_type: "short"  # Default assembly type for QC metrics
 
 SpeciesAliases:
-  A. baumannii:
-    - Acinetobacter baumannii
-  C. jejuni:
-    - Campylobacter jejuni
-  C. freundii:
-    - Citrobacter freundii
-  C. koseri:
-    - Citrobacter koseri
-  C. difficile:
-    - Clostridioides difficile
-  E. coli:
-    - Escherichia coli
-  K. oxytoca:
-    - Klebsiella oxytoca
-  K. pneumoniae:
-    - Klebsiella pneumoniae
-  L. longbeachae:
-    - Legionella longbeachae
-  L. pneumophila:
-    - Legionella pneumophila
-  Listeria:
-    - Listeria monocytogenes
-  Salmonella:
-    - Salmonella enterica
-  S. sonnei:
-    - Shigella sonnei
-  Yersinia:
-    - Yersinia enterocolitica
+  Acinetobacter baumannii:
+  - A. baumannii
+  Campylobacter jejuni:
+  - C. jejuni
+  Citrobacter freundii:
+  - C. freundii
+  Citrobacter koseri:
+  - C. koseri
+  Clostridioides difficile:
+  - C. difficile
+  Escherichia coli:
+  - E. coli
+  Klebsiella oxytoca:
+  - K. oxytoca
+  Klebsiella pneumoniae:
+  - K. pneumoniae
+  Legionella longbeachae:
+  - L. longbeachae
+  Legionella pneumophila:
+  - L. pneumophila
+  Listeria monocytogenes:
+  - Listeria
+  Salmonella enterica:
+  - Salmonella
+  Shigella sonnei:
+  - S. sonnei
+  Yersinia enterocolitica:
+  - Yersinia
 
 Sections:
   Basic:
@@ -69,13 +69,18 @@ Sections:
     Expected species:
       data:
         mapping: rMLST_match
-      QC:
-        mapping: ["speciesName", "genusName", "Marker lineage"]
       report:
         filter: true
     Provided Species:
       data:
         mapping: species
+      report:
+        species: true
+      QC:
+        mapping:
+        - speciesName
+        - genusName
+        - Marker lineage
     Species:
       QC:
         mapping: ["speciesName", "genusName", "Marker lineage"]

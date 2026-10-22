@@ -181,6 +181,10 @@ The tool is driven by a `config.yaml` file. This file defines:
 
 **Bearer token for `api_call`**
 
+The default `config.yaml` runs locally from synthetic files. Run the CLI first
+to generate its dashboard input. API input is opt-in; `config.api.test.yaml`
+provides a separate integration example.
+
 When `qc.input.data.api_call` or `app.input.data.api_call` requires bearer auth,
 configure one of:
 - `api_bearer_token_env` (recommended): environment variable name containing the token
@@ -257,6 +261,21 @@ app:
 
 See the `input/example/` directory for template files.
 
+**Canonical species names**
+
+Species aliases belong in the mapping file, keyed by the name used in QC rules:
+
+```yaml
+SpeciesAliases:
+  Klebsiella pneumoniae:
+    - K. pneumoniae
+```
+
+The QC engine resolves aliases for species-rule selection and species-value
+checks; the dashboard uses the same resolver. Original input values are retained.
+See [species mapping and QC caveats](docs/species-mapping.md) for migration from
+the earlier alias-key format, alternate source columns and missing-metric flags.
+
 **Rule-aware species styling**
 
 The dashboard derives species support from explicit, species-specific entries
@@ -303,11 +322,12 @@ Detailed log of rule evaluation issues:
 ### Sample Details
 
 - Config-driven navigation index of filtered samples
-- Mapping fields marked with `report.sample_details_index: true` appear in the
-  index; `report.sample_details_order` controls their order and `report.label`
-  optionally overrides the heading
+- With no extra settings, the index uses the mapped sample ID, species, QC
+  outcome and QC action. `app.dashboard.sample_details.index_columns` optionally
+  selects and orders source columns; `report.label` overrides their headings
 - The field marked with `report.id: true` links to each sample's detail section
-- Mappings without index flags retain the four-column legacy index
+- Column presets are optional; omitting them leaves the basic table available
+- Missing QC fields appear as per-sample caveats alongside the existing result
 - Detailed view of individual sample QC results
 - Failed rules and thresholds
 - Interactive metric exploration
@@ -469,3 +489,35 @@ For questions, issues, or feature requests:
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for version history and updates.
+
+
+## Build and configuration identity
+
+The dashboard displays the installed package version, a short source revision,
+and a presentation/QC configuration fingerprint. Payload `version` labels do
+not override the installed software version. Unknown provenance stays `unknown`;
+editable source checkouts report `+dirty` when modified. Standalone bundles embed
+the source revision, dirty state and UTC build datetime and retain them when moved.
+
+`uqcme --version` and `uqcme-dashboard --version` exit without loading input data.
+`--diagnostics` prints safe identity JSON; add `--config config/config.yaml` from
+the normal working directory to include configuration identity. The dashboard's
+`?diagnostics=1` or `app.dashboard.debug_diagnostics: true` opens the same safe
+information in an expander; `diagnostics=0` hides the details.
+
+The configuration fingerprint covers presentation settings, source kind and
+mapping/QC reference bytes. It excludes input rows, paths, API endpoints, headers
+and credentials, and is **not** a complete installed-payload checksum or an
+API-authentication check. Compare complete configuration privately through the
+owning deployment's verification. Missing reference files set
+`references_complete: false`. Safe diagnostics never make an API request.
+The older `?debug=1` / `debug_api` feature is separate: it shows raw API diagnostic
+information and should only be used within the data access policy.
+
+Deployments may supply an optional `deployment.json` beside the `config/`
+directory containing `schema_version: 1`, `flow_revision`, `installer_revision`,
+`flow_dirty`, `installer_dirty`, `runtime_id`, `environment`, `data_mode`
+(`synthetic`, `live`, or `unspecified`) and `artifact_sha256`. Revisions use full
+40-character Git IDs; archive digests use SHA-256. Unknown or invalid metadata is
+ignored rather than printed. This sidecar is deployment provenance, not proof of
+live health, completed deployment or successful external authentication.

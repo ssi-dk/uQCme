@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Shared, validated canonical species mappings for QC selection, species-value
+  checks and dashboard comparisons/support, preserving original input values.
+- Per-sample `skipped_rules` and `missing_qc_fields` result columns. Missing
+  metrics retain existing QC outcomes and actions with visible caveats.
+- Offline regression tests using fresh processor results, isolated dashboard
+  mocks and real Streamlit widget lifecycles.
 - Rule-aware species styling that distinguishes supported, unsupported,
   and missing species via `app.ui_styling`.
 - `uqcme-dashboard-smoke` console command for starting a dashboard process,
@@ -36,10 +42,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Bumped application version to `0.9.2` (`src/uQCme/__init__.py`) and aligned config version defaults to `0.9.2`.
-- Dashboard summary metrics now render at the top of the sidebar, and Data tab
-  section visibility controls now render above the sample table.
-- Data tab section visibility now uses a compact Streamlit multi-select control
-  instead of a checkbox grid.
+- Dashboard summary metrics render at the top of the sidebar. Configured Column
+  View presets and grouped column controls render above the Data Preview table;
+  the basic table remains available when presets are omitted.
 - Dashboard tables now shrink below `app.dashboard.table_height` when fewer
   rows are rendered than fit in the configured maximum height.
 - Updated README for current behavior and layout:
@@ -51,6 +56,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- New-schema example metric mappings now point to actual source columns and
+  evaluate the configured read, assembly and species rules.
+- The default dashboard reads generated synthetic results; API integration
+  remains an explicit configuration choice.
+- CLI result and warning writers create their configured output directories.
+- Sample navigation derives its default ID from the mapping, and Column
+  Information displays configured descriptions and legacy fallbacks.
+- Dashboard tests no longer replace installed modules globally; QC integration
+  tests compare fresh output with the reviewed expected results.
 - Added `requests` to core package dependencies so the CLI-only standalone
   bundle includes the dependency required by `uQCme.core.loader`.
 - Fixed malformed `deploy/local/input/QC_tests.tsv` rows (extra tab delimiters on lines 3 and 4) that caused local startup failure with:

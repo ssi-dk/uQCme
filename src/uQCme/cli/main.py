@@ -8,6 +8,9 @@ configurable quality control rules and tests.
 
 import argparse
 import sys
+import json
+from uQCme.core.identity import identity_label, runtime_identity
+from uQCme.core.loader import load_config_from_file
 from uQCme.core.engine import QCProcessor
 from uQCme.core.exceptions import UQCMeError
 
@@ -19,6 +22,15 @@ def main():
     )
     parser.add_argument(
         "--config", required=False, help="Path to configuration YAML file"
+    )
+
+    parser.add_argument(
+        "--version", action="store_true", help="Show installed build identity and exit"
+    )
+    parser.add_argument(
+        "--diagnostics",
+        action="store_true",
+        help="Print safe identity JSON without loading input data",
     )
 
     # Add data override arguments
@@ -35,6 +47,25 @@ def main():
     )
 
     args = parser.parse_args()
+
+    if args.version or args.diagnostics:
+        try:
+            config = (
+                load_config_from_file(args.config)
+                if args.config and args.diagnostics
+                else None
+            )
+        except Exception:
+            parser.error(
+                "Cannot load diagnostic configuration; check the selected file privately"
+            )
+        identity = runtime_identity(config, args.config)
+        print(
+            json.dumps(identity, indent=2)
+            if args.diagnostics
+            else identity_label(identity)
+        )
+        return
 
     # Print header
     print("🔬 uQCme - Microbial Quality Control CLI Tool")

@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
 """Unit tests for configuration models."""
 
-import sys
 import unittest
-from pathlib import Path
 
 from pydantic import ValidationError
 
-# Add src directory to import path.
-sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
 
 from uQCme.core.config import UQCMeConfig
 

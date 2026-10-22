@@ -1,8 +1,5 @@
 import math
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parents[2] / "src"))
 
 import pandas as pd
 
@@ -47,8 +44,8 @@ def test_species_support_matches_configured_aliases_only_for_supported_targets()
         ),
         supported_species={"Escherichia coli"},
         species_aliases={
-            "E. coli": {"Escherichia coli"},
-            "K. pneumoniae": {"Klebsiella pneumoniae"},
+            "Escherichia coli": ["E. coli"],
+            "Klebsiella pneumoniae": ["K. pneumoniae"],
         },
     )
 

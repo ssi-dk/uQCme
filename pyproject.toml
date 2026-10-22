@@ -83,6 +83,8 @@ include = [
 ]
 
 [tool.pytest.ini_options]
+pythonpath = ["src", "."]
+testpaths = ["tests"]
 markers = [
     "standalone: standalone packaging tests and bundle checks",
     "dashboard_smoke: dashboard process startup and HTTP smoke tests",

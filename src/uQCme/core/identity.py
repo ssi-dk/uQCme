@@ -20,7 +20,9 @@ class DeploymentIdentity(BaseModel):
     installer_dirty: bool | None = None
     runtime_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,80}$")
     environment: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,40}$")
-    data_mode: str = Field(default="unspecified", pattern=r"^(synthetic|live|unspecified)$")
+    data_mode: str = Field(
+        default="unspecified", pattern=r"^(synthetic|live|unspecified)$"
+    )
     artifact_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
@@ -46,13 +48,19 @@ def build_identity():
     if (root / ".git").exists():
         try:
             revision = subprocess.check_output(
-                ["git", "-C", str(root), "rev-parse", "HEAD"], text=True,
-                stderr=subprocess.DEVNULL, timeout=2,
+                ["git", "-C", str(root), "rev-parse", "HEAD"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+                timeout=2,
             ).strip()
-            dirty = bool(subprocess.check_output(
-                ["git", "-C", str(root), "status", "--porcelain"], text=True,
-                stderr=subprocess.DEVNULL, timeout=2,
-            ).strip())
+            dirty = bool(
+                subprocess.check_output(
+                    ["git", "-C", str(root), "status", "--porcelain"],
+                    text=True,
+                    stderr=subprocess.DEVNULL,
+                    timeout=2,
+                ).strip()
+            )
             return BuildIdentity(revision=revision, dirty=dirty).model_dump()
         except (OSError, ValueError, subprocess.SubprocessError):
             pass
@@ -62,17 +70,27 @@ def build_identity():
 # Hash a canonical allowlisted projection, excluding credentials, endpoints and input data.
 def configuration_identity(config):
     app = config.app
-    projection = {"title": config.title, "outcome_priorities": config.outcome_priorities}
+    projection = {
+        "title": config.title,
+        "outcome_priorities": config.outcome_priorities,
+    }
     references = {}
     if app is not None:
         dashboard = app.dashboard
         projection["dashboard"] = {
-            key: getattr(dashboard, key) for key in (
-                "categorical_filter_threshold", "max_displayed_rules", "table_height"
+            key: getattr(dashboard, key)
+            for key in (
+                "categorical_filter_threshold",
+                "max_displayed_rules",
+                "table_height",
             )
         }
-        projection["dashboard"]["column_presets"] = dashboard.column_presets.model_dump()
-        projection["dashboard"]["sample_details"] = dashboard.sample_details.model_dump()
+        projection["dashboard"]["column_presets"] = (
+            dashboard.column_presets.model_dump()
+        )
+        projection["dashboard"]["sample_details"] = (
+            dashboard.sample_details.model_dump()
+        )
         projection["ui_styling"] = app.ui_styling.model_dump()
         projection["priority_colors"] = app.priority_colors
         source = app.input.data
@@ -80,29 +98,45 @@ def configuration_identity(config):
         projection["source_kind"] = (
             "api" if isinstance(values, dict) and values.get("api_call") else "file"
         )
-        projection["query_keys"] = sorted(values.get("api_query_params") or []) if isinstance(values, dict) else []
+        projection["query_keys"] = (
+            sorted(values.get("api_query_params") or [])
+            if isinstance(values, dict)
+            else []
+        )
         for key in ("mapping", "qc_rules", "qc_tests"):
             try:
-                references[key] = hashlib.sha256(Path(getattr(app.input, key)).read_bytes()).hexdigest()
+                references[key] = hashlib.sha256(
+                    Path(getattr(app.input, key)).read_bytes()
+                ).hexdigest()
             except OSError:
                 references[key] = None
     projection["references"] = references
     canonical = json.loads(json.dumps(projection, default=str))
-    digest = hashlib.sha256(json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-    return {"sha256": digest, "scope": "presentation-and-qc-references-v1",
-            "references_complete": all(value is not None for value in references.values())}
+    digest = hashlib.sha256(
+        json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    return {
+        "sha256": digest,
+        "scope": "presentation-and-qc-references-v1",
+        "references_complete": all(value is not None for value in references.values()),
+    }
 
 
 # Sidecar metadata is optional; malformed or unknown fields never leak through diagnostics.
 def runtime_identity(config=None, config_path=None):
-    result = {"schema_version": 1, "software": {"version": __version__, **build_identity()}}
+    result = {
+        "schema_version": 1,
+        "software": {"version": __version__, **build_identity()},
+    }
     if config is not None:
         result["configuration"] = configuration_identity(config)
     deployment = DeploymentIdentity().model_dump()
     if config_path is not None:
         path = Path(config_path).resolve().parent.parent / "deployment.json"
         try:
-            deployment = DeploymentIdentity.model_validate_json(path.read_text()).model_dump()
+            deployment = DeploymentIdentity.model_validate_json(
+                path.read_text()
+            ).model_dump()
         except (OSError, ValueError):
             pass
     result["deployment"] = deployment

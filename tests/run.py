@@ -1,4 +1,5 @@
 """Run a small functional baseline, the remaining regressions, or the complete local suite."""
+
 import argparse
 from pathlib import Path
 
@@ -25,7 +26,12 @@ class RemainingTests:
 # Keep core selectors explicit and leave slow/external rehearsal opt-in.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("suite", choices=("essential", "conditional", "all"), nargs="?", default="essential")
+    parser.add_argument(
+        "suite",
+        choices=("essential", "conditional", "all"),
+        nargs="?",
+        default="essential",
+    )
     parser.add_argument("--list", action="store_true")
     args = parser.parse_args()
     selection = list(ESSENTIAL) if args.suite == "essential" else []
@@ -33,8 +39,10 @@ def main():
     import pytest
 
     os.chdir(ROOT)
-    return pytest.main(["-q", *selection, *(["--collect-only"] if args.list else [])],
-                       plugins=[RemainingTests()] if args.suite == "conditional" else [])
+    return pytest.main(
+        ["-q", *selection, *(["--collect-only"] if args.list else [])],
+        plugins=[RemainingTests()] if args.suite == "conditional" else [],
+    )
 
 
 if __name__ == "__main__":

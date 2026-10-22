@@ -18,10 +18,14 @@ def test_identity_projection_is_stable_private_and_changes_with_settings(tmp_pat
         path = tmp_path / key
         path.write_text("synthetic reference")
         setattr(config.app.input, key, str(path))
-    config.app.input.data = DataInput(api_call="https://private.invalid?key=SECRET", api_bearer_token="SECRET")
+    config.app.input.data = DataInput(
+        api_call="https://private.invalid?key=SECRET", api_bearer_token="SECRET"
+    )
     first = configuration_identity(config)
     assert first["references_complete"]
-    config.app.input.data = DataInput(api_call="https://other.invalid", api_bearer_token="CHANGED")
+    config.app.input.data = DataInput(
+        api_call="https://other.invalid", api_bearer_token="CHANGED"
+    )
     assert configuration_identity(config) == first
     config.app.dashboard.table_height += 1
     assert configuration_identity(config)["sha256"] != first["sha256"]
@@ -40,19 +44,28 @@ def test_identity_uses_package_version_and_validates_sidecar(tmp_path):
     config_path = tmp_path / "config/config.yaml"
     config_path.parent.mkdir()
     metadata = tmp_path / "deployment.json"
-    metadata.write_text(json.dumps({"runtime_id": "webservices_test", "data_mode": "synthetic", "flow_revision": "a" * 40}))
+    metadata.write_text(
+        json.dumps(
+            {
+                "runtime_id": "webservices_test",
+                "data_mode": "synthetic",
+                "flow_revision": "a" * 40,
+            }
+        )
+    )
     identity = runtime_identity(config, config_path)
     assert identity["software"]["version"] == __version__
     assert "synthetic data" in identity_label(identity)
     assert identity["deployment"]["flow_revision"] == "a" * 40
-    metadata.write_text(json.dumps({"runtime_id": "private/path", "api_bearer_token": "SECRET"}))
+    metadata.write_text(
+        json.dumps({"runtime_id": "private/path", "api_bearer_token": "SECRET"})
+    )
     assert runtime_identity(config, config_path)["deployment"]["runtime_id"] is None
     assert "SECRET" not in json.dumps(runtime_identity(config, config_path))
 
 
 # Safe diagnostics have an explicit switch independent of the raw API debug feature.
 def test_dashboard_safe_diagnostics_switch(streamlit_stub, monkeypatch):
-    main = importlib.import_module("uQCme.app.main")
     dashboard = _bare_dashboard()
     dashboard._render_identity()
     assert not streamlit_stub.json_calls
@@ -86,7 +99,15 @@ def test_bundled_metadata(monkeypatch, tmp_path):
     fake_module.parent.mkdir(parents=True)
     monkeypatch.setattr(identity, "__file__", str(fake_module))
     metadata = fake_module.parents[1] / "_build_info.json"
-    metadata.write_text(json.dumps({"revision": "b" * 40, "dirty": False, "built_at": "2026-10-22T12:00:00+00:00"}))
+    metadata.write_text(
+        json.dumps(
+            {
+                "revision": "b" * 40,
+                "dirty": False,
+                "built_at": "2026-10-22T12:00:00+00:00",
+            }
+        )
+    )
     assert identity.build_identity()["revision"] == "b" * 40
     metadata.write_text('{"revision": "SECRET"}')
     assert identity.build_identity()["revision"] is None

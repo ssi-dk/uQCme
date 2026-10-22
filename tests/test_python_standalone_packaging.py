@@ -110,7 +110,9 @@ def test_build_identity_is_baked_into_package(tmp_path, monkeypatch):
     import importlib.util
     import json
 
-    spec = importlib.util.spec_from_file_location("bundle_builder", APP_ROOT / "scripts/build_python_standalone_bundle.py")
+    spec = importlib.util.spec_from_file_location(
+        "bundle_builder", APP_ROOT / "scripts/build_python_standalone_bundle.py"
+    )
     builder = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(builder)
     source = tmp_path / "source"

@@ -65,12 +65,18 @@ class QCDashboard:
         identity = runtime_identity(self.config, getattr(self, "config_path", None))
         st.caption(identity_label(identity))
         query = str(st.query_params.get("diagnostics", "")).lower()
-        configured = bool(self.config.app and self.config.app.dashboard.debug_diagnostics)
-        enabled = query in {"1", "true", "yes"} or (configured and query not in {"0", "false", "no"})
+        configured = bool(
+            self.config.app and self.config.app.dashboard.debug_diagnostics
+        )
+        enabled = query in {"1", "true", "yes"} or (
+            configured and query not in {"0", "false", "no"}
+        )
         if enabled:
             with st.expander("Build and configuration diagnostics", expanded=False):
                 st.json(identity)
-                st.caption("Configuration identity excludes API endpoints, credentials and input data; it is not a complete payload checksum.")
+                st.caption(
+                    "Configuration identity excludes API endpoints, credentials and input data; it is not a complete payload checksum."
+                )
 
     def _is_api_debug_enabled(self) -> bool:
         """Check if API debug mode is enabled in URL or dashboard config."""
@@ -735,7 +741,11 @@ class QCDashboard:
         target.subheader("📊 Summary")
 
         # Report installed software, independently of the payload's version label.
-        target.markdown(identity_label(runtime_identity(self.config, getattr(self, "config_path", None))))
+        target.markdown(
+            identity_label(
+                runtime_identity(self.config, getattr(self, "config_path", None))
+            )
+        )
 
         # Create columns for horizontal layout
         col1, col2, col3 = target.columns(3)
@@ -2970,8 +2980,16 @@ def main():
 
         parser = argparse.ArgumentParser(description="uQCme Dashboard", add_help=False)
         parser.add_argument("--config", default=None, help="Path to configuration file")
-        parser.add_argument("--version", action="store_true", help="Show installed build identity and exit")
-        parser.add_argument("--diagnostics", action="store_true", help="Print safe identity JSON without loading input data")
+        parser.add_argument(
+            "--version",
+            action="store_true",
+            help="Show installed build identity and exit",
+        )
+        parser.add_argument(
+            "--diagnostics",
+            action="store_true",
+            help="Print safe identity JSON without loading input data",
+        )
         parser.add_argument(
             "--export-pdf",
             default=None,
@@ -2985,11 +3003,21 @@ def main():
             import json
 
             try:
-                config = load_config_from_file(args.config) if args.config and args.diagnostics else None
+                config = (
+                    load_config_from_file(args.config)
+                    if args.config and args.diagnostics
+                    else None
+                )
             except Exception:
-                parser.error("Cannot load diagnostic configuration; check the selected file privately")
+                parser.error(
+                    "Cannot load diagnostic configuration; check the selected file privately"
+                )
             identity = runtime_identity(config, args.config)
-            print(json.dumps(identity, indent=2) if args.diagnostics else identity_label(identity))
+            print(
+                json.dumps(identity, indent=2)
+                if args.diagnostics
+                else identity_label(identity)
+            )
             return
 
         if args.export_pdf:

@@ -24,8 +24,14 @@ def main():
         "--config", required=False, help="Path to configuration YAML file"
     )
 
-    parser.add_argument("--version", action="store_true", help="Show installed build identity and exit")
-    parser.add_argument("--diagnostics", action="store_true", help="Print safe identity JSON without loading input data")
+    parser.add_argument(
+        "--version", action="store_true", help="Show installed build identity and exit"
+    )
+    parser.add_argument(
+        "--diagnostics",
+        action="store_true",
+        help="Print safe identity JSON without loading input data",
+    )
 
     # Add data override arguments
     group = parser.add_mutually_exclusive_group()
@@ -44,11 +50,21 @@ def main():
 
     if args.version or args.diagnostics:
         try:
-            config = load_config_from_file(args.config) if args.config and args.diagnostics else None
+            config = (
+                load_config_from_file(args.config)
+                if args.config and args.diagnostics
+                else None
+            )
         except Exception:
-            parser.error("Cannot load diagnostic configuration; check the selected file privately")
+            parser.error(
+                "Cannot load diagnostic configuration; check the selected file privately"
+            )
         identity = runtime_identity(config, args.config)
-        print(json.dumps(identity, indent=2) if args.diagnostics else identity_label(identity))
+        print(
+            json.dumps(identity, indent=2)
+            if args.diagnostics
+            else identity_label(identity)
+        )
         return
 
     # Print header

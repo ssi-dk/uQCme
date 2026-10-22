@@ -275,9 +275,14 @@ def write_build_identity(site_packages):
 
     if re.fullmatch(r"[0-9a-f]{40}", revision) is None:
         raise ValueError("Build source must identify a full Git revision")
-    metadata = {"revision": revision, "dirty": dirty,
-                "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
-    (site_packages / "uQCme" / "_build_info.json").write_text(json.dumps(metadata, sort_keys=True) + "\n")
+    metadata = {
+        "revision": revision,
+        "dirty": dirty,
+        "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    (site_packages / "uQCme" / "_build_info.json").write_text(
+        json.dumps(metadata, sort_keys=True) + "\n"
+    )
 
 
 def write_launcher(dist_root, launcher_name, module_name):

@@ -3,13 +3,15 @@
 Run the maintained environment from the repository root:
 
 ```bash
-pixi run test
+pixi run test                 # essential: routine functional baseline
+pixi run test-conditional     # remaining regressions after relevant changes
+pixi run test-all             # complete local suite before release / broad changes
 pixi run test-packaging
 pixi run test-dashboard-smoke
 ```
 
 With that environment already active, `python -m pytest` is equivalent to the
-main test task. Pytest configures the source import path centrally.
+complete suite, not the default essential task. Pytest configures the source import path centrally.
 
 ## Responsibilities
 
@@ -50,3 +52,21 @@ rewrite expected results to make themselves pass. The raw fixture generator is
 The `dashboard_smoke` tests check helper configuration and command construction.
 They do not establish that a dashboard process started, that PDF export works,
 or that any remote deployment is healthy.
+
+
+## Choosing the level
+
+`python tests/run.py essential|conditional|all --list` previews the selection.
+The essential baseline checks fresh QC outcomes, species rules/aliases, bearer
+request handling and safe identity. Run it during normal development; add the
+changed area's tests when the diff touches another behaviour. Conditional is the
+remaining, disjoint local suite. `all` is their union; it does not build bundles,
+start Docker or deploy anything. Do not run essential + conditional + all for the
+same revision: choose essential + the affected tests, or one complete run.
+
+Packaging changes additionally require `test-packaging`; source/UI/transport
+changes need their corresponding dashboard/CLI integration tests. The separate
+owning deployment flow rehearses real systemd/NFS and production-shaped synthetic
+APIs. Keep a regression only when it protects a distinct behaviour or a documented
+failure; do not duplicate assertions just to raise test counts. Use elapsed time
+and risk, not test count, when deciding what runs frequently.

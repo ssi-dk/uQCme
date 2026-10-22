@@ -1,8 +1,6 @@
 """Run a small functional baseline, the remaining regressions, or the complete local suite."""
 import argparse
 from pathlib import Path
-import subprocess
-import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 ESSENTIAL = (
@@ -16,6 +14,14 @@ ESSENTIAL = (
 )
 
 
+# Match exact test functions, including their parameters, rather than name prefixes.
+class RemainingTests:
+    def pytest_collection_modifyitems(self, config, items):
+        excluded = [item for item in items if item.nodeid.split("[", 1)[0] in ESSENTIAL]
+        config.hook.pytest_deselected(items=excluded)
+        items[:] = [item for item in items if item not in excluded]
+
+
 # Keep core selectors explicit and leave slow/external rehearsal opt-in.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -23,10 +29,12 @@ def main():
     parser.add_argument("--list", action="store_true")
     args = parser.parse_args()
     selection = list(ESSENTIAL) if args.suite == "essential" else []
-    if args.suite == "conditional":
-        selection = ["--deselect=" + node for node in ESSENTIAL]
-    return subprocess.call([sys.executable, "-m", "pytest", "-q", *selection,
-                            *(["--collect-only"] if args.list else [])], cwd=ROOT)
+    import os
+    import pytest
+
+    os.chdir(ROOT)
+    return pytest.main(["-q", *selection, *(["--collect-only"] if args.list else [])],
+                       plugins=[RemainingTests()] if args.suite == "conditional" else [])
 
 
 if __name__ == "__main__":

@@ -95,6 +95,7 @@ class DashboardConfig(BaseModel):
     column_presets: ColumnPresetConfig = Field(default_factory=ColumnPresetConfig)
     sample_details: SampleDetailsConfig = Field(default_factory=SampleDetailsConfig)
     debug_api: bool = False
+    debug_diagnostics: bool = False
     report_mode: ReportModeConfig = Field(default_factory=ReportModeConfig)
     sample_api_actions: List[SampleApiAction] = Field(default_factory=list)
 

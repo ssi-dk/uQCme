@@ -489,3 +489,35 @@ For questions, issues, or feature requests:
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for version history and updates.
+
+
+## Build and configuration identity
+
+The dashboard displays the installed package version, a short source revision,
+and a presentation/QC configuration fingerprint. Payload `version` labels do
+not override the installed software version. Unknown provenance stays `unknown`;
+editable source checkouts report `+dirty` when modified. Standalone bundles embed
+the source revision, dirty state and UTC build datetime and retain them when moved.
+
+`uqcme --version` and `uqcme-dashboard --version` exit without loading input data.
+`--diagnostics` prints safe identity JSON; add `--config config/config.yaml` from
+the normal working directory to include configuration identity. The dashboard's
+`?diagnostics=1` or `app.dashboard.debug_diagnostics: true` opens the same safe
+information in an expander; `diagnostics=0` hides the details.
+
+The configuration fingerprint covers presentation settings, source kind and
+mapping/QC reference bytes. It excludes input rows, paths, API endpoints, headers
+and credentials, and is **not** a complete installed-payload checksum or an
+API-authentication check. Compare complete configuration privately through the
+owning deployment's verification. Missing reference files set
+`references_complete: false`. Safe diagnostics never make an API request.
+The older `?debug=1` / `debug_api` feature is separate: it shows raw API diagnostic
+information and should only be used within the data access policy.
+
+Deployments may supply an optional `deployment.json` beside the `config/`
+directory containing `schema_version: 1`, `flow_revision`, `installer_revision`,
+`flow_dirty`, `installer_dirty`, `runtime_id`, `environment`, `data_mode`
+(`synthetic`, `live`, or `unspecified`) and `artifact_sha256`. Revisions use full
+40-character Git IDs; archive digests use SHA-256. Unknown or invalid metadata is
+ignored rather than printed. This sidecar is deployment provenance, not proof of
+live health, completed deployment or successful external authentication.

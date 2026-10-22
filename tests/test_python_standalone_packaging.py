@@ -102,3 +102,25 @@ def test_marker_configuration_documents_standalone_and_dashboard_smoke():
 
     assert "standalone: standalone packaging tests" in pyproject_text
     assert "dashboard_smoke: dashboard process startup" in pyproject_text
+
+
+# The actual builder embeds source metadata, rather than relying on a source checkout at runtime.
+@pytest.mark.standalone
+def test_build_identity_is_baked_into_package(tmp_path, monkeypatch):
+    import importlib.util
+    import json
+
+    spec = importlib.util.spec_from_file_location("bundle_builder", APP_ROOT / "scripts/build_python_standalone_bundle.py")
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "SOURCE_REVISION").write_text("a" * 40)
+    package = tmp_path / "site-packages/uQCme"
+    package.mkdir(parents=True)
+    monkeypatch.setattr(builder, "APP_ROOT", source)
+    builder.write_build_identity(package.parent)
+    metadata = json.loads((package / "_build_info.json").read_text())
+    assert metadata["revision"] == "a" * 40
+    assert metadata["dirty"] is False
+    assert metadata["built_at"].endswith("+00:00")

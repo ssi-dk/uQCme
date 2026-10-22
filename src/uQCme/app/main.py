@@ -38,6 +38,7 @@ from uQCme.core.loader import (
     load_data_from_api_with_debug,
     prepare_loaded_data_frame,
 )
+from uQCme.core.identity import identity_label, runtime_identity
 from uQCme.core.engine import QCProcessor
 from uQCme.core.config import UQCMeConfig, DataInput, SampleApiAction
 from uQCme.core.exceptions import ConfigError, DataLoadError, ValidationError
@@ -58,6 +59,18 @@ class QCDashboard:
         self.report_mode = self._is_report_mode()
         self.api_debug_info: Optional[Dict[str, Any]] = None
         self.api_debug_error: Optional[str] = None
+
+    # Safe deployment diagnostics are independent of the existing raw API debug panel.
+    def _render_identity(self):
+        identity = runtime_identity(self.config, getattr(self, "config_path", None))
+        st.caption(identity_label(identity))
+        query = str(st.query_params.get("diagnostics", "")).lower()
+        configured = bool(self.config.app and self.config.app.dashboard.debug_diagnostics)
+        enabled = query in {"1", "true", "yes"} or (configured and query not in {"0", "false", "no"})
+        if enabled:
+            with st.expander("Build and configuration diagnostics", expanded=False):
+                st.json(identity)
+                st.caption("Configuration identity excludes API endpoints, credentials and input data; it is not a complete payload checksum.")
 
     def _is_api_debug_enabled(self) -> bool:
         """Check if API debug mode is enabled in URL or dashboard config."""
@@ -721,9 +734,8 @@ class QCDashboard:
         target = target or st.sidebar
         target.subheader("📊 Summary")
 
-        # Version info
-        version = self.config.version
-        target.markdown(f"**Version:** {version}")
+        # Report installed software, independently of the payload's version label.
+        target.markdown(identity_label(runtime_identity(self.config, getattr(self, "config_path", None))))
 
         # Create columns for horizontal layout
         col1, col2, col3 = target.columns(3)
@@ -2774,6 +2786,7 @@ class QCDashboard:
         if not self.report_mode:
             self.render_header()
 
+        self._render_identity()
         self._render_api_debug_panel()
 
         # Data Source Info & Override in Sidebar
@@ -2957,6 +2970,8 @@ def main():
 
         parser = argparse.ArgumentParser(description="uQCme Dashboard", add_help=False)
         parser.add_argument("--config", default=None, help="Path to configuration file")
+        parser.add_argument("--version", action="store_true", help="Show installed build identity and exit")
+        parser.add_argument("--diagnostics", action="store_true", help="Print safe identity JSON without loading input data")
         parser.add_argument(
             "--export-pdf",
             default=None,
@@ -2965,6 +2980,17 @@ def main():
 
         # Parse known args to extract --config without failing on Streamlit args
         args, remaining_args = parser.parse_known_args()
+
+        if args.version or args.diagnostics:
+            import json
+
+            try:
+                config = load_config_from_file(args.config) if args.config and args.diagnostics else None
+            except Exception:
+                parser.error("Cannot load diagnostic configuration; check the selected file privately")
+            identity = runtime_identity(config, args.config)
+            print(json.dumps(identity, indent=2) if args.diagnostics else identity_label(identity))
+            return
 
         if args.export_pdf:
             from uQCme.app.report_export import (

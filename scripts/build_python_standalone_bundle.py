@@ -2,6 +2,8 @@
 """Build relocatable uQCme bundles from python-build-standalone."""
 
 import argparse
+import json
+from datetime import datetime, timezone
 import os
 import platform
 import shutil
@@ -257,6 +259,25 @@ def install_application(python_bin, site_packages, profile, wheelhouse):
         command.extend(["--no-index", "--find-links", wheelhouse])
     command.append("{0}[{1}]".format(APP_ROOT, install_extra))
     run(command)
+    write_build_identity(site_packages)
+
+
+# Bake source identity into the installed package so moving a bundle preserves provenance.
+def write_build_identity(site_packages):
+    revision_file = APP_ROOT / "SOURCE_REVISION"
+    if revision_file.is_file():
+        revision = revision_file.read_text().strip()
+        dirty = False
+    else:
+        revision = capture(["git", "-C", str(APP_ROOT), "rev-parse", "HEAD"])
+        dirty = bool(capture(["git", "-C", str(APP_ROOT), "status", "--porcelain"]))
+    import re
+
+    if re.fullmatch(r"[0-9a-f]{40}", revision) is None:
+        raise ValueError("Build source must identify a full Git revision")
+    metadata = {"revision": revision, "dirty": dirty,
+                "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    (site_packages / "uQCme" / "_build_info.json").write_text(json.dumps(metadata, sort_keys=True) + "\n")
 
 
 def write_launcher(dist_root, launcher_name, module_name):

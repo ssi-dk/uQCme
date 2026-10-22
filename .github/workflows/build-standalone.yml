@@ -49,6 +49,8 @@ jobs:
           file ./packaging/dist/uqcme-cli-standalone/python/bin/python3
           ./packaging/dist/uqcme-cli-standalone/python/bin/python3 -c "import platform, sys; print(platform.system(), platform.machine(), sys.version)"
           ./packaging/dist/uqcme-cli-standalone/uqcme --help
+          ./packaging/dist/uqcme-cli-standalone/uqcme --version
+          ./packaging/dist/uqcme-cli-standalone/uqcme --diagnostics
 
       - name: Verify dashboard bundle launchers
         run: |
@@ -56,6 +58,8 @@ jobs:
           ./packaging/dist/uqcme-dashboard-standalone/python/bin/python3 -c "import platform, sys; print(platform.system(), platform.machine(), sys.version)"
           ./packaging/dist/uqcme-dashboard-standalone/uqcme --help
           ./packaging/dist/uqcme-dashboard-standalone/uqcme-dashboard --help
+          ./packaging/dist/uqcme-dashboard-standalone/uqcme-dashboard --version
+          ./packaging/dist/uqcme-dashboard-standalone/uqcme-dashboard --diagnostics
           ./packaging/dist/uqcme-dashboard-standalone/uqcme-dashboard-smoke --help
 
       - name: Prepare release assets

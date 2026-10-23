@@ -1916,8 +1916,12 @@ class QCDashboard:
                         extras.append("ID")
 
                     extra_info = f" ({', '.join(extras)})" if extras else ""
+                    description = self._get_column_description(mapping_key)
+                    description_info = f" - {description}" if description else ""
 
-                    st.write(f"- **{field_name}**: `{mapping_key}`{extra_info}")
+                    st.write(
+                        f"- **{field_name}**: `{mapping_key}`{extra_info}{description_info}"
+                    )
 
     def render_report_tab(self, filtered_data: pd.DataFrame):
         """Render config-driven table-only report view."""

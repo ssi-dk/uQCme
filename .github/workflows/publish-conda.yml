@@ -23,6 +23,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0  # Needed for version detection from tags
+          ref: ${{ github.event.inputs.version && format('refs/tags/v{0}', github.event.inputs.version) || github.ref }}
 
       - name: Set up Miniconda
         uses: conda-incubator/setup-miniconda@v3
@@ -35,7 +36,8 @@ jobs:
       - name: Install conda-build
         shell: bash -el {0}
         run: |
-          conda install -y conda-build anaconda-client
+          # Keep publishing tools in the same environment as Conda.
+          conda install --name base -y conda-build anaconda-client
 
       - name: Verify version
         id: version
@@ -48,7 +50,7 @@ jobs:
       - name: Build conda package
         shell: bash -el {0}
         run: |
-          conda build conda --output-folder ./conda-bld
+          conda run --name base --no-capture-output conda-build conda --output-folder ./conda-bld
 
       - name: Upload to Anaconda
         shell: bash -el {0}
@@ -63,4 +65,4 @@ jobs:
             exit 1
           fi
           echo "Uploading: $PACKAGE"
-          anaconda upload --user ssi-dk --force "$PACKAGE"
+          conda run --name base --no-capture-output anaconda upload --user ssi-dk --force "$PACKAGE"

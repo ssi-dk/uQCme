@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-10-23
+
+### Changed
+
+- Aligned application, Pixi, Conda recipe, configuration defaults/examples and
+  README version metadata with `0.9.4`.
+- Includes the previously merged QC/configuration fixes, build identity and
+  test-suite updates from [PR #25](https://github.com/ssi-dk/uQCme/pull/25).
+
+## Historical unversioned changes
+
 ### Added
 
 - Shared, validated canonical species mappings for QC selection, species-value

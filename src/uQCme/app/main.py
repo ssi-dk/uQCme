@@ -14,32 +14,58 @@ import os
 import re
 import sys
 from html import escape
-import streamlit as st
-from streamlit.web import cli as stcli
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Union
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
 import pandas as pd
 import requests
+import streamlit as st
 import yaml
-from pathlib import Path
-from typing import Dict, Any, List, Optional, Union
-from urllib.parse import urlencode, urlparse, urlunparse, parse_qs
+from streamlit.web import cli as stcli
+
 from uQCme.app.plot import (
     QCPlotter,
     build_quality_metric_catalog,
     get_plottable_quality_metric_columns,
 )
 from uQCme.app.styling import SpeciesSupportStyling
+from uQCme.core.config import DataInput, SampleApiAction, UQCMeConfig
+from uQCme.core.engine import QCProcessor
+from uQCme.core.exceptions import ConfigError, DataLoadError, ValidationError
 from uQCme.core.loader import (
+    _resolve_api_bearer_token,
     collect_duplicate_row_warnings,
     get_unique_columns_from_mapping,
-    _resolve_api_bearer_token,
     load_config_from_file,
-    load_data_from_config,
+    load_data_from_api,
     load_data_from_api_with_debug,
+    load_data_from_config,
     prepare_loaded_data_frame,
 )
-from uQCme.core.engine import QCProcessor
-from uQCme.core.config import UQCMeConfig, DataInput, SampleApiAction
-from uQCme.core.exceptions import ConfigError, DataLoadError, ValidationError
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_available_batches(
+    api_url: str,
+    bearer_token: str | None,
+    api_headers: dict | None,
+) -> list[dict]:
+    """Fetch recent batches and cache the result for five minutes."""
+
+    batches = load_data_from_api(
+        api_url,
+        bearer_token=bearer_token,
+        custom_headers=api_headers,
+    )
+
+    if batches.empty:
+        return []
+
+    if not {"BatchID", "Samples"}.issubset(batches.columns):
+        raise DataLoadError("Batch API response is missing required columns.")
+
+    return batches.to_dict("records")
 
 
 class QCDashboard:
@@ -91,6 +117,7 @@ class QCDashboard:
                     api_bearer_token=resolved_data_config.api_bearer_token,
                     api_bearer_token_env=(resolved_data_config.api_bearer_token_env),
                     api_headers=resolved_data_config.api_headers,
+                    api_batches_call=resolved_data_config.api_batches_call,
                 )
         elif isinstance(resolved_data_config, dict) and resolved_data_config.get(
             "api_call"
@@ -103,6 +130,105 @@ class QCDashboard:
                 resolved_data_config = {**resolved_data_config, "api_call": dynamic_url}
 
         return resolved_data_config
+
+    def _apply_selected_batch(self, data_config: DataInput) -> DataInput:
+        """Apply the selected batch to the API URL."""
+        selected_batch = st.session_state.get("uqcme_selected_batch")
+
+        if selected_batch is None:
+            selected_batch = st.query_params.get("batchIDs") or "latest"
+
+        parsed = urlparse(data_config.api_call)
+        params = parse_qs(parsed.query)
+
+        if selected_batch == "latest":
+            # Let uSymph resolve the latest batch automatically.
+            params.pop("batchIDs", None)
+        else:
+            # Override any batchIDs already present in the URL.
+            params["batchIDs"] = [selected_batch]
+
+        updated_url = urlunparse(parsed._replace(query=urlencode(params, doseq=True)))
+
+        return data_config.model_copy(update={"api_call": updated_url})
+
+    def _on_batch_change(self):
+        """Clear batch-specific UI state when switching batches."""
+
+        # Clear selected samples.
+        st.session_state.pop("selected_samples", None)
+
+        # Clear the data editor state.
+        st.session_state.pop("data_preview_table", None)
+
+        # Clear all filter widget values.
+        filter_prefixes = (
+            "filter_",
+            "range_",
+            "search_",
+        )
+
+        for key in list(st.session_state.keys()):
+            if key.startswith(filter_prefixes):
+                del st.session_state[key]
+
+    def render_batch_selector(self):
+        """Render the batch selection dropdown in the sidebar."""
+        data_config = self.config.app.input.data
+
+        if self.report_mode or not isinstance(data_config, DataInput):
+            return
+
+        if not data_config.api_call or not data_config.api_batches_call:
+            return
+
+        try:
+            batches = self._load_available_batches()
+        except (DataLoadError, ConfigError) as exc:
+            st.sidebar.warning(f"Could not load batch list: {exc}")
+            return
+
+        batch_ids = [str(batch["BatchID"]) for batch in batches]
+
+        # The actual latest batch is determined from loaded QC data.
+        latest_batch = st.session_state.get("uqcme_latest_batch_name")
+        latest_label = (
+            f"Latest batch ({latest_batch})"
+            if latest_batch
+            else "Latest batch (automatic)"
+        )
+
+        labels = {"latest": latest_label}
+        labels.update(
+            {
+                str(batch["BatchID"]): (
+                    f"{batch['BatchID']} ({batch['Samples']} samples)"
+                )
+                for batch in batches
+            }
+        )
+
+        # Initialize the selector from the browser URL, if provided.
+        if "uqcme_selected_batch" not in st.session_state:
+            requested_batch = st.query_params.get("batchIDs")
+
+            if requested_batch:
+                st.session_state["uqcme_selected_batch"] = str(requested_batch)
+
+        # Include an explicitly requested batch even if it isn't in the latest 20.
+        selected_batch = st.session_state.get("uqcme_selected_batch", "latest")
+
+        if selected_batch != "latest" and selected_batch not in batch_ids:
+            batch_ids.append(selected_batch)
+            labels[selected_batch] = f"{selected_batch} (selected)"
+
+        st.sidebar.selectbox(
+            "Select sequencing batch",
+            options=["latest"] + batch_ids,
+            format_func=lambda batch_id: labels[batch_id],
+            key="uqcme_selected_batch",
+            on_change=self._on_batch_change,
+        )
 
     def _is_api_data_config(
         self, data_config: Union[str, DataInput, Dict[str, Any]]
@@ -435,14 +561,32 @@ class QCDashboard:
 
             data_config = self._resolve_data_config_for_runtime(data_config)
 
+            # Apply the selected batch before loading QC results.
+            if isinstance(data_config, DataInput) and data_config.api_call:
+                data_config = self._apply_selected_batch(data_config)
+
             # Only attempt to load if a source is configured
             if has_configured_source:
                 try:
                     self.data = self._load_data_with_optional_api_debug(data_config)
+
                     # Validate the loaded data if not empty
                     if not self.data.empty:
                         self.data = self._validate_api_data(self.data)
                         self._warn_on_duplicate_sample_names(self.data)
+
+                        # Remember the actual latest batch for the dropdown label.
+                        if (
+                            st.session_state.get("uqcme_selected_batch", "latest")
+                            == "latest"
+                            and "BatchID" in self.data.columns
+                        ):
+                            batch_ids = self.data["BatchID"].dropna().unique()
+
+                            if len(batch_ids) == 1:
+                                st.session_state["uqcme_latest_batch_name"] = str(
+                                    batch_ids[0]
+                                )
                     # Clear any previous API warnings
                     self.api_warning = None
                 except DataLoadError as e:
@@ -826,6 +970,21 @@ class QCDashboard:
             # No outcome field available
             col2.metric("PASS", "N/A")
             col3.metric("Issues", "N/A")
+
+    def _load_available_batches(self) -> list[dict]:
+        """Retrieve recent batches using the cached API helper."""
+        data_config = self.config.app.input.data
+
+        token = _resolve_api_bearer_token(
+            api_bearer_token=data_config.api_bearer_token,
+            api_bearer_token_env=data_config.api_bearer_token_env,
+        )
+
+        return fetch_available_batches(
+            api_url=data_config.api_batches_call,
+            bearer_token=token,
+            api_headers=data_config.api_headers,
+        )
 
     def _get_filterable_fields(self, data: pd.DataFrame) -> list:
         """Get all fields that should have filters based on mapping config."""
@@ -2814,6 +2973,9 @@ class QCDashboard:
             with st.sidebar:
                 st.subheader("📁 Data Source")
 
+                # Batch selector
+                self.render_batch_selector()
+
                 # Get source description
                 source_desc = "Unknown"
                 if (
@@ -2824,12 +2986,12 @@ class QCDashboard:
                     data_config = self.config.app.input.data
                     if isinstance(data_config, DataInput):
                         if data_config.api_call:
-                            source_desc = f"API: {data_config.api_call}"
+                            source_desc = "uSymph-uQCme API"
                         elif data_config.file:
                             source_desc = f"File: {data_config.file}"
                     elif isinstance(data_config, dict):
                         if data_config.get("api_call"):
-                            source_desc = f"API: {data_config['api_call']}"
+                            source_desc = "uSymph-uQCme API"
                         elif data_config.get("file"):
                             source_desc = f"File: {data_config['file']}"
                     elif isinstance(data_config, str):
@@ -2858,9 +3020,7 @@ class QCDashboard:
                                 self.data = pd.DataFrame()
 
                     if not self.data.empty:
-                        source_info_placeholder.info(
-                            f"**Current Source:**\n{source_desc}"
-                        )
+                        source_info_placeholder.caption(f"Source: {source_desc}")
 
                 st.markdown("---")
 

@@ -1,8 +1,7 @@
 import re
-from typing import Dict, List, Optional, Union, Any
+from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-
 
 HEX_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
@@ -10,6 +9,7 @@ HEX_COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
 class DataInput(BaseModel):
     file: Optional[str] = None
     api_call: Optional[str] = None
+    api_batches_call: Optional[str] = None
     api_query_params: Optional[Union[List[str], Dict[str, str]]] = None
     api_bearer_token: Optional[str] = None
     api_bearer_token_env: Optional[str] = None

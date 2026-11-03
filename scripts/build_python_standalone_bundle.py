@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import re
 from datetime import datetime, timezone
 import os
 import platform
@@ -12,6 +13,12 @@ import sys
 import tarfile
 from pathlib import Path
 
+
+# Verified bootstrap published by the Python eMudhra security advisory.
+MINIMUM_PIP = (26, 2, 2)
+PIP_WHEEL = "pip-26.2.2-py3-none-any.whl"
+PIP_WHEEL_URL = "https://files.pythonhosted.org/packages/3f/06/3e4420302363fbb71be3c7f35ce042f54bfca330e3e66b3a2e3c4cca579f/pip-26.2.2-py3-none-any.whl"
+PIP_WHEEL_SHA256 = "fd7f4dfa8190e014013b9f08f3e973f4e4c26ffd179a204895533a7254813a70"
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_BUILD_ROOT = APP_ROOT / "packaging" / "build" / "python-standalone"
@@ -237,17 +244,44 @@ def validate_runtime_matches_host(python_bin):
     return metadata
 
 
-def ensure_pip(python_bin):
-    """Ensure pip is available in the bundled runtime."""
+# Reject old and prerelease pip before it can download application packages.
+def pip_is_current(python_bin):
     result = subprocess.run(
         [str(python_bin), "-m", "pip", "--version"],
         capture_output=True,
         text=True,
         check=False,
     )
-    if result.returncode == 0:
+    match = re.match(r"^pip (\d+)\.(\d+)(?:\.(\d+))? ", result.stdout)
+    return result.returncode == 0 and match is not None and tuple(
+        int(part or 0) for part in match.groups()
+    ) >= MINIMUM_PIP
+
+
+# Keep offline builds offline; an old runtime needs the verified wheel in its wheelhouse.
+def ensure_pip(python_bin, wheelhouse=""):
+    if pip_is_current(python_bin):
         return
-    run([str(python_bin), "-m", "ensurepip", "--upgrade"])
+    wheel_url = PIP_WHEEL_URL
+    if wheelhouse:
+        wheel = Path(wheelhouse).resolve() / PIP_WHEEL
+        if not wheel.is_file():
+            raise SystemExit("Offline bootstrap requires the verified wheel: " + str(wheel))
+        wheel_url = wheel.as_uri()
+    available = subprocess.run(
+        [str(python_bin), "-m", "pip", "--version"],
+        capture_output=True, text=True, check=False,
+    )
+    if available.returncode:
+        run([str(python_bin), "-m", "ensurepip", "--upgrade"])
+    command = [str(python_bin), "-m", "pip", "--isolated", "--disable-pip-version-check",
+               "install", "--no-cache-dir", "--no-deps", "--upgrade"]
+    if wheelhouse:
+        command.append("--no-index")
+    command.append("pip @ " + wheel_url + "#sha256=" + PIP_WHEEL_SHA256)
+    run(command)
+    if not pip_is_current(python_bin):
+        raise SystemExit("Bootstrap did not provide pip >=26.2.2; use a supported Python runtime")
 
 
 def install_application(python_bin, site_packages, profile, wheelhouse):
@@ -389,7 +423,7 @@ def build_profile(profile, python_bin, dist_base, wheelhouse):
     if not python3_link.exists():
         python3_link.symlink_to(bundle_python.name)
 
-    ensure_pip(bundle_python)
+    ensure_pip(bundle_python, wheelhouse)
     install_application(bundle_python, dist_root / "site-packages", profile, wheelhouse)
     for launcher_name, module_name in PROFILES[profile]["launchers"].items():
         write_launcher(dist_root, launcher_name, module_name)

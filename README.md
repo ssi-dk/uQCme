@@ -55,6 +55,11 @@ The tool handles specific QC rules for the following species (as defined in the 
 
 ## Installation
 
+Use pip 26.2.2 or newer. For an existing environment, follow the
+[Python security advisory's verified bootstrap](https://discuss.python.org/t/information-for-python-users-regarding-emudhra-emsign-ca-certificate-security-incident/109576)
+before installing packages. Application dependencies require certifi 2026.10.19
+or newer; pip's bundled certificates require updating pip separately.
+
 ### From PyPI
 
 **Core only (shared logic):**

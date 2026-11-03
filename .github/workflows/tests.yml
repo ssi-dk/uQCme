@@ -25,7 +25,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          python -c "from scripts.build_python_standalone_bundle import ensure_pip; import sys; ensure_pip(sys.executable)"
           pip install -e ".[dev]"
 
       - name: Run tests
@@ -45,7 +45,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          python -c "from scripts.build_python_standalone_bundle import ensure_pip; import sys; ensure_pip(sys.executable)"
           pip install flake8
 
       - name: Lint with flake8

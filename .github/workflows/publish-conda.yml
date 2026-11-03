@@ -37,7 +37,7 @@ jobs:
         shell: bash -el {0}
         run: |
           # Keep publishing tools in the same environment as Conda.
-          conda install --name base -y conda-build anaconda-client
+          conda install --name base -y 'conda>=26.9.4' 'certifi>=2026.10.19' 'pip>=26.2.2' conda-build anaconda-client
 
       - name: Verify version
         id: version

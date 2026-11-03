@@ -18,9 +18,10 @@ build:
 requirements:
   host:
     - python >=3.12,<3.13
-    - pip
+    - pip >=26.2.2
     - hatchling
   run:
+    - certifi >=2026.10.19
     - python >=3.12,<3.13
     # Core dependencies
     - pandas >=1.5.0

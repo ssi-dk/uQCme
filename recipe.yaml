@@ -9,10 +9,11 @@ build:
 requirements:
   host:
     - python >=3.12,<3.13
-    - pip
+    - pip >=26.2.2
   run:
+    - certifi >=2026.10.19
     - python >=3.12,<3.13
-    - pip
+    - pip >=26.2.2
     # All Python dependencies are handled by pip from PyPI
 
 about:

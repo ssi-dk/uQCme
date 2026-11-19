@@ -253,9 +253,11 @@ def pip_is_current(python_bin):
         check=False,
     )
     match = re.match(r"^pip (\d+)\.(\d+)(?:\.(\d+))? ", result.stdout)
-    return result.returncode == 0 and match is not None and tuple(
-        int(part or 0) for part in match.groups()
-    ) >= MINIMUM_PIP
+    return (
+        result.returncode == 0
+        and match is not None
+        and tuple(int(part or 0) for part in match.groups()) >= MINIMUM_PIP
+    )
 
 
 # Keep offline builds offline; an old runtime needs the verified wheel in its wheelhouse.
@@ -266,22 +268,37 @@ def ensure_pip(python_bin, wheelhouse=""):
     if wheelhouse:
         wheel = Path(wheelhouse).resolve() / PIP_WHEEL
         if not wheel.is_file():
-            raise SystemExit("Offline bootstrap requires the verified wheel: " + str(wheel))
+            raise SystemExit(
+                "Offline bootstrap requires the verified wheel: " + str(wheel)
+            )
         wheel_url = wheel.as_uri()
     available = subprocess.run(
         [str(python_bin), "-m", "pip", "--version"],
-        capture_output=True, text=True, check=False,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if available.returncode:
         run([str(python_bin), "-m", "ensurepip", "--upgrade"])
-    command = [str(python_bin), "-m", "pip", "--isolated", "--disable-pip-version-check",
-               "install", "--no-cache-dir", "--no-deps", "--upgrade"]
+    command = [
+        str(python_bin),
+        "-m",
+        "pip",
+        "--isolated",
+        "--disable-pip-version-check",
+        "install",
+        "--no-cache-dir",
+        "--no-deps",
+        "--upgrade",
+    ]
     if wheelhouse:
         command.append("--no-index")
     command.append("pip @ " + wheel_url + "#sha256=" + PIP_WHEEL_SHA256)
     run(command)
     if not pip_is_current(python_bin):
-        raise SystemExit("Bootstrap did not provide pip >=26.2.2; use a supported Python runtime")
+        raise SystemExit(
+            "Bootstrap did not provide pip >=26.2.2; use a supported Python runtime"
+        )
 
 
 def install_application(python_bin, site_packages, profile, wheelhouse):

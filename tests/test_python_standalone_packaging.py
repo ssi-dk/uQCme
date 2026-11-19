@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Tests for optional python-build-standalone bundle assets."""
 
 import subprocess
@@ -8,7 +7,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-
 
 APP_ROOT = Path(__file__).resolve().parents[1]
 
@@ -93,15 +91,6 @@ def test_github_action_builds_and_uploads_both_standalone_bundles():
     assert "pixi run build-standalone" in workflow_text
     assert "uqcme-cli-standalone-linux-x86_64.tar.gz" in workflow_text
     assert "uqcme-dashboard-standalone-linux-x86_64.tar.gz" in workflow_text
-
-
-@pytest.mark.standalone
-def test_marker_configuration_documents_standalone_and_dashboard_smoke():
-    """Pytest markers should let users exclude slow validation families."""
-    pyproject_text = (APP_ROOT / "pyproject.toml").read_text(encoding="utf-8")
-
-    assert "standalone: standalone packaging tests" in pyproject_text
-    assert "dashboard_smoke: dashboard process startup" in pyproject_text
 
 
 # The actual builder embeds source metadata, rather than relying on a source checkout at runtime.

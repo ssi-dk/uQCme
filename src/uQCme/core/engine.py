@@ -420,7 +420,7 @@ class QCProcessor:
 
             # Determine QC outcomes
             qc_outcomes = self._determine_qc_outcomes(failed_rules, passed_rules)
-            outcome_str = ",".join(qc_outcomes) if qc_outcomes else "PASS"
+            outcome_str = ",".join(qc_outcomes) if qc_outcomes else "PASS_READS"
             sample_results["qc_outcome"] = outcome_str
 
             # Determine QC action based on highest priority outcome
@@ -504,7 +504,7 @@ class QCProcessor:
         # If no specific outcomes, but there are failed rules, mark as
         # general failure
         if not outcomes and failed_rules:
-            outcomes.append("FAIL")
+            outcomes.append("FAIL_READS")
 
         return outcomes
 
@@ -512,7 +512,7 @@ class QCProcessor:
         """Determine the action required based on highest priority outcome."""
         if not qc_outcomes:
             # If no outcomes (PASS case), find the PASS action
-            pass_test = self.qc_tests[self.qc_tests["outcome_id"] == "PASS"]
+            pass_test = self.qc_tests[self.qc_tests["outcome_id"].isin(["PASS_READS", "PASS"])]
             if not pass_test.empty:
                 return pass_test.iloc[0]["action_required"]
             return "none"
@@ -596,7 +596,7 @@ class QCProcessor:
         # Count QC outcomes
         outcome_counts = {}
         for outcomes_str in self.results["qc_outcome"]:
-            if outcomes_str and outcomes_str != "PASS":
+            if outcomes_str and outcomes_str not in {"PASS", "PASS_READS"}:
                 for outcome in outcomes_str.split(","):
                     outcome = outcome.strip()
                     current_count = outcome_counts.get(outcome, 0)

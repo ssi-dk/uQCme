@@ -146,7 +146,7 @@ class TestQCProcessor(unittest.TestCase):
 
         # Test unknown rule failure (should default to FAIL)
         outcomes = self.processor._determine_qc_outcomes(["R99"], [])
-        self.assertIn("FAIL", outcomes)
+        self.assertIn("FAIL_READS", outcomes)
 
     def test_passed_rule_conditions_not_applicable(self):
         """Test that tests with passed_rule_conditions are skipped when rules are not evaluated."""
@@ -247,7 +247,7 @@ class TestQCProcessor(unittest.TestCase):
         # PASS should NOT appear (there are failed rules)
         self.assertNotIn("PASS", outcomes)
         # Should have generic FAIL
-        self.assertIn("FAIL", outcomes)
+        self.assertIn("FAIL_READS", outcomes)
 
     def test_determine_qc_action(self):
         """Test QC action determination logic."""

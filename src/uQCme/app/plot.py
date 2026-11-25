@@ -311,43 +311,99 @@ class QCPlotter:
         data: pd.DataFrame,
         top_n: int = 15,
         title: str = "Most Common Failed Rules",
+        qc_rules: Optional[pd.DataFrame] = None,
     ) -> go.Figure:
-        """Create bar chart for failed rules analysis."""
-        failed_rules_data = self._analyze_failed_rules(data)
+        """Show failed QC rules with readable descriptions."""
+        if "failed_rules" not in data.columns or data.empty:
+            return self._overview_empty("No failed rules found")
 
-        if failed_rules_data.empty:
-            # Create empty chart
-            fig = go.Figure()
-            fig.add_annotation(
-                text="No failed rules found",
-                xref="paper",
-                yref="paper",
-                x=0.5,
-                y=0.5,
-                showarrow=False,
-                font=dict(size=16),
-            )
-            fig.update_layout(title=title)
-            return fig
+        failed_rules = self._analyze_failed_rules(data)
+        if failed_rules.empty:
+            return self._overview_empty("No failed rules found")
 
-        top_rules = failed_rules_data.head(top_n)
+        top_rules = failed_rules.head(top_n).copy()
+        descriptions = {}
+
+        if (
+            qc_rules is not None
+            and not qc_rules.empty
+            and "rule_id" in qc_rules.columns
+        ):
+            for _, row in qc_rules.iterrows():
+                rule_id = str(row["rule_id"]).strip()
+
+                software_value = row.get("software")
+                software = (
+                    str(software_value).strip()
+                    if pd.notna(software_value)
+                    else ""
+                )
+
+                field = str(row.get("field", "")).strip()
+                short_field = {
+                    "Total length (>= 0 bp)": "Assembly length",
+                    "# contigs (>= 0 bp)": "Contig count",
+                }.get(field, field)
+
+                operator = str(row.get("operator", "")).strip()
+                value = str(row.get("value", "")).strip()
+
+                label = " ".join(
+                    part
+                    for part in [f"{rule_id}:", software, short_field]
+                    if part
+                )
+
+                criterion = " ".join(
+                    part
+                    for part in [software, field, operator, value]
+                    if part
+                )
+
+                descriptions[rule_id] = (
+                    label,
+                    criterion,
+    )
+
+        top_rules["label"] = top_rules["rule"].map(
+            lambda rule: descriptions.get(rule, (rule, ""))[0]
+        )
+        top_rules["criterion"] = top_rules["rule"].map(
+            lambda rule: descriptions.get(
+                rule, (rule, "Definition unavailable")
+            )[1]
+        )
 
         fig = px.bar(
             top_rules,
             x="count",
-            y="rule",
+            y="label",
             orientation="h",
-            title=f"Top {top_n} {title}",
-            labels={"count": "Failure Count", "rule": "QC Rule"},
+            text="count",
+            custom_data=["criterion"],
+            labels={
+                "count": "Failures",
+                "label": "QC rule",
+            },
         )
-
+        fig.update_traces(
+            marker_color="#80B6E8",
+            textposition="outside",
+            hovertemplate=(
+                "%{y}<br>Samples: %{x}<br>"
+                "%{customdata[0]}<extra></extra>"
+            ),
+        )
         fig.update_layout(
-            yaxis={"categoryorder": "total ascending"},
-            height=max(500, top_n * 25),
-            margin=dict(l=250),
+            height=max(300, 34 * len(top_rules) + 95),
+            yaxis=dict(
+                categoryorder="total ascending",
+                automargin=True,
+            ),
+            margin=dict(l=10, r=35, t=10, b=50),
         )
-
         return fig
+
 
     def create_distribution_plot(
         self, data: pd.DataFrame, metric: str, title: Optional[str] = None
@@ -488,40 +544,309 @@ class QCPlotter:
 
         return fig
 
-    def create_quality_overview_dashboard(
-        self, data: pd.DataFrame, metrics: Optional[list] = None
-    ) -> Dict[str, go.Figure]:
-        """Create a set of overview plots for dashboard display."""
-        plots = {}
 
-        # Outcome distribution
-        plots["outcome_pie"] = self.create_outcome_pie_chart(data)
+    def _overview_outcome_label(self, value) -> str:
+        """Make QC outcome codes readable."""
+        names = {
+            "PASS": "Pass (read QC)",
+            "PASS_READS": "Pass (read QC)",
+            "PASS_GENERAL": "Pass (general QC)",
+            "WARN": "Warning (read QC)",
+            "FAIL": "Fail (read QC)",
+            "FAIL_READS": "Fail (read QC)",
+            "FAIL_GENERAL": "Fail (general QC)",
+        }
 
-        # Species distribution
-        plots["species_bar"] = self.create_species_bar_chart(data)
+        codes = [
+            part.strip().upper()
+            for part in str(value).split(",")
+            if part.strip()
+        ]
 
-        # Failed rules analysis
-        plots["failed_rules"] = self.create_failed_rules_chart(data)
+        if ("PASS_GENERAL" in codes
+            and any(code in {"PASS", "PASS_READS"} for code in codes)
+            and all(
+                code in {"PASS", "PASS_READS", "PASS_GENERAL"}
+                for code in codes)):
+            return "Pass (read + general QC)"
 
-        # Quality metrics
-        available_cols = metrics if metrics is not None else get_available_metrics(data)
+        return " + ".join(
+            names.get(code, code.replace("_", " ").capitalize())
+            for code in codes
+        ) or "Unknown"
 
-        if available_cols:
-            # Distribution of first available metric
-            plots["metric_dist"] = self.create_distribution_plot(
-                data, available_cols[0]
+    def _overview_outcome_color(self, value) -> str:
+        """Consistent colors for QC outcomes."""
+        codes = [
+            part.strip().upper()
+            for part in str(value).split(",")
+        ]
+
+        if "FAIL_GENERAL" in codes:
+            return "#E07070"
+        if "FAIL" in codes or any(
+            code.startswith("FAIL_") for code in codes
+        ):
+            return "#BC4359"
+        if any(code.startswith("WARN") for code in codes):
+            return "#E1B454"
+        if codes and all(code.startswith("PASS") for code in codes):
+            return "#3AA77C"
+
+        return "#8F9CAE"
+
+    @staticmethod
+    def _overview_empty(message: str) -> go.Figure:
+        fig = go.Figure()
+        fig.add_annotation(
+            text=message,
+            showarrow=False,
+            x=0.5,
+            y=0.5,
+            xref="paper",
+            yref="paper",
+        )
+        fig.update_layout(
+            height=250,
+            xaxis_visible=False,
+            yaxis_visible=False,
+        )
+        return fig
+
+    def create_overview_summary_chart(
+        self, data: pd.DataFrame, field: str
+    ) -> go.Figure:
+        """Single stacked bar for QC outcomes or actions."""
+        if field not in data.columns or data.empty:
+            return self._overview_empty(
+                f"No {field} data available"
             )
 
-            # Box plot of first available metric
-            plots["metric_box"] = self.create_box_plot(data, available_cols[0])
+        counts = (
+            data[field]
+            .fillna("Unknown")
+            .astype(str)
+            .value_counts()
+        )
 
-            # Correlation heatmap if multiple metrics available
-            if len(available_cols) > 1:
-                plots["correlation"] = self.create_correlation_heatmap(
-                    data, available_cols
+        action_names = {
+            "none": "No action",
+            "review": "Review",
+            "reject": "Reject",
+            "return_to_lab": "Return to lab",
+        }
+        action_colors = {
+            "none": "#3AA77C",
+            "review": "#E1B454",
+            "reject": "#E07070",
+            "return_to_lab": "#6542BC",
+        }
+
+        fig = go.Figure()
+
+        for raw, count in counts.items():
+            if field == "qc_outcome":
+                label = self._overview_outcome_label(raw)
+                color = self._overview_outcome_color(raw)
+            else:
+                label = action_names.get(raw.lower(), raw)
+                color = action_colors.get(
+                    raw.lower(), "#8F9CAE"
                 )
 
-        return plots
+            fig.add_bar(
+                x=[int(count)],
+                y=["Samples"],
+                orientation="h",
+                width=0.42,
+                name=f"{label} ({count})",
+                marker_color=color,
+                text=[f"{count} ({count / len(data):.0%})"],
+                textposition="inside",
+                hovertemplate=(
+                    f"{label}: %{{x}} samples<extra></extra>"
+                ),
+            )
+
+        fig.update_layout(
+            barmode="stack",
+            height=175,
+            yaxis_visible=False,
+            xaxis_title="Samples",
+            legend=dict(
+                orientation="h", yanchor="top", y=-0.42,
+                xanchor="left", x=0),
+            margin=dict(l=5, r=5, t=5, b=65),
+        )
+        return fig
+
+    def create_species_outcome_chart(
+        self, data: pd.DataFrame, top_n: int = 10
+    ) -> go.Figure:
+        """Top species, with counts split by QC outcome."""
+        if not {"species", "qc_outcome"}.issubset(
+            data.columns
+        ) or data.empty:
+            return self._overview_empty(
+                "No species/QC outcome data available"
+            )
+
+        chart = data[["species", "qc_outcome"]].copy()
+        chart["Species"] = chart["species"].map(
+            self.species_styling.chart_label_for
+        )
+        chart["Species"] = (
+            chart["Species"]
+            .fillna("Unknown")
+            .replace("", "Unknown")
+        )
+        chart["QC outcome"] = (
+            chart["qc_outcome"]
+            .fillna("Unknown")
+            .map(self._overview_outcome_label)
+        )
+
+        order = (
+            chart["Species"]
+            .value_counts()
+            .head(top_n)
+            .index.tolist()
+        )
+
+        chart = chart[chart["Species"].isin(order)]
+        counts = chart.groupby(
+            ["Species", "QC outcome"], as_index=False
+        ).size()
+
+        colors = {
+            self._overview_outcome_label(value):
+                self._overview_outcome_color(value)
+            for value in chart["qc_outcome"].dropna().unique()
+        }
+
+        fig = px.bar(
+            counts,
+            x="size",
+            y="Species",
+            color="QC outcome",
+            orientation="h",
+            color_discrete_map=colors,
+            labels={"size": "Samples"},
+        )
+        fig.update_layout(
+            barmode="stack",
+            height=max(360, 35 * len(order) + 110),
+            yaxis=dict(
+                categoryorder="array",
+                categoryarray=list(reversed(order)),
+            ),
+            legend=dict(orientation="h", y=-0.25),
+            margin=dict(l=10, r=10, t=10, b=85),
+        )
+        return fig
+
+    def create_overview_metric_box(
+        self,
+        data: pd.DataFrame,
+        candidates: list[tuple[str, str]],
+    ) -> go.Figure:
+        """Boxplot with sample points, using existing data."""
+        for column, label in candidates:
+            if column not in data.columns:
+                continue
+
+            numbers = pd.to_numeric(
+                data[column], errors="coerce"
+            )
+
+            if not numbers.notna().any():
+                continue
+
+            hover_cols = [
+                c for c in (
+                    "sample_name", "species", "qc_outcome"
+                )
+                if c in data.columns
+            ]
+
+            chart = data[hover_cols].copy()
+            chart["Metric"] = numbers
+            chart = chart.dropna(subset=["Metric"])
+
+            fig = px.box(
+                chart,
+                x="Metric",
+                points="all",
+                hover_data=hover_cols,
+                labels={"Metric": label},
+            )
+            fig.update_traces(
+                marker_color="#80B6E8",
+                marker_size=7,
+                jitter=0.3,
+            )
+            fig.update_layout(
+                height=290,
+                xaxis_title=label,
+                yaxis_visible=False,
+                showlegend=False,
+                margin=dict(l=10, r=10, t=10, b=55),
+            )
+            return fig
+
+        return self._overview_empty(
+            "Metric not available in this batch"
+        )
+
+    def create_quality_overview_dashboard(
+        self,
+        data: pd.DataFrame,
+        metrics: Optional[list] = None,
+        qc_rules: Optional[pd.DataFrame] = None,
+    ) -> Dict[str, go.Figure]:
+        """Create predefined Overview plots."""
+        return {
+            "qc_outcomes": self.create_overview_summary_chart(
+                data, "qc_outcome"
+            ),
+            "qc_actions": self.create_overview_summary_chart(
+                data, "qc_action"
+            ),
+            "species_outcomes": self.create_species_outcome_chart(
+                data
+            ),
+            "failed_rules": self.create_failed_rules_chart(
+                data, qc_rules=qc_rules
+            ),
+            "genome_size": self.create_overview_metric_box(
+                data, [
+                    ("genome_size_bp", "Genome size (bp)"),
+                    ("Quast_Total_Length", "Assembly length (bp)"),
+                ]
+            ),
+            "coverage": self.create_overview_metric_box(
+                data, [
+                    ("average_coverage", "Depth of coverage (x)"),
+                    (
+                        "Average_Coverage",
+                        "Average coverage (units unconfirmed)",
+                    ),
+                ]
+            ),
+            "contigs": self.create_overview_metric_box(
+                data, [
+                    ("contig_count", "Contigs"),
+                    ("Quast_Contigs", "Contigs"),
+                ]
+            ),
+            "n50": self.create_overview_metric_box(
+                data, [
+                    ("n50_bp", "N50 (bp)"),
+                    ("Quast_N50", "N50 (bp)"),
+                ]
+            ),
+        }
+
 
     def _analyze_failed_rules(self, data: pd.DataFrame) -> pd.DataFrame:
         """Analyze failed rules to get counts."""
@@ -560,8 +885,10 @@ class QCPlotter:
         """Get color mapping for QC outcomes."""
         default_colors = {
             "PASS": "#28a745",  # Green
+            "PASS_READS": "#28a745",
             "WARN": "#ffc107",  # Yellow
             "FAIL": "#dc3545",  # Red
+            "FAIL_READS": "#dc3545",
             "WARN_COMPLETENESS": "#fd7e14",  # Orange
             "WARN_CONTAMINATION": "#e83e8c",  # Pink
             "FAIL_SIZE": "#6f42c1",  # Purple

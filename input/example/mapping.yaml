@@ -112,7 +112,7 @@ SpeciesAliases:
 
 Sections:
   Basic:
-    Name:
+    SampleName:
       data:
         mapping: sample_name
       report:
@@ -141,12 +141,12 @@ Sections:
         mapping: ["speciesName", "genusName", "Marker lineage"]
       report:
         filter: true
-    Expected species:
+    Detected species:
       data:
         mapping: rMLST_match
       report:
         filter: true
-    Expected species support:
+    Detected species support:
       data:
         mapping: rMLST_support
   QC_metrics:
@@ -192,7 +192,7 @@ Sections:
       data:
         mapping: average_coverage
       QC:
-        mapping: ["Depth"]
+        mapping: ["Depth", "Coverage"]
     Failed Rules: # generated from qc
       data:
         mapping: failed_rules

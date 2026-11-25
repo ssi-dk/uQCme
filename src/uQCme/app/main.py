@@ -1762,7 +1762,7 @@ class QCDashboard:
         if title:
             st.subheader(title)
         if fig:
-            st.plotly_chart(fig, width="content", key=key)
+            st.plotly_chart(fig, width="stretch", key=key)
 
     def _get_table_height(self, row_count: int) -> int:
         """Return a table height capped by config and sized to visible rows."""
@@ -1799,6 +1799,12 @@ class QCDashboard:
 
         # Configure columns
         column_config = {}
+
+        # Use display names from mapping.yaml
+        for section_cols in self._get_columns_by_section(display_data).values():
+            for col_info in section_cols:
+                column_config[col_info["column"]] = col_info["field_name"]
+
 
         # Configure float columns to show compact numbers
         for col in display_data.columns:
@@ -2150,52 +2156,84 @@ class QCDashboard:
         st.markdown(report_table_html, unsafe_allow_html=True)
 
     def render_overview_tab(self, filtered_data: pd.DataFrame):
-        """Render the overview tab with summary statistics."""
-        # st.header("📈 Overview")
-        metric_catalog = self._get_quality_metric_catalog(filtered_data)
-        plottable_metrics = get_plottable_quality_metric_columns(metric_catalog)
-
-        # Use the plotter to create overview charts
-        overview_plots = self.plotter.create_quality_overview_dashboard(
-            filtered_data, metrics=plottable_metrics
+        """Render predefined QC Overview charts."""
+        plots = self.plotter.create_quality_overview_dashboard(
+            filtered_data,
+            qc_rules=self.qc_rules,
         )
 
-        # Display charts in columns
-        col1, col2 = st.columns(2)
+        left, right = st.columns(2, gap="large")
 
-        with col1:
+        with left:
             self._render_plotly_chart(
-                overview_plots.get("outcome_pie"),
-                "overview_outcome_pie",
-                "QC Outcomes Distribution",
+                plots["qc_outcomes"],
+                "overview_qc_outcomes",
+                "QC Outcomes",
             )
 
-        with col2:
+        with right:
             self._render_plotly_chart(
-                overview_plots.get("species_bar"),
-                "overview_species_bar",
-                "Species Distribution",
+                plots["qc_actions"],
+                "overview_qc_actions",
+                "QC Actions",
             )
 
-        # Failed Rules Analysis
-        self._render_plotly_chart(
-            overview_plots.get("failed_rules"),
-            "overview_failed_rules",
-            "Most Common Failed Rules",
+        left, right = st.columns(2, gap="large")
+
+        with left:
+            self._render_plotly_chart(
+                plots["species_outcomes"],
+                "overview_species_outcomes",
+                "Species by QC Outcome",
+            )
+
+        with right:
+            self._render_plotly_chart(
+                plots["failed_rules"],
+                "overview_failed_rules",
+                "Most Common Failed Rules",
+            )
+
+        # Separate QC summaries from metric distributions
+        st.markdown(
+            "<div style='height: 24px;'></div>",
+            unsafe_allow_html=True,
         )
 
-        # Quality metrics if available
-        self._render_plotly_chart(
-            overview_plots.get("metric_dist"),
-            "overview_metric_dist",
-            "Quality Metrics Distribution",
-        )
+        st.subheader("QC Metric Distributions")
 
-        self._render_plotly_chart(
-            overview_plots.get("correlation"),
-            "overview_correlation",
-            "Metrics Correlation",
-        )
+        left, right = st.columns(2, gap="large")
+
+        with left:
+            self._render_plotly_chart(
+                plots["genome_size"],
+                "overview_genome_size",
+                "Genome Size",
+            )
+
+        with right:
+            self._render_plotly_chart(
+                plots["coverage"],
+                "overview_coverage",
+                "Coverage",
+            )
+
+        left, right = st.columns(2, gap="large")
+
+        with left:
+            self._render_plotly_chart(
+                plots["contigs"],
+                "overview_contigs",
+                "Contig Count",
+            )
+
+        with right:
+            self._render_plotly_chart(
+                plots["n50"],
+                "overview_n50",
+                "N50",
+            )
+
 
     def render_quality_metrics_tab(self, filtered_data: pd.DataFrame):
         """Render quality metrics visualizations."""
@@ -3082,8 +3120,8 @@ class QCDashboard:
                 [
                     "📊 Data Preview",
                     "📈 Overview",
-                    "🔍 Quality Metrics",
                     "🔬 Sample Details",
+                    "🔍 Quality Metrics",
                     "⚙️ QC Tests",
                     "⚠️ Warnings",
                 ]
@@ -3096,10 +3134,10 @@ class QCDashboard:
                 self.render_overview_tab(filtered_data)
 
             with tabs[2]:
-                self.render_quality_metrics_tab(filtered_data)
+                self.render_sample_details_tab(filtered_data)
 
             with tabs[3]:
-                self.render_sample_details_tab(filtered_data)
+                self.render_quality_metrics_tab(filtered_data)
 
             with tabs[4]:
                 self.render_qc_tests_tab()

@@ -20,6 +20,7 @@ app:
     data:
       #file: "./input/example/run_data_new_schema.tsv"
       api_call: "http://127.0.0.1:8000/api/v1/uQCme?project_id=uSymph"
+      api_batches_call: "http://127.0.0.1:8000/api/v1/uQCme/batches"
       api_bearer_token_env: "UQCME_API_TOKEN"
       api_query_params:
         - batchIDs
@@ -48,12 +49,12 @@ app:
           description: Routine QC view with sample identity, QC result, species, and core assembly metrics.
           columns:
             Basic:
-              - Name
+              - SampleName
               - SupplyingLab
               - QC action
               - QC outcome
               - Provided Species
-              - Expected species
+              - Detected species
             QC_metrics:
               - Failed Rules
               - Passed Rules
@@ -66,12 +67,12 @@ app:
           description: Placeholder for fbi 
           columns:
             Basic:
-              - Name
+              - SampleName
               - SupplyingLab
               - QC action
               - QC outcome
-              - Expected species
-              - Expected species support
+              - Detected species
+              - Detected species support
             QC_metrics:
               - Failed Rules
               - Passed Rules
@@ -88,9 +89,9 @@ app:
           description: Placeholder for rar
           columns:
             Basic:
-              - Name
+              - SampleName
               - SupplyingLab
-              - Expected species
+              - Detected species
               - QC action
               - QC outcome
             QC_metrics:

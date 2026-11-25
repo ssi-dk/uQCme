@@ -32,6 +32,7 @@ class StreamlitStub(types.ModuleType):
 
     def __init__(self):
         super().__init__("streamlit")
+        self.cache_data = lambda *args, **kwargs: lambda func: func
         self.sidebar = types.SimpleNamespace()
         self.sidebar.container = self._sidebar_container
         self.sidebar.header = self._sidebar_header
@@ -1330,6 +1331,9 @@ def test_run_sorts_filtered_data_before_interactive_views(monkeypatch):
         def info(self, message):
             return None
 
+        def caption(self, message):
+            return None
+
     streamlit_stub.reset()
     monkeypatch.setattr(streamlit_stub, "sidebar", RunSidebarStub())
     monkeypatch.setattr(
@@ -1392,8 +1396,8 @@ def test_run_sorts_filtered_data_before_interactive_views(monkeypatch):
     assert rendered_data == [
         ("render_data_tab", ["Sample-2", "Sample-10"]),
         ("render_overview_tab", ["Sample-2", "Sample-10"]),
-        ("render_quality_metrics_tab", ["Sample-2", "Sample-10"]),
         ("render_sample_details_tab", ["Sample-2", "Sample-10"]),
+        ("render_quality_metrics_tab", ["Sample-2", "Sample-10"]),
     ]
 
 
